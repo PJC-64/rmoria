@@ -66,8 +66,8 @@ fn draw_map(level: &DungeonLevel, player: &Player, monsters: &[Monster], status_
     
     let mut screen_buf = String::new();
     
-    // Row 0: Message line (Status/combat log, padded to 79 chars to clear previous text)
-    screen_buf.push_str(&format!("Message: {:<70}\r\n", status_msg));
+    // Row 0: Message line (Status/combat log, with \x1b[K to clear old remnants)
+    screen_buf.push_str(&format!("Message: {}\x1b[K\r\n", status_msg));
 
     // Rows 1 to 22: LHS Stats + Space Divider + Dungeon map row
     for map_y in 0..level.height {
