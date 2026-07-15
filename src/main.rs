@@ -5,6 +5,8 @@ mod save;
 mod dice;
 mod entity;
 
+use serde::{Serialize, Deserialize};
+
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -16,7 +18,7 @@ use std::path::Path;
 use std::fs;
 use rand::Rng;
 use input::{InputMapper, KeyboardProfile, Action, Direction};
-use dungeon::{DungeonLevel, TileType, ShopType, FloorItem, tile::TrapType};
+use dungeon::{DungeonLevel, TileType, ShopType, FloorItem, tile::TrapType, generate_random_floor_item};
 use player::{Player, Race, Class, Item, ItemType};
 use save::GameState;
 use dice::Dice;
@@ -39,6 +41,23 @@ pub enum ScreenMode {
     SelectSpellDirection,
     CharacterStatsMenu,
     SelectDisarmDirection,
+    BarterBuyMenu,
+    BarterSellMenu,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HaggleState {
+    pub item: Item,
+    pub item_index: usize,
+    pub initial_price: u32,
+    pub min_price: u32,
+    pub max_price: u32,
+    pub current_asking: u32,
+    pub last_bid: u32,
+    pub insults: u32,
+    pub offers_count: u32,
+    pub comment: String,
+    pub player_input: String,
 }
 
 struct MonsterTemplate {
@@ -99,45 +118,6 @@ fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
             ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
         ],
-    }
-}
-
-fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
-    let roll = rng.gen_range(0..100);
-    if roll < 25 {
-        let is_heal = rng.gen_bool(0.3);
-        if is_heal && depth >= 3 {
-            Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 })
-        } else {
-            Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
-        }
-    } else if roll < 50 {
-        let book_roll = rng.gen_range(0..10);
-        if book_roll == 0 {
-            Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false })
-        } else if book_roll == 1 {
-            Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false })
-        } else {
-            let is_teleport = rng.gen_bool(0.3);
-            if is_teleport && depth >= 2 {
-                Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true })
-            } else {
-                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true })
-            }
-        }
-    } else if roll < 70 {
-        let piece = rng.gen_range(0..4);
-        match piece {
-            0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
-            1 => Item::new("Broadsword", 1, 150, ItemType::Weapon { damage: Dice::new(2, 5) }),
-            2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
-            _ => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
-        }
-    } else if roll < 85 {
-        Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false })
-    } else {
-        let gold_amount = rng.gen_range(15..=40) * (depth + 1);
-        Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
     }
 }
 
@@ -218,7 +198,7 @@ fn wrap_text(text: &str, limit: usize) -> Vec<String> {
     lines
 }
 
-fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: ShopType) -> String {
+fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: ShopType, active_haggle: Option<&HaggleState>) -> String {
     match mode {
         ScreenMode::InventoryList => {
             if row == 0 {
@@ -504,6 +484,44 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 _ => "".to_string(),
             }
         }
+        ScreenMode::BarterBuyMenu => {
+            if let Some(haggle) = active_haggle {
+                match row {
+                    0 => format!("--- BARTERING (BUY): {} ---", haggle.item.name),
+                    2 => format!("Shopkeeper: \"{}\"", haggle.comment),
+                    3 => format!("Current Ask Price:  {} gp", haggle.current_asking),
+                    5 => format!("Your last offer:    {} gp", haggle.last_bid),
+                    6 => format!("Patience left:      {}", 3 - haggle.insults),
+                    8 => format!("Enter your offer:   {}", haggle.player_input),
+                    10 => "--------------------------------------------".to_string(),
+                    11 => "Type your bid (digits) and press ENTER to submit.".to_string(),
+                    12 => "Press ENTER on blank input to accept the shopkeeper's price.".to_string(),
+                    13 => "Press ESC to cancel and exit.".to_string(),
+                    _ => "".to_string(),
+                }
+            } else {
+                "".to_string()
+            }
+        }
+        ScreenMode::BarterSellMenu => {
+            if let Some(haggle) = active_haggle {
+                match row {
+                    0 => format!("--- BARTERING (SELL): {} ---", haggle.item.name),
+                    2 => format!("Shopkeeper: \"{}\"", haggle.comment),
+                    3 => format!("Current Offer:      {} gp", haggle.current_asking),
+                    5 => format!("Your last ask:      {} gp", haggle.last_bid),
+                    6 => format!("Patience left:      {}", 3 - haggle.insults),
+                    8 => format!("Enter your price:   {}", haggle.player_input),
+                    10 => "--------------------------------------------".to_string(),
+                    11 => "Type your price (digits) and press ENTER to submit.".to_string(),
+                    12 => "Press ENTER on blank input to accept the shopkeeper's price.".to_string(),
+                    13 => "Press ESC to cancel and exit.".to_string(),
+                    _ => "".to_string(),
+                }
+            } else {
+                "".to_string()
+            }
+        }
         ScreenMode::Shop => {
             let shop_name = match shop {
                 ShopType::General => "GENERAL STORE",
@@ -674,6 +692,7 @@ fn draw_map(
     status_msg: &str,
     mode: ScreenMode,
     shop: ShopType,
+    active_haggle: Option<&HaggleState>,
 ) -> Result<(), io::Error> {
     update_visibility(level, player);
 
@@ -709,7 +728,7 @@ fn draw_map(
                             TileType::StairsUp => map_part.push('<'),
                             TileType::StairsDown => map_part.push('>'),
                             TileType::ShopDoor(num) => map_part.push((b'0' + num) as char),
-                            TileType::SecretDoor => map_part.push('#'), // Secret Door is indistinguishable from wall!
+                            TileType::SecretDoor => map_part.push('#'),
                             TileType::Trap { detected, .. } => {
                                 if detected {
                                     map_part.push('^');
@@ -725,7 +744,7 @@ fn draw_map(
                 }
             }
         } else {
-            map_part = format!("{:<66}", get_overlay_row_text(map_y, mode, player, shop));
+            map_part = format!("{:<66}", get_overlay_row_text(map_y, mode, player, shop, active_haggle));
         }
 
         let row_line = format!("{} {}\x1b[K", stats_part, map_part);
@@ -846,7 +865,6 @@ fn run_character_creation(
     _stdout: &mut io::Stdout,
     rng: &mut impl rand::Rng,
 ) -> Result<Player, Box<dyn std::error::Error>> {
-    // 1. Choose Race
     let race = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
         print_creation_screen("CHOOSE CHARACTER RACE", &[
@@ -876,7 +894,6 @@ fn run_character_creation(
         }
     };
 
-    // 2. Choose Class
     let class = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
         print_creation_screen("CHOOSE CHARACTER CLASS", &[
@@ -902,7 +919,6 @@ fn run_character_creation(
         }
     };
 
-    // 3. Roll Stats loop
     let stats = loop {
         let s_str = rng.gen_range(8..=18);
         let s_int = rng.gen_range(8..=18);
@@ -952,7 +968,6 @@ fn run_character_creation(
         }
     };
 
-    // 4. Input Name
     disable_raw_mode()?;
     execute!(io::stdout(), Show)?;
     
@@ -1038,8 +1053,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut screen_mode = ScreenMode::Dungeon;
     let mut active_shop = ShopType::General;
     let mut selected_spell_idx: usize = 0;
+    let mut active_haggle: Option<HaggleState> = None;
 
-    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
 
     let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
 
@@ -1048,7 +1064,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match event::read()? {
                 Event::Resize(_, _) => {
                     let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
-                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                 }
                 Event::Key(key_event) => {
                     if key_event.code == KeyCode::Char('c') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -1119,7 +1135,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     status_msg.push_str(" Gained 0 EXP (Town monster).");
                                                 }
 
-                                                // Monster Drop check (30% chance or 100% for Boss/Lich)
                                                 let is_boss = monster_name == "The Balrog" || monster_name.contains("Lich");
                                                 if is_boss || rng.gen_bool(0.30) {
                                                     let drop_item = if monster_name == "The Balrog" {
@@ -1133,7 +1148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 
                                                 if monster_name == "The Balrog" {
                                                     player.balrog_killed = true;
-                                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                                                     std::thread::sleep(std::time::Duration::from_secs(1));
                                                     
                                                     execute!(stdout, Show, LeaveAlternateScreen)?;
@@ -1164,7 +1179,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     } else {
                                         if let Some(tile) = level.get_tile(next_x, next_y) {
                                             if tile.is_passable() || direction == Direction::Rest {
-                                                // Trap check on destination
                                                 let mut trigger_trap = None;
                                                 if let TileType::Trap { trap_type, .. } = tile.tile_type {
                                                     trigger_trap = Some(trap_type);
@@ -1199,11 +1213,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         }
                                                     }
                                                     if let Some(t) = level.get_tile_mut(player.x, player.y) {
-                                                        t.tile_type = TileType::Floor; // Trap gets consumed
+                                                        t.tile_type = TileType::Floor;
                                                     }
                                                 }
 
-                                                // Pickup Floor Item Check
                                                 let item_idx = level.items.iter().position(|i| i.x == player.x && i.y == player.y);
                                                 if let Some(idx) = item_idx {
                                                     let floor_item = level.items.remove(idx);
@@ -1341,7 +1354,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     status_msg = "Disarm trap: choose direction...".to_string();
                                 }
                                 Action::SearchOneTurn => {
-                                    // Search 8 adjacent tiles
                                     let is_rogue = player.class == Class::Rogue;
                                     let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
                                     let trap_chance = if is_rogue { 0.70 } else { 0.30 };
@@ -1384,17 +1396,159 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 Action::Quit => {
                                     status_msg = "Saving game and quitting...".to_string();
-                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                                     
                                     let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
                                     if let Err(e) = state.save_to_file(save_path) {
                                         status_msg = format!("Save failed: {}", e);
-                                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                                         std::thread::sleep(std::time::Duration::from_secs(2));
                                     } else {
                                         std::thread::sleep(std::time::Duration::from_millis(800));
                                     }
                                     break 'game_loop;
+                                }
+                                _ => {}
+                            }
+                        }
+                    } else if screen_mode == ScreenMode::BarterBuyMenu {
+                        if let Some(ref mut haggle) = active_haggle {
+                            match key_event.code {
+                                KeyCode::Esc => {
+                                    screen_mode = ScreenMode::Shop;
+                                    status_msg = "Transaction cancelled.".to_string();
+                                    active_haggle = None;
+                                }
+                                KeyCode::Backspace => {
+                                    haggle.player_input.pop();
+                                }
+                                KeyCode::Enter => {
+                                    if haggle.player_input.is_empty() {
+                                        let final_price = haggle.current_asking;
+                                        if player.gold >= final_price {
+                                            player.gold -= final_price;
+                                            add_item_to_inventory(&mut player.inventory, haggle.item.clone());
+                                            status_msg = format!("Done! You bought it for {} gp.", final_price);
+                                        } else {
+                                            status_msg = "You cannot afford that price!".to_string();
+                                        }
+                                        screen_mode = ScreenMode::Shop;
+                                        active_haggle = None;
+                                    } else if let Ok(bid) = haggle.player_input.parse::<u32>() {
+                                        if bid >= haggle.current_asking {
+                                            let final_price = haggle.current_asking;
+                                            if player.gold >= final_price {
+                                                player.gold -= final_price;
+                                                add_item_to_inventory(&mut player.inventory, haggle.item.clone());
+                                                status_msg = format!("Accepted! Bought for {} gp.", final_price);
+                                            } else {
+                                                status_msg = "You cannot afford that price!".to_string();
+                                            }
+                                            screen_mode = ScreenMode::Shop;
+                                            active_haggle = None;
+                                        } else if bid <= haggle.last_bid {
+                                            haggle.insults += 1;
+                                            if haggle.insults >= 3 {
+                                                status_msg = "The shopkeeper gets angry and kicks you out!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                                active_haggle = None;
+                                            } else {
+                                                haggle.comment = "Stop insulting me with such low offers!".to_string();
+                                                haggle.player_input.clear();
+                                            }
+                                        } else {
+                                            let diff = haggle.current_asking - bid;
+                                            let adj = diff * rng.gen_range(15..=25) / 100;
+                                            haggle.current_asking = (haggle.current_asking - adj).max(haggle.min_price);
+                                            haggle.last_bid = bid;
+                                            haggle.offers_count += 1;
+                                            haggle.player_input.clear();
+                                            if haggle.current_asking == haggle.min_price {
+                                                haggle.comment = "This is my final offer!".to_string();
+                                            } else {
+                                                haggle.comment = format!("How about {} gp?", haggle.current_asking);
+                                            }
+                                        }
+                                    }
+                                }
+                                KeyCode::Char(c) if c.is_ascii_digit() => {
+                                    if haggle.player_input.len() < 7 {
+                                        haggle.player_input.push(c);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    } else if screen_mode == ScreenMode::BarterSellMenu {
+                        if let Some(ref mut haggle) = active_haggle {
+                            match key_event.code {
+                                KeyCode::Esc => {
+                                    screen_mode = ScreenMode::ShopSellMenu;
+                                    status_msg = "Transaction cancelled.".to_string();
+                                    active_haggle = None;
+                                }
+                                KeyCode::Backspace => {
+                                    haggle.player_input.pop();
+                                }
+                                KeyCode::Enter => {
+                                    if haggle.player_input.is_empty() {
+                                        let final_price = haggle.current_asking;
+                                        player.gold += final_price;
+                                        status_msg = format!("Done! You sold the item for {} gp.", final_price);
+                                        
+                                        let inv_idx = haggle.item_index;
+                                        if inv_idx < player.inventory.len() {
+                                            player.inventory[inv_idx].count -= 1;
+                                            if player.inventory[inv_idx].count == 0 {
+                                                player.inventory.remove(inv_idx);
+                                            }
+                                        }
+                                        screen_mode = ScreenMode::ShopSellMenu;
+                                        active_haggle = None;
+                                    } else if let Ok(ask) = haggle.player_input.parse::<u32>() {
+                                        if ask <= haggle.current_asking {
+                                            let final_price = haggle.current_asking;
+                                            player.gold += final_price;
+                                            status_msg = format!("Accepted! Sold for {} gp.", final_price);
+                                            
+                                            let inv_idx = haggle.item_index;
+                                            if inv_idx < player.inventory.len() {
+                                                player.inventory[inv_idx].count -= 1;
+                                                if player.inventory[inv_idx].count == 0 {
+                                                    player.inventory.remove(inv_idx);
+                                                }
+                                            }
+                                            screen_mode = ScreenMode::ShopSellMenu;
+                                            active_haggle = None;
+                                        } else if ask >= haggle.last_bid {
+                                            haggle.insults += 1;
+                                            if haggle.insults >= 3 {
+                                                status_msg = "The shopkeeper gets angry at your greed and kicks you out!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                                active_haggle = None;
+                                            } else {
+                                                haggle.comment = "You are asking way too much! Be reasonable!".to_string();
+                                                haggle.player_input.clear();
+                                            }
+                                        } else {
+                                            let diff = ask - haggle.current_asking;
+                                            let adj = diff * rng.gen_range(15..=25) / 100;
+                                            haggle.current_asking = (haggle.current_asking + adj).min(haggle.max_price);
+                                            haggle.last_bid = ask;
+                                            haggle.offers_count += 1;
+                                            haggle.player_input.clear();
+                                            if haggle.current_asking == haggle.max_price {
+                                                haggle.comment = "That is my absolute final offer!".to_string();
+                                            } else {
+                                                haggle.comment = format!("I can go up to {} gp.", haggle.current_asking);
+                                            }
+                                        }
+                                    }
+                                }
+                                KeyCode::Char(c) if c.is_ascii_digit() => {
+                                    if haggle.player_input.len() < 7 {
+                                        haggle.player_input.push(c);
+                                    }
                                 }
                                 _ => {}
                             }
@@ -1418,9 +1572,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
                                 } else if screen_mode == ScreenMode::BrowseBookMenu {
-                                    // Browse mode exit via ESC
+                                    // Exit browse via ESC
                                 } else if screen_mode == ScreenMode::CharacterStatsMenu {
-                                    // Exit sheet via ESC
+                                    // Exit character sheet via ESC
                                 } else if screen_mode == ScreenMode::SelectDisarmDirection {
                                     let action = mapper.map_key(c);
                                     if let Action::Move(direction) = action {
@@ -1740,24 +1894,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             let items = get_shop_items(active_shop);
                                             if idx < items.len() {
                                                 let (name, price, ref item_type) = items[idx];
-                                                if player.gold >= price {
-                                                    player.gold -= price;
-                                                    let it = match item_type {
-                                                        ItemType::Weapon { damage } => ItemType::Weapon { damage: *damage },
-                                                        ItemType::Armor { ac } => ItemType::Armor { ac: *ac },
-                                                        ItemType::Potion { heal_amount } => ItemType::Potion { heal_amount: *heal_amount },
-                                                        ItemType::Scroll { teleport } => ItemType::Scroll { teleport: *teleport },
-                                                    };
-                                                    let weight = match &it {
-                                                        ItemType::Weapon { .. } => 10,
-                                                        ItemType::Armor { .. } => 80,
-                                                        ItemType::Potion { .. } => 5,
-                                                        ItemType::Scroll { .. } => 2,
-                                                    };
-                                                    add_item_to_inventory(&mut player.inventory, Item::new(name, 1, weight, it));
-                                                    status_msg = format!("You bought {}!", name);
+                                                if player.gold >= price * 9 / 10 {
+                                                    let base_p = price;
+                                                    let h_item = Item::new(name, 1, match item_type {
+                                                        ItemType::Weapon {..} => 10,
+                                                        ItemType::Armor {..} => 80,
+                                                        ItemType::Potion {..} => 5,
+                                                        _ => 2,
+                                                    }, item_type.clone());
+                                                    
+                                                    active_haggle = Some(HaggleState {
+                                                        item: h_item,
+                                                        item_index: idx,
+                                                        initial_price: base_p * 13 / 10,
+                                                        min_price: base_p * 9 / 10,
+                                                        max_price: base_p * 15 / 10,
+                                                        current_asking: base_p * 13 / 10,
+                                                        last_bid: base_p * 5 / 10,
+                                                        insults: 0,
+                                                        offers_count: 0,
+                                                        comment: "I will sell this for...".to_string(),
+                                                        player_input: String::new(),
+                                                    });
+                                                    screen_mode = ScreenMode::BarterBuyMenu;
+                                                    status_msg = format!("Bartering for {}.", name);
                                                 } else {
-                                                    status_msg = "You don't have enough gold!".to_string();
+                                                    status_msg = "You don't have enough gold to make a serious offer!".to_string();
                                                 }
                                             }
                                         }
@@ -1766,24 +1928,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 } else if screen_mode == ScreenMode::ShopSellMenu {
                                     let idx = c as usize - 'a' as usize;
                                     if idx < player.inventory.len() {
-                                        let value = match player.inventory[idx].item_type {
+                                        let item = &player.inventory[idx];
+                                        let base_val = match item.item_type {
                                             ItemType::Weapon {..} => 25,
                                             ItemType::Armor {..} => 40,
                                             ItemType::Potion {..} => 15,
                                             ItemType::Scroll {..} => 10,
                                         };
 
-                                        player.gold += value;
-                                        status_msg = format!("You sold 1x {} for {} gp.", player.inventory[idx].name, value);
-                                        
-                                        player.inventory[idx].count -= 1;
-                                        if player.inventory[idx].count == 0 {
-                                            player.inventory.remove(idx);
-                                        }
-
-                                        if player.inventory.is_empty() {
-                                            screen_mode = ScreenMode::Shop;
-                                        }
+                                        active_haggle = Some(HaggleState {
+                                            item: item.clone(),
+                                            item_index: idx,
+                                            initial_price: base_val * 7 / 10,
+                                            min_price: base_val * 5 / 10,
+                                            max_price: base_val * 11 / 10,
+                                            current_asking: base_val * 7 / 10,
+                                            last_bid: base_val * 15 / 10,
+                                            insults: 0,
+                                            offers_count: 0,
+                                            comment: "I can pay...".to_string(),
+                                            player_input: String::new(),
+                                        });
+                                        screen_mode = ScreenMode::BarterSellMenu;
+                                        status_msg = format!("Bartering to sell {}.", item.name);
                                     }
                                 } else if screen_mode == ScreenMode::WearMenu {
                                     let idx = c as usize - 'a' as usize;
@@ -1919,7 +2086,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 if player.hp <= 0 {
                                     player.hp = 0;
                                     status_msg.push_str(" You have died! Game Over.");
-                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                                     
                                     if Path::new(save_path).exists() {
                                         let _ = fs::remove_file(save_path);
@@ -1939,9 +2106,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }
-                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                     } else {
-                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
                     }
                 }
                 _ => {}

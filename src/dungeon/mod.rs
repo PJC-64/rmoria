@@ -74,7 +74,7 @@ impl Room {
     }
 }
 
-fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
+pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
     let roll = rng.gen_range(0..100);
     if roll < 25 {
         let is_heal = rng.gen_bool(0.3);
