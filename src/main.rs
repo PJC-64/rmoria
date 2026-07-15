@@ -381,7 +381,6 @@ fn has_los(x1: usize, y1: usize, x2: usize, y2: usize, level: &DungeonLevel) -> 
         if cx == x2 as isize && cy == y2 as isize {
             return true;
         }
-        // Wall or Closed Door blocks LOS light
         if cx != x1 as isize || cy != y1 as isize {
             if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
                 if tile.tile_type == TileType::Wall || tile.tile_type == TileType::DoorClosed {
@@ -402,12 +401,10 @@ fn has_los(x1: usize, y1: usize, x2: usize, y2: usize, level: &DungeonLevel) -> 
 }
 
 fn update_visibility(level: &mut DungeonLevel, player: &Player) {
-    // 1. Reset all visible flags
     for tile in level.tiles.iter_mut() {
         tile.visible = false;
     }
     
-    // 2. Town Level (depth 0) is fully lit
     if level.depth == 0 {
         for tile in level.tiles.iter_mut() {
             tile.visible = true;
@@ -416,7 +413,6 @@ fn update_visibility(level: &mut DungeonLevel, player: &Player) {
         return;
     }
     
-    // 3. Lit room checks: If player is inside a lit room, reveal the entire room (including 1-tile boundary walls)
     let mut lit_rooms_to_reveal = Vec::new();
     for room in &level.rooms {
         if room.is_lit {
@@ -428,13 +424,11 @@ fn update_visibility(level: &mut DungeonLevel, player: &Player) {
         }
     }
     
-    // 4. Dungeon Level light calculations (LOS raycast within radius limit)
     let radius = player.get_light_radius();
-    let max_dist = 8; // Memory limit distance
+    let max_dist = 8;
     
     for y in 0..level.height {
         for x in 0..level.width {
-            // Check if this tile falls within an illuminated lit room
             let mut is_revealed_by_room = false;
             for room in &lit_rooms_to_reveal {
                 if x >= room.x - 1 && x <= room.x + room.w &&
@@ -454,7 +448,7 @@ fn update_visibility(level: &mut DungeonLevel, player: &Player) {
 
             let dx = (x as isize - player.x as isize).abs();
             let dy = (y as isize - player.y as isize).abs();
-            let dist = dx.max(dy) as usize; // Chebyshev distance
+            let dist = dx.max(dy) as usize;
             
             if dist <= max_dist {
                 if has_los(player.x, player.y, x, y, level) {
@@ -464,7 +458,6 @@ fn update_visibility(level: &mut DungeonLevel, player: &Player) {
                             tile.remembered = true;
                         }
                     } else {
-                        // Explored but in shadow
                         if let Some(tile) = level.get_tile_mut(x, y) {
                             tile.remembered = true;
                         }
@@ -483,17 +476,13 @@ fn draw_map(
     mode: ScreenMode,
     shop: ShopType,
 ) -> Result<(), io::Error> {
-    // Run visibility calculations before rendering
     update_visibility(level, player);
 
     execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
     
     let mut screen_buf = String::new();
-    
-    // Row 0: Message line
     screen_buf.push_str(&format!("Message: {}\x1b[K\r\n", status_msg));
 
-    // Rows 1 to 22: LHS Stats + Space Divider + Dungeon map row or overlay row
     for map_y in 0..level.height {
         let stats_part = get_lhs_stat_line(map_y + 1, player, level);
         screen_buf.push_str(&stats_part);
@@ -506,11 +495,9 @@ fn draw_map(
                     if map_x == player.x && map_y == player.y {
                         screen_buf.push('@');
                     } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
-                        // Only render monsters on tiles that are actively lit/visible!
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
                         screen_buf.push(monster.symbol);
                     } else if tile.visible || tile.remembered {
-                        // Render visible or remembered tiles
                         match tile.tile_type {
                             TileType::Wall => screen_buf.push('#'),
                             TileType::Floor => screen_buf.push('.'),
@@ -521,7 +508,6 @@ fn draw_map(
                             TileType::Empty => screen_buf.push(' '),
                         }
                     } else {
-                        // Unexplored darkness shroud
                         screen_buf.push(' ');
                     }
                 }
@@ -559,7 +545,6 @@ fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: b
     let max_depth = level.max_depth;
     
     if depth == 0 {
-        // Town street monsters: give 0 experience!
         let (u_x, u_y) = find_passable_tile(level);
         let (r_x, r_y) = find_passable_tile(level);
         let (b_x, b_y) = find_passable_tile(level);
@@ -573,14 +558,11 @@ fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: b
     let mut mons = Vec::new();
     let mut rng = rand::thread_rng();
     
-    // Bottom Level = Boss Level
     if depth == max_depth {
         if !player_has_killed_balrog {
             let (bx, by) = find_passable_tile(level);
             mons.push(Monster::new("The Balrog", 'B', bx, by, 120, Dice::new(3, 8), 500));
         }
-        
-        // Spawn 3 high-level guards (Liches)
         for _ in 0..3 {
             let (gx, gy) = find_passable_tile(level);
             mons.push(Monster::new("Lich Guardian", 'L', gx, gy, 55, Dice::new(3, 6), 180));
@@ -588,15 +570,11 @@ fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: b
         return mons;
     }
     
-    // Dungeon Levels scale selection
     let mut active_level = depth;
-    
-    // 10% chance of "nasty" monster spawning offset
     if rng.gen_bool(0.10) {
         active_level += rng.gen_range(1..=3);
     }
     
-    // Spawn 4 monsters matching the active level cap
     for _ in 0..4 {
         let suitable_templates: Vec<&MonsterTemplate> = MONSTER_DB.iter()
             .filter(|t| t.level <= active_level)
@@ -621,16 +599,163 @@ fn add_item_to_inventory(inventory: &mut Vec<Item>, item: Item) {
     }
 }
 
+fn print_creation_screen(title: &str, options: &[&str]) {
+    let mut buf = String::new();
+    buf.push_str("==========================================================\r\n");
+    buf.push_str(&format!("  Moria Character Creator: {:<30}\r\n", title));
+    buf.push_str("==========================================================\r\n\r\n");
+    for opt in options {
+        buf.push_str(&format!("  {}\x1b[K\r\n", opt));
+    }
+    for _ in 0..12 {
+        buf.push_str("\x1b[K\r\n");
+    }
+    buf.push_str("==========================================================\r\n");
+    print!("{}", buf);
+    let _ = io::stdout().flush();
+}
+
+fn run_character_creation(
+    _stdout: &mut io::Stdout,
+    rng: &mut impl rand::Rng,
+) -> Result<Player, Box<dyn std::error::Error>> {
+    // 1. Choose Race
+    let race = loop {
+        execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
+        print_creation_screen("CHOOSE CHARACTER RACE", &[
+            "a) Human",
+            "b) Half-Elf",
+            "c) Elf",
+            "d) Halfling",
+            "e) Gnome",
+            "f) Dwarf",
+            "g) Half-Orc",
+            "h) Half-Troll",
+        ]);
+        if let Event::Key(key_event) = event::read()? {
+            if let KeyCode::Char(c) = key_event.code {
+                match c {
+                    'a' => break Race::Human,
+                    'b' => break Race::HalfElf,
+                    'c' => break Race::Elf,
+                    'd' => break Race::Halfling,
+                    'e' => break Race::Gnome,
+                    'f' => break Race::Dwarf,
+                    'g' => break Race::HalfOrc,
+                    'h' => break Race::HalfTroll,
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    // 2. Choose Class
+    let class = loop {
+        execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
+        print_creation_screen("CHOOSE CHARACTER CLASS", &[
+            "a) Warrior",
+            "b) Mage",
+            "c) Priest",
+            "d) Rogue",
+            "e) Ranger",
+            "f) Paladin",
+        ]);
+        if let Event::Key(key_event) = event::read()? {
+            if let KeyCode::Char(c) = key_event.code {
+                match c {
+                    'a' => break Class::Warrior,
+                    'b' => break Class::Mage,
+                    'c' => break Class::Priest,
+                    'd' => break Class::Rogue,
+                    'e' => break Class::Ranger,
+                    'f' => break Class::Paladin,
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    // 3. Roll Stats loop
+    let stats = loop {
+        let s_str = rng.gen_range(8..=18);
+        let s_int = rng.gen_range(8..=18);
+        let s_wis = rng.gen_range(8..=18);
+        let s_dex = rng.gen_range(8..=18);
+        let s_con = rng.gen_range(8..=18);
+        let s_chr = rng.gen_range(8..=18);
+        let rolled = player::Attributes::new(s_str, s_int, s_wis, s_dex, s_con, s_chr);
+
+        let mut temp_player = Player {
+            name: "".to_string(),
+            race,
+            class,
+            level: 1,
+            exp: 0,
+            gold: 150,
+            x: 0, y: 0,
+            max_hp: 15, hp: 15,
+            max_mana: 0, mana: 0,
+            stats: rolled.clone(),
+            inventory: Vec::new(),
+            equipment: Vec::new(),
+            balrog_killed: false,
+        };
+        temp_player.apply_race_and_class_modifiers();
+
+        execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
+        print_creation_screen("ROLL CHARACTER ATTRIBUTES", &[
+            &format!("STR:  {:>2}", temp_player.stats.strength),
+            &format!("INT:  {:>2}", temp_player.stats.intelligence),
+            &format!("WIS:  {:>2}", temp_player.stats.wisdom),
+            &format!("DEX:  {:>2}", temp_player.stats.dexterity),
+            &format!("CON:  {:>2}", temp_player.stats.constitution),
+            &format!("CHR:  {:>2}", temp_player.stats.charisma),
+            "",
+            "Press [SPACE] to re-roll stats.",
+            "Press [ENTER] to accept these characteristics.",
+        ]);
+
+        if let Event::Key(key_event) = event::read()? {
+            if key_event.code == KeyCode::Enter {
+                break rolled;
+            }
+        }
+    };
+
+    // 4. Input Name
+    disable_raw_mode()?;
+    execute!(io::stdout(), Show)?;
+    
+    execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
+    print!("==========================================================\n");
+    print!("              ENTER CHARACTER NAME                        \n");
+    print!("==========================================================\n");
+    print!("Name: ");
+    let _ = io::stdout().flush();
+    
+    let mut name = String::new();
+    let _ = io::stdin().read_line(&mut name);
+    let trimmed_name = name.trim();
+    let name_str = if trimmed_name.is_empty() { "Hero" } else { trimmed_name };
+
+    enable_raw_mode()?;
+    execute!(io::stdout(), Hide)?;
+
+    let mut final_player = Player::new(name_str, race, class, 30, 10);
+    final_player.stats = stats;
+    final_player.apply_race_and_class_modifiers();
+
+    Ok(final_player)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_path = "save.json";
     let mut rng = rand::thread_rng();
     
-    // 1. Initialize terminal raw mode and alternate screen
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, Hide)?;
 
-    // 2. Load game state if save file exists, otherwise create new
     let (mut player, mut level, mut monsters, mut status_msg, max_depth) = if Path::new(save_path).exists() {
         match GameState::load_from_file(save_path) {
             Ok(state) => {
@@ -640,20 +765,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let rolled_max = rng.gen_range(8..=15);
                 let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
                 lvl.generate_simple_floor();
+                let p = run_character_creation(&mut stdout, &mut rng)?;
                 let start_pos = find_passable_tile(&lvl);
-                let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
+                let mut player = p;
+                player.move_to(start_pos.0, start_pos.1);
                 let mons = generate_monsters_for_depth(&lvl, false);
-                (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e), rolled_max)
+                (player, lvl, mons, format!("Failed to load save: {}. Started new game.", e), rolled_max)
             }
         }
     } else {
         let rolled_max = rng.gen_range(8..=15);
         let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
         lvl.generate_simple_floor();
+        let p = run_character_creation(&mut stdout, &mut rng)?;
         let start_pos = find_passable_tile(&lvl);
-        let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
+        let mut player = p;
+        player.move_to(start_pos.0, start_pos.1);
         let mons = generate_monsters_for_depth(&lvl, false);
-        (p, lvl, mons, "New game started! Find town shops or descend stairs (>)".to_string(), rolled_max)
+        (player, lvl, mons, "Welcome to rmoria! Find town shops or descend stairs (>)".to_string(), rolled_max)
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
@@ -692,7 +821,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let next_x = (player.x as isize + dx) as usize;
                                 let next_y = (player.y as isize + dy) as usize;
 
-                                // Check if there is a store door on Town level (depth 0)
                                 let mut entered_shop = false;
                                 if level.depth == 0 {
                                     if let Some(shop_info) = level.shops.iter().find(|s| s.door_x == next_x && s.door_y == next_y) {
@@ -714,9 +842,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 if entered_shop {
                                     // Shop entered
                                 }
-                                // Check if there is a monster at the destination (must be visible to attack!)
                                 else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
-                                    // Check if the tile the monster stands on is visible (lit) to player
                                     let is_m_visible = level.get_tile(next_x, next_y).map(|t| t.visible).unwrap_or(false);
                                     
                                     if is_m_visible {
@@ -759,7 +885,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                         player_acted = true;
                                     } else {
-                                        // Stepping into dark tile containing monster -> bump/attack in the dark!
                                         if let Some(tile) = level.get_tile(next_x, next_y) {
                                             if tile.is_passable() {
                                                 player.move_to(next_x, next_y);
