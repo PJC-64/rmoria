@@ -990,7 +990,7 @@ fn add_item_to_inventory(inventory: &mut Vec<Item>, item: Item) {
 fn print_creation_screen(title: &str, options: &[&str]) {
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     let offset_x = ((cols as isize - 58) / 2).max(0) as u16;
-    let offset_y = ((rows as isize - 18) / 2).max(0) as u16;
+    let offset_y = ((rows as isize - 22) / 2).max(0) as u16;
 
     let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
     let mut row_idx = 0;
@@ -1008,8 +1008,10 @@ fn print_creation_screen(title: &str, options: &[&str]) {
     for opt in options {
         print_line(&format!("  {}", opt));
     }
-    for _ in 0..(12 - options.len()) {
-        print_line("");
+    if options.len() < 16 {
+        for _ in 0..(16 - options.len()) {
+            print_line("");
+        }
     }
     print_line("==========================================================");
     let _ = io::stdout().flush();
@@ -1073,7 +1075,7 @@ fn run_character_creation(
         }
     };
 
-    let stats = loop {
+    let (stats, history) = loop {
         let s_str = rng.gen_range(8..=18);
         let s_int = rng.gen_range(8..=18);
         let s_wis = rng.gen_range(8..=18);
@@ -1101,23 +1103,30 @@ fn run_character_creation(
             history: "".to_string(),
         };
         temp_player.apply_race_and_class_modifiers();
+        let history = player::generate_history(race);
+        let split_history = wrap_text(&history, 54);
+
+        let mut options = vec![
+            format!("STR:  {:>2}     INT:  {:>2}     WIS:  {:>2}", temp_player.stats.strength, temp_player.stats.intelligence, temp_player.stats.wisdom),
+            format!("DEX:  {:>2}     CON:  {:>2}     CHR:  {:>2}", temp_player.stats.dexterity, temp_player.stats.constitution, temp_player.stats.charisma),
+            "".to_string(),
+            "Racial History:".to_string(),
+        ];
+        for line in &split_history {
+            options.push(format!("  {}", line));
+        }
+        options.push("".to_string());
+        options.push("Press [SPACE] to re-roll stats & history.".to_string());
+        options.push("Press [ENTER] to accept these characteristics.".to_string());
+
+        let options_refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
 
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
-        print_creation_screen("ROLL CHARACTER ATTRIBUTES", &[
-            &format!("STR:  {:>2}", temp_player.stats.strength),
-            &format!("INT:  {:>2}", temp_player.stats.intelligence),
-            &format!("WIS:  {:>2}", temp_player.stats.wisdom),
-            &format!("DEX:  {:>2}", temp_player.stats.dexterity),
-            &format!("CON:  {:>2}", temp_player.stats.constitution),
-            &format!("CHR:  {:>2}", temp_player.stats.charisma),
-            "",
-            "Press [SPACE] to re-roll stats.",
-            "Press [ENTER] to accept these characteristics.",
-        ]);
+        print_creation_screen("ROLL CHARACTER ATTRIBUTES", &options_refs);
 
         if let Event::Key(key_event) = event::read()? {
             if key_event.code == KeyCode::Enter {
-                break rolled;
+                break (rolled, history);
             }
         }
     };
@@ -1150,6 +1159,7 @@ fn run_character_creation(
 
     let mut final_player = Player::new(name_str, race, class, 30, 10);
     final_player.stats = stats;
+    final_player.history = history;
     final_player.apply_race_and_class_modifiers();
     final_player.update_max_hp_and_mana();
     final_player.hp = final_player.max_hp;
