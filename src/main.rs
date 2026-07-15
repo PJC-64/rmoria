@@ -699,6 +699,8 @@ fn run_character_creation(
             inventory: Vec::new(),
             equipment: Vec::new(),
             balrog_killed: false,
+            base_hp_levels: vec![15; 40],
+            exp_factor: 100,
         };
         temp_player.apply_race_and_class_modifiers();
 
