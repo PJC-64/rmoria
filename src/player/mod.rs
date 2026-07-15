@@ -53,6 +53,8 @@ pub enum ItemType {
     Armor { ac: i32 },
     Potion { heal_amount: i32 },
     Scroll { teleport: bool },
+    Wand { charges: u32, spell_index: usize },
+    Staff { charges: u32, prayer_index: usize },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -47,6 +47,9 @@ pub enum ScreenMode {
     SelectCloseDirection,
     DropMenu,
     HelpMenu,
+    AimWandMenu,
+    SelectWandDirection,
+    UseStaffMenu,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +139,8 @@ fn get_item_symbol(item: &Item) -> char {
             ItemType::Armor { .. } => '[',
             ItemType::Potion { .. } => '!',
             ItemType::Scroll { .. } => '?',
+            ItemType::Wand { .. } => '/',
+            ItemType::Staff { .. } => '_',
         }
     }
 }
@@ -230,6 +235,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                             "Scroll".to_string()
                         }
                     }
+                    ItemType::Wand { charges, .. } => format!("Wand ({} charges)", charges),
+                    ItemType::Staff { charges, .. } => format!("Staff ({} charges)", charges),
                 };
                 return format!("{}. {} ({}) x{}", (b'a' + idx as u8) as char, item.name, details, item.count);
             }
@@ -592,6 +599,69 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 "".to_string()
             }
         }
+        ScreenMode::AimWandMenu => {
+            if row == 0 {
+                return "--- AIM WAND SELECTION ---".to_string();
+            }
+            let wands: Vec<(usize, &Item)> = player.inventory.iter()
+                .enumerate()
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Wand {..}))
+                .collect();
+
+            if row == wands.len() + 2 {
+                return "--------------------------".to_string();
+            }
+            if row == wands.len() + 3 {
+                return "Select wand letter to aim, or press ESC to cancel.".to_string();
+            }
+            if row > 0 && row <= wands.len() {
+                let idx = row - 1;
+                let (_, item) = wands[idx];
+                if let ItemType::Wand { charges, .. } = item.item_type {
+                    return format!("{}. {} ({} charges)", (b'a' + idx as u8) as char, item.name, charges);
+                }
+            }
+            if wands.is_empty() && row == 1 {
+                return "(No wands in inventory)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::SelectWandDirection => {
+            if row == 0 {
+                return "--- AIM WAND TARGETING ---".to_string();
+            }
+            if row == 2 {
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::UseStaffMenu => {
+            if row == 0 {
+                return "--- USE STAFF SELECTION ---".to_string();
+            }
+            let staves: Vec<(usize, &Item)> = player.inventory.iter()
+                .enumerate()
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Staff {..}))
+                .collect();
+
+            if row == staves.len() + 2 {
+                return "---------------------------".to_string();
+            }
+            if row == staves.len() + 3 {
+                return "Select staff letter to use, or press ESC to cancel.".to_string();
+            }
+            if row > 0 && row <= staves.len() {
+                let idx = row - 1;
+                let (_, item) = staves[idx];
+                if let ItemType::Staff { charges, .. } = item.item_type {
+                    return format!("{}. {} ({} charges)", (b'a' + idx as u8) as char, item.name, charges);
+                }
+            }
+            if staves.is_empty() && row == 1 {
+                return "(No staves in inventory)".to_string();
+            }
+            "".to_string()
+        }
         ScreenMode::Shop => {
             let shop_name = match shop {
                 ShopType::General => "GENERAL STORE",
@@ -642,6 +712,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Armor {..} => 40,
                     ItemType::Potion {..} => 15,
                     ItemType::Scroll {..} => 10,
+                    ItemType::Wand {..} => 50,
+                    ItemType::Staff {..} => 60,
                 };
                 return format!("{}. {} (sells for {} gp) x{}", (b'a' + idx as u8) as char, item.name, value, item.count);
             }
@@ -1123,6 +1195,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut screen_mode = ScreenMode::Dungeon;
     let mut active_shop = ShopType::General;
     let mut selected_spell_idx: usize = 0;
+    let mut selected_wand_inv_idx: usize = 0;
     let mut active_haggle: Option<HaggleState> = None;
 
     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref())?;
@@ -1804,6 +1877,119 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         player_acted = true;
                                     }
                                     screen_mode = ScreenMode::Dungeon;
+                                } else if screen_mode == ScreenMode::AimWandMenu {
+                                    let wands: Vec<(usize, &Item)> = player.inventory.iter()
+                                        .enumerate()
+                                        .filter(|(_, item)| matches!(item.item_type, ItemType::Wand {..}))
+                                        .collect();
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < wands.len() {
+                                        let (inv_idx, item) = wands[idx];
+                                        if let ItemType::Wand { charges, .. } = item.item_type {
+                                            if charges > 0 {
+                                                selected_wand_inv_idx = inv_idx;
+                                                screen_mode = ScreenMode::SelectWandDirection;
+                                                status_msg = "Aim wand: choose direction...".to_string();
+                                            } else {
+                                                status_msg = "That wand has no charges left!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                    } else {
+                                        screen_mode = ScreenMode::Dungeon;
+                                    }
+                                } else if screen_mode == ScreenMode::SelectWandDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let (dx, dy) = match direction {
+                                            Direction::NorthWest => (-1, -1),
+                                            Direction::North => (0, -1),
+                                            Direction::NorthEast => (1, -1),
+                                            Direction::West => (-1, 0),
+                                            Direction::Rest => (0, 0),
+                                            Direction::East => (1, 0),
+                                            Direction::SouthWest => (-1, 1),
+                                            Direction::South => (0, 1),
+                                            Direction::SouthEast => (1, 1),
+                                        };
+
+                                        let mut charges_left = 0;
+                                        let mut s_idx = 0;
+                                        if let ItemType::Wand { ref mut charges, spell_index } = player.inventory[selected_wand_inv_idx].item_type {
+                                            if *charges > 0 {
+                                                *charges -= 1;
+                                                charges_left = *charges;
+                                                s_idx = spell_index;
+                                            }
+                                        }
+
+                                        let mut cx = player.x as isize + dx;
+                                        let mut cy = player.y as isize + dy;
+                                        status_msg = "Your wand beam fades into the dark!".to_string();
+                                        
+                                        loop {
+                                            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                                                if tile.tile_type == TileType::Wall || tile.tile_type == TileType::SecretDoor {
+                                                    status_msg = "Your wand blast strikes a wall and dissipates!".to_string();
+                                                    break;
+                                                }
+                                            } else {
+                                                break;
+                                            }
+                                            if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
+                                                let dmg = if s_idx == 0 { rng.gen_range(2..=8) } else { rng.gen_range(4..=24) };
+                                                let m_name = monsters[m_idx].name.clone();
+                                                let exp = monsters[m_idx].experience_reward;
+                                                status_msg = format!("Wand beam hits {} for {} damage!", m_name, dmg);
+                                                if monsters[m_idx].take_damage(dmg) {
+                                                    status_msg.push_str(" You killed it!");
+                                                    player.add_experience(exp);
+                                                    monsters.remove(m_idx);
+                                                }
+                                                break;
+                                            }
+                                            cx += dx;
+                                            cy += dy;
+                                        }
+
+                                        status_msg.push_str(&format!(" ({} charges remaining)", charges_left));
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                } else if screen_mode == ScreenMode::UseStaffMenu {
+                                    let staves: Vec<(usize, &Item)> = player.inventory.iter()
+                                        .enumerate()
+                                        .filter(|(_, item)| matches!(item.item_type, ItemType::Staff {..}))
+                                        .collect();
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < staves.len() {
+                                        let (inv_idx, _item) = staves[idx];
+                                        let mut charges_left = 0;
+                                        let mut p_idx = 0;
+                                        let mut used_charge = false;
+                                        if let ItemType::Staff { ref mut charges, prayer_index } = player.inventory[inv_idx].item_type {
+                                            if *charges > 0 {
+                                                *charges -= 1;
+                                                charges_left = *charges;
+                                                p_idx = prayer_index;
+                                                used_charge = true;
+                                            }
+                                        }
+
+                                        if used_charge {
+                                            if p_idx == 1 {
+                                                let heal = rng.gen_range(2..=16);
+                                                player.hp = (player.hp + heal).min(player.max_hp);
+                                                status_msg = format!("You use the staff. Restored {} HP. ({} charges remaining)", heal, charges_left);
+                                            } else {
+                                                status_msg = format!("You use the staff, but nothing happens. ({} charges remaining)", charges_left);
+                                            }
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "That staff has no charges left!".to_string();
+                                        }
+                                    }
+                                    screen_mode = ScreenMode::Dungeon;
                                 } else if screen_mode == ScreenMode::CastSpellMenu {
                                     match c {
                                         'a' => {
@@ -2097,6 +2283,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             ItemType::Armor {..} => 40,
                                             ItemType::Potion {..} => 15,
                                             ItemType::Scroll {..} => 10,
+                                            ItemType::Wand {..} => 50,
+                                            ItemType::Staff {..} => 60,
                                         };
 
                                         active_haggle = Some(HaggleState {

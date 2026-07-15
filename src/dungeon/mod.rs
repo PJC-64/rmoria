@@ -76,14 +76,14 @@ impl Room {
 
 pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
     let roll = rng.gen_range(0..100);
-    if roll < 25 {
+    if roll < 20 {
         let is_heal = rng.gen_bool(0.3);
         if is_heal && depth >= 3 {
             Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 })
         } else {
             Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
         }
-    } else if roll < 50 {
+    } else if roll < 40 {
         let book_roll = rng.gen_range(0..10);
         if book_roll == 0 {
             Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false })
@@ -97,7 +97,7 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
                 Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true })
             }
         }
-    } else if roll < 70 {
+    } else if roll < 55 {
         let piece = rng.gen_range(0..4);
         match piece {
             0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
@@ -105,7 +105,14 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
             2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
             _ => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
         }
-    } else if roll < 85 {
+    } else if roll < 68 {
+        let is_wand = rng.gen_bool(0.5);
+        if is_wand {
+            Item::new("Wand of Magic Missile [5 charges]", 1, 10, ItemType::Wand { charges: 5, spell_index: 0 })
+        } else {
+            Item::new("Staff of Cure Light Wounds [3 charges]", 1, 12, ItemType::Staff { charges: 3, prayer_index: 1 })
+        }
+    } else if roll < 82 {
         Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false })
     } else {
         let gold_amount = rng.gen_range(15..=40) * (depth + 1);
