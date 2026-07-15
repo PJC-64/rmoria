@@ -1,0 +1,15 @@
+[package]
+name = "rmoria"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm = { version = "0.28", features = ["event-stream"] }
+ratatui = { version = "0.28" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+rand_pcg = "0.3"
+log = "0.4"
+simplelog = "0.12"
+
