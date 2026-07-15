@@ -65,6 +65,11 @@ impl DungeonLevel {
             if let Some(tile) = self.get_tile_mut(15, 15) {
                 tile.tile_type = TileType::StairsUp;
             }
+        } else {
+            // On Town Level (depth 0), place General Store door (+) at (25, 5)
+            if let Some(tile) = self.get_tile_mut(25, 5) {
+                tile.tile_type = TileType::DoorClosed;
+            }
         }
     }
 }

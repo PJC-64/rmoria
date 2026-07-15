@@ -31,6 +31,8 @@ pub enum ScreenMode {
     TakeOffMenu,
     QuaffMenu,
     ReadMenu,
+    Shop,
+    ShopSellMenu,
 }
 
 fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String {
@@ -225,7 +227,63 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player) -> String
             }
             "".to_string()
         }
-        _ => "".to_string(),
+        ScreenMode::Shop => {
+            if row == 0 {
+                return "--- TOWN GENERAL STORE (BUY) ---".to_string();
+            }
+            if row == 1 {
+                return format!("Your Gold: {} gp", player.gold);
+            }
+            if row == 3 {
+                return "a. Potion of Cure Light Wounds  -  30 gp".to_string();
+            }
+            if row == 4 {
+                return "b. Scroll of Phase Door         -  20 gp".to_string();
+            }
+            if row == 5 {
+                return "c. Iron Dagger (1d4 damage)     -  50 gp".to_string();
+            }
+            if row == 6 {
+                return "d. Leather Armor (+4 AC)        -  80 gp".to_string();
+            }
+            if row == 8 {
+                return "--------------------------------".to_string();
+            }
+            if row == 9 {
+                return "Press 's' to Sell items, or press ESC to exit store.".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::ShopSellMenu => {
+            if row == 0 {
+                return "--- TOWN GENERAL STORE (SELL) ---".to_string();
+            }
+            if row == 1 {
+                return format!("Your Gold: {} gp", player.gold);
+            }
+            if row == player.inventory.len() + 3 {
+                return "---------------------------------".to_string();
+            }
+            if row == player.inventory.len() + 4 {
+                return "Select item letter to sell, or press ESC to return to Buy menu.".to_string();
+            }
+            if row > 1 && row <= player.inventory.len() + 1 {
+                let idx = row - 2;
+                let item = &player.inventory[idx];
+                let value = match item.item_type {
+                    ItemType::Weapon {..} => 25,
+                    ItemType::Armor {..} => 40,
+                    ItemType::Potion {..} => 15,
+                    ItemType::Scroll {..} => 10,
+                };
+                return format!("{}. {} (sells for {} gp) x{}", (b'a' + idx as u8) as char, item.name, value, item.count);
+            }
+            if player.inventory.is_empty() && row == 2 {
+                return "(Your inventory is completely empty)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::Dungeon => "".to_string(),
     }
 }
 
@@ -287,6 +345,13 @@ fn generate_monsters_for_depth(depth: u32) -> Vec<Monster> {
         return Vec::new();
     }
     
+    // Final Quest Balrog Boss at depth 5 (250 feet)
+    if depth == 5 {
+        return vec![
+            Monster::new("The Balrog", 'B', 33, 11, 100, Dice::new(3, 6)),
+        ];
+    }
+    
     let mut mons = vec![
         Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
         Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
@@ -298,6 +363,14 @@ fn generate_monsters_for_depth(depth: u32) -> Vec<Monster> {
     }
     
     mons
+}
+
+fn add_item_to_inventory(inventory: &mut Vec<Item>, item: Item) {
+    if let Some(existing) = inventory.iter_mut().find(|i| i.name == item.name && i.item_type == item.item_type) {
+        existing.count += item.count;
+    } else {
+        inventory.push(item);
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -328,11 +401,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut lvl = DungeonLevel::new(66, 22, 0);
         lvl.generate_simple_floor();
         let mons = generate_monsters_for_depth(0);
-        (p, lvl, mons, "New game started! Find stairs down (>) to enter the dungeon.".to_string())
+        (p, lvl, mons, "New game started! Visit General Store (+) or find stairs down (>)".to_string())
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
-    // Render initial view
     draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
 
     let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
@@ -340,7 +412,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     'game_loop: loop {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key_event) = event::read()? {
-                // Ctrl+C override
                 if key_event.code == KeyCode::Char('c') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
                     break 'game_loop;
                 }
@@ -367,12 +438,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let next_x = (player.x as isize + dx) as usize;
                                 let next_y = (player.y as isize + dy) as usize;
 
-                                if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
+                                // 1. Check if there is a store door (ClosedDoor at 25, 5 on Town depth 0)
+                                if next_x == 25 && next_y == 5 && level.depth == 0 {
+                                    screen_mode = ScreenMode::Shop;
+                                    status_msg = "Welcome to the Alchemist General Store!".to_string();
+                                }
+                                // 2. Check if there is a monster at the destination
+                                else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
                                     let damage = player.roll_melee_damage(&mut rng);
                                     status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
                                     
                                     if monsters[m_idx].take_damage(damage) {
                                         status_msg.push_str(&format!(" You killed {}!", monsters[m_idx].name));
+                                        
+                                        // Win Condition: slayed the Balrog!
+                                        if monsters[m_idx].name == "The Balrog" {
+                                            draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                                            std::thread::sleep(std::time::Duration::from_secs(1));
+                                            
+                                            // Slanted Victory Screen
+                                            execute!(stdout, Show, LeaveAlternateScreen)?;
+                                            disable_raw_mode()?;
+                                            
+                                            println!("============================================================");
+                                            println!("         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        ");
+                                            println!("        You have completed the quest and won rmoria!        ");
+                                            println!("============================================================");
+                                            
+                                            if Path::new(save_path).exists() {
+                                                let _ = fs::remove_file(save_path);
+                                            }
+                                            break 'game_loop;
+                                        }
                                         monsters.remove(m_idx);
                                     }
                                     player_acted = true;
@@ -465,11 +562,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 } else {
-                    // Menu commands processing
                     match key_event.code {
                         KeyCode::Esc => {
-                            screen_mode = ScreenMode::Dungeon;
-                            status_msg = "Returned to dungeon.".to_string();
+                            if screen_mode == ScreenMode::ShopSellMenu {
+                                screen_mode = ScreenMode::Shop;
+                                status_msg = "General Store - Buy Menu.".to_string();
+                            } else {
+                                screen_mode = ScreenMode::Dungeon;
+                                status_msg = "Returned to dungeon.".to_string();
+                            }
                         }
                         KeyCode::Char(c) => {
                             if screen_mode == ScreenMode::InventoryList && c == 'i' {
@@ -478,6 +579,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else if screen_mode == ScreenMode::EquipmentList && c == 'I' {
                                 screen_mode = ScreenMode::Dungeon;
                                 status_msg = "Returned to dungeon.".to_string();
+                            } else if screen_mode == ScreenMode::Shop {
+                                match c {
+                                    's' => {
+                                        screen_mode = ScreenMode::ShopSellMenu;
+                                        status_msg = "Sell selection mode. Select item.".to_string();
+                                    }
+                                    'a' => {
+                                        if player.gold >= 30 {
+                                            player.gold -= 30;
+                                            add_item_to_inventory(&mut player.inventory, Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }));
+                                            status_msg = "You bought Potion of Cure Light Wounds!".to_string();
+                                        } else {
+                                            status_msg = "You don't have enough gold!".to_string();
+                                        }
+                                    }
+                                    'b' => {
+                                        if player.gold >= 20 {
+                                            player.gold -= 20;
+                                            add_item_to_inventory(&mut player.inventory, Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }));
+                                            status_msg = "You bought Scroll of Phase Door!".to_string();
+                                        } else {
+                                            status_msg = "You don't have enough gold!".to_string();
+                                        }
+                                    }
+                                    'c' => {
+                                        if player.gold >= 50 {
+                                            player.gold -= 50;
+                                            add_item_to_inventory(&mut player.inventory, Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }));
+                                            status_msg = "You bought Iron Dagger!".to_string();
+                                        } else {
+                                            status_msg = "You don't have enough gold!".to_string();
+                                        }
+                                    }
+                                    'd' => {
+                                        if player.gold >= 80 {
+                                            player.gold -= 80;
+                                            add_item_to_inventory(&mut player.inventory, Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }));
+                                            status_msg = "You bought Leather Armor!".to_string();
+                                        } else {
+                                            status_msg = "You don't have enough gold!".to_string();
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            } else if screen_mode == ScreenMode::ShopSellMenu {
+                                let idx = c as usize - 'a' as usize;
+                                if idx < player.inventory.len() {
+                                    let value = match player.inventory[idx].item_type {
+                                        ItemType::Weapon {..} => 25,
+                                        ItemType::Armor {..} => 40,
+                                        ItemType::Potion {..} => 15,
+                                        ItemType::Scroll {..} => 10,
+                                    };
+
+                                    player.gold += value;
+                                    status_msg = format!("You sold 1x {} for {} gp.", player.inventory[idx].name, value);
+                                    
+                                    player.inventory[idx].count -= 1;
+                                    if player.inventory[idx].count == 0 {
+                                        player.inventory.remove(idx);
+                                    }
+
+                                    if player.inventory.is_empty() {
+                                        screen_mode = ScreenMode::Shop;
+                                    }
+                                }
                             } else if screen_mode == ScreenMode::WearMenu {
                                 let idx = c as usize - 'a' as usize;
                                 let equippable_indices: Vec<usize> = player.inventory.iter()
@@ -491,7 +658,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let item = player.inventory.remove(inv_idx);
                                     let is_weapon = matches!(item.item_type, ItemType::Weapon {..});
 
-                                    // Take off currently equipped item in the target slot
                                     let already_equipped = player.equipment.iter().position(|eq| {
                                         if is_weapon {
                                             matches!(eq.item_type, ItemType::Weapon {..})
@@ -566,7 +732,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         player.inventory.remove(inv_idx);
                                     }
 
-                                    // Teleport to a random floor tile
                                     let (rx, ry) = loop {
                                         let tx = rng.gen_range(1..(level.width - 1));
                                         let ty = rng.gen_range(1..(level.height - 1));
