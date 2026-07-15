@@ -43,6 +43,10 @@ pub enum ScreenMode {
     SelectDisarmDirection,
     BarterBuyMenu,
     BarterSellMenu,
+    SelectOpenDirection,
+    SelectCloseDirection,
+    DropMenu,
+    HelpMenu,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -518,6 +522,72 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     13 => "Press ESC to cancel and exit.".to_string(),
                     _ => "".to_string(),
                 }
+            } else {
+                "".to_string()
+            }
+        }
+        ScreenMode::SelectOpenDirection => {
+            if row == 0 {
+                return "--- OPEN DOOR ---".to_string();
+            }
+            if row == 2 {
+                return "Choose direction to open a door (q/w/e/a/d/z/x/c):".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::SelectCloseDirection => {
+            if row == 0 {
+                return "--- CLOSE DOOR ---".to_string();
+            }
+            if row == 2 {
+                return "Choose direction to close a door (q/w/e/a/d/z/x/c):".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::DropMenu => {
+            if row == 0 {
+                return "--- DROP ITEM ---".to_string();
+            }
+            if row == player.inventory.len() + 2 {
+                return "-----------------".to_string();
+            }
+            if row == player.inventory.len() + 3 {
+                return "Select item letter to drop, or press ESC to cancel.".to_string();
+            }
+            if row > 0 && row <= player.inventory.len() {
+                let idx = row - 1;
+                let item = &player.inventory[idx];
+                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.name, item.count);
+            }
+            if player.inventory.is_empty() && row == 1 {
+                return "(Your inventory is empty)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::HelpMenu => {
+            let help_lines = &[
+                "--- MORIA COMMANDS & KEY BINDINGS ---",
+                "",
+                "Movement / Rest:          q w e     (North-West / North / North-East)",
+                "                          a s d     (West / REST / East)",
+                "                          z x c     (South-West / South / South-East)",
+                "",
+                "Command Keys (Standard Profile):",
+                "  h : Quaff Potion        W : Wear/Wield equipment",
+                "  i : Inventory List      I : Equipment List",
+                "  k : Search surrounding  D : Drop an item",
+                "  o : Open closed door    C : Close open door",
+                "  n : Disarm a trap       H : Character Sheet Stats",
+                "  r : Read scroll         t : Take off equipment",
+                "  b : Browse spellbook    m : Cast Mage spell",
+                "  p : Recite Priest prayer < : Climb up stairs",
+                "  > : Climb down stairs   Q : Save and Quit",
+                "  ? : This Help Menu",
+                "",
+                "Press ESC or any key to return to the game."
+            ];
+            if row < help_lines.len() {
+                help_lines[row].to_string()
             } else {
                 "".to_string()
             }
@@ -1353,6 +1423,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     screen_mode = ScreenMode::SelectDisarmDirection;
                                     status_msg = "Disarm trap: choose direction...".to_string();
                                 }
+                                Action::OpenDoor => {
+                                    screen_mode = ScreenMode::SelectOpenDirection;
+                                    status_msg = "Open door: choose direction...".to_string();
+                                }
+                                Action::CloseDoor => {
+                                    screen_mode = ScreenMode::SelectCloseDirection;
+                                    status_msg = "Close door: choose direction...".to_string();
+                                }
+                                Action::DropItem => {
+                                    screen_mode = ScreenMode::DropMenu;
+                                    status_msg = "Drop item: select a letter.".to_string();
+                                }
+                                Action::Help => {
+                                    screen_mode = ScreenMode::HelpMenu;
+                                    status_msg = "Browsing command list.".to_string();
+                                }
                                 Action::SearchOneTurn => {
                                     let is_rogue = player.class == Class::Rogue;
                                     let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
@@ -1562,6 +1648,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 } else {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
+                                    active_haggle = None;
                                 }
                             }
                             KeyCode::Char(c) => {
@@ -1571,10 +1658,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 } else if screen_mode == ScreenMode::EquipmentList && c == 'I' {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
+                                } else if screen_mode == ScreenMode::HelpMenu {
+                                    screen_mode = ScreenMode::Dungeon;
+                                    status_msg = "Returned to dungeon.".to_string();
                                 } else if screen_mode == ScreenMode::BrowseBookMenu {
                                     // Exit browse via ESC
                                 } else if screen_mode == ScreenMode::CharacterStatsMenu {
-                                    // Exit character sheet via ESC
+                                    // Exit sheet via ESC
                                 } else if screen_mode == ScreenMode::SelectDisarmDirection {
                                     let action = mapper.map_key(c);
                                     if let Action::Move(direction) = action {
@@ -1641,6 +1731,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         screen_mode = ScreenMode::Dungeon;
                                         player_acted = true;
                                     }
+                                } else if screen_mode == ScreenMode::SelectOpenDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let (dx, dy) = match direction {
+                                            Direction::NorthWest => (-1, -1),
+                                            Direction::North => (0, -1),
+                                            Direction::NorthEast => (1, -1),
+                                            Direction::West => (-1, 0),
+                                            Direction::Rest => (0, 0),
+                                            Direction::East => (1, 0),
+                                            Direction::SouthWest => (-1, 1),
+                                            Direction::South => (0, 1),
+                                            Direction::SouthEast => (1, 1),
+                                        };
+                                        let sx = (player.x as isize + dx) as usize;
+                                        let sy = (player.y as isize + dy) as usize;
+                                        
+                                        if let Some(tile) = level.get_tile_mut(sx, sy) {
+                                            if tile.tile_type == TileType::DoorClosed {
+                                                tile.tile_type = TileType::DoorOpen;
+                                                status_msg = "You open the door.".to_string();
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "That is not a closed door.".to_string();
+                                            }
+                                        }
+                                        screen_mode = ScreenMode::Dungeon;
+                                    }
+                                } else if screen_mode == ScreenMode::SelectCloseDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let (dx, dy) = match direction {
+                                            Direction::NorthWest => (-1, -1),
+                                            Direction::North => (0, -1),
+                                            Direction::NorthEast => (1, -1),
+                                            Direction::West => (-1, 0),
+                                            Direction::Rest => (0, 0),
+                                            Direction::East => (1, 0),
+                                            Direction::SouthWest => (-1, 1),
+                                            Direction::South => (0, 1),
+                                            Direction::SouthEast => (1, 1),
+                                        };
+                                        let sx = (player.x as isize + dx) as usize;
+                                        let sy = (player.y as isize + dy) as usize;
+                                        
+                                        if let Some(tile) = level.get_tile_mut(sx, sy) {
+                                            if tile.tile_type == TileType::DoorOpen {
+                                                tile.tile_type = TileType::DoorClosed;
+                                                status_msg = "You close the door.".to_string();
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "That is not an open door.".to_string();
+                                            }
+                                        }
+                                        screen_mode = ScreenMode::Dungeon;
+                                    }
+                                } else if screen_mode == ScreenMode::DropMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < player.inventory.len() {
+                                        let mut dropped = player.inventory[idx].clone();
+                                        dropped.count = 1;
+                                        
+                                        let name = player.inventory[idx].name.clone();
+                                        player.inventory[idx].count -= 1;
+                                        if player.inventory[idx].count == 0 {
+                                            player.inventory.remove(idx);
+                                        }
+                                        
+                                        level.items.push(FloorItem { x: player.x, y: player.y, item: dropped });
+                                        status_msg = format!("You dropped a {}.", name);
+                                        player_acted = true;
+                                    }
+                                    screen_mode = ScreenMode::Dungeon;
                                 } else if screen_mode == ScreenMode::CastSpellMenu {
                                     match c {
                                         'a' => {
