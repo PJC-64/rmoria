@@ -599,6 +599,7 @@ fn draw_map(
                             TileType::DoorOpen => screen_buf.push('\''),
                             TileType::StairsUp => screen_buf.push('<'),
                             TileType::StairsDown => screen_buf.push('>'),
+                            TileType::ShopDoor(num) => screen_buf.push((b'0' + num) as char),
                             TileType::Empty => screen_buf.push(' '),
                         }
                     } else {

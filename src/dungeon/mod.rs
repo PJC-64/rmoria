@@ -188,8 +188,17 @@ impl DungeonLevel {
                             _ => (sx + sw - 1, sy + sh / 2),
                         };
 
+                        let shop_num = match shop_type {
+                            ShopType::General => 1,
+                            ShopType::Armory => 2,
+                            ShopType::Weaponsmith => 3,
+                            ShopType::Temple => 4,
+                            ShopType::Alchemy => 5,
+                            ShopType::Magic => 6,
+                        };
+
                         if let Some(tile) = self.get_tile_mut(door_x, door_y) {
-                            tile.tile_type = TileType::DoorClosed;
+                            tile.tile_type = TileType::ShopDoor(shop_num);
                         }
 
                         self.shops.push(ShopInfo { door_x, door_y, shop_type });

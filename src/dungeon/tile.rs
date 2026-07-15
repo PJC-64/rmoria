@@ -9,6 +9,7 @@ pub enum TileType {
     DoorOpen,
     StairsUp,
     StairsDown,
+    ShopDoor(u8), // Numbered door representation (1 to 6)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -29,7 +30,7 @@ impl Tile {
 
     pub fn is_passable(&self) -> bool {
         match self.tile_type {
-            TileType::Floor | TileType::DoorOpen | TileType::StairsUp | TileType::StairsDown => true,
+            TileType::Floor | TileType::DoorOpen | TileType::StairsUp | TileType::StairsDown | TileType::ShopDoor(_) => true,
             _ => false,
         }
     }
