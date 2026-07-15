@@ -6,10 +6,10 @@
     "level": 1,
     "exp": 0,
     "gold": 150,
-    "x": 17,
-    "y": 5,
+    "x": 19,
+    "y": 6,
     "max_hp": 15,
-    "hp": 15,
+    "hp": 4,
     "max_mana": 0,
     "mana": 0,
     "stats": {
@@ -3028,5 +3028,43 @@
         "remembered": false
       }
     ]
-  }
+  },
+  "monsters": [
+    {
+      "name": "Red Mold",
+      "symbol": "m",
+      "x": 18,
+      "y": 6,
+      "hp": 3,
+      "max_hp": 5,
+      "damage": {
+        "num": 1,
+        "sides": 3
+      }
+    },
+    {
+      "name": "Goblin",
+      "symbol": "g",
+      "x": 20,
+      "y": 6,
+      "hp": 8,
+      "max_hp": 8,
+      "damage": {
+        "num": 1,
+        "sides": 4
+      }
+    },
+    {
+      "name": "Orc",
+      "symbol": "o",
+      "x": 17,
+      "y": 7,
+      "hp": 12,
+      "max_hp": 12,
+      "damage": {
+        "num": 1,
+        "sides": 6
+      }
+    }
+  ]
 }

@@ -57,7 +57,9 @@ fn draw_map(level: &DungeonLevel, player: &Player, monsters: &[Monster], status_
         player.hp, player.max_hp, player.gold, player.x, player.y
     ));
     map_str.push_str("----------------------------------------------------\r\n");
-    map_str.push_str(&format!("  Status: {:<40}\r\n", status_msg));
+    
+    // Pad to 76 characters to clear out any old long messages
+    map_str.push_str(&format!("  Status: {:<76}\r\n", status_msg));
     
     print!("{}", map_str);
     io::stdout().flush()?;
@@ -80,7 +82,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string())
             }
             Err(e) => {
-                let p = Player::new("GnomeMage", Race::Gnome, Class::Mage, 20, 7);
+                // Default fallback to Human Warrior
+                let p = Player::new("Hero", Race::Human, Class::Warrior, 20, 7);
                 let mut lvl = DungeonLevel::new(40, 15);
                 for y in 1..14 {
                     for x in 1..39 {
@@ -98,7 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else {
-        let p = Player::new("GnomeMage", Race::Gnome, Class::Mage, 20, 7);
+        // Human Warrior
+        let p = Player::new("Hero", Race::Human, Class::Warrior, 20, 7);
         let mut lvl = DungeonLevel::new(40, 15);
         for y in 1..14 {
             for x in 1..39 {
@@ -200,7 +204,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // 3. Trigger monster turns if player did a turn-consuming action
                     if player_acted {
-                        // Cache monster positions to check for collisions without double borrows
                         let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
 
                         for monster in monsters.iter_mut() {
