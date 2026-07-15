@@ -93,6 +93,7 @@ pub struct Player {
     pub stats: Attributes,
     pub inventory: Vec<Item>,
     pub equipment: Vec<Item>,
+    pub balrog_killed: bool,
 }
 
 impl Player {
@@ -119,6 +120,7 @@ impl Player {
                 Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
             ],
             equipment: Vec::new(),
+            balrog_killed: false,
         };
         player.apply_race_and_class_modifiers();
         player
@@ -129,8 +131,32 @@ impl Player {
         self.y = y;
     }
 
+    /// Add experience. Returns `true` if player leveled up.
+    pub fn add_experience(&mut self, amount: u32) -> bool {
+        if amount == 0 {
+            return false;
+        }
+        self.exp += amount;
+        let next_level_threshold = match self.level {
+            1 => 100,
+            2 => 300,
+            3 => 600,
+            4 => 1000,
+            5 => 1500,
+            l => l * 1000,
+        };
+
+        if self.exp >= next_level_threshold {
+            self.level += 1;
+            self.max_hp += 8; // Fixed HP increase on level up
+            self.hp = self.max_hp; // Fully heal on level up
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn roll_melee_damage<R: rand::Rng>(&self, rng: &mut R) -> i32 {
-        // Use equipped weapon damage dice if present, otherwise bare fists
         let base_dice = if let Some(weapon_item) = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. })) {
             match &weapon_item.item_type {
                 ItemType::Weapon { damage } => *damage,
@@ -153,11 +179,9 @@ impl Player {
     }
 
     pub fn calculate_ac(&self) -> i32 {
-        let mut ac = 10; // Base AC
-        // Add Dexterity modifier
+        let mut ac = 10;
         ac += (self.stats.dexterity as i32 - 10) / 2;
         
-        // Add equipped armor values
         for item in &self.equipment {
             if let ItemType::Armor { ac: item_ac } = &item.item_type {
                 ac += item_ac;

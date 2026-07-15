@@ -22,6 +22,16 @@ use save::GameState;
 use dice::Dice;
 use entity::monster::Monster;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ShopType {
+    General,
+    Armory,
+    Weaponsmith,
+    Temple,
+    Alchemy,
+    Magic,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScreenMode {
     Dungeon,
@@ -33,6 +43,39 @@ pub enum ScreenMode {
     ReadMenu,
     Shop,
     ShopSellMenu,
+}
+
+fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
+    match shop {
+        ShopType::General => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
+            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
+        ],
+        ShopType::Armory => vec![
+            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
+            ("Chain Mail", 250, ItemType::Armor { ac: 7 }),
+            ("Iron Shield", 150, ItemType::Armor { ac: 3 }),
+        ],
+        ShopType::Weaponsmith => vec![
+            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
+            ("Short Sword", 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
+            ("Broadsword", 350, ItemType::Weapon { damage: Dice::new(2, 5) }),
+        ],
+        ShopType::Temple => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
+        ],
+        ShopType::Alchemy => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+        ],
+        ShopType::Magic => vec![
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
+        ],
+    }
 }
 
 fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String {
@@ -75,7 +118,7 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
     format!("{:<12}", text)
 }
 
-fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player) -> String {
+fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: ShopType) -> String {
     match mode {
         ScreenMode::InventoryList => {
             if row == 0 {
@@ -228,28 +271,30 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player) -> String
             "".to_string()
         }
         ScreenMode::Shop => {
+            let shop_name = match shop {
+                ShopType::General => "GENERAL STORE",
+                ShopType::Armory => "TOWN ARMORY",
+                ShopType::Weaponsmith => "WEAPONSMITH FORGE",
+                ShopType::Temple => "TOWN TEMPLE",
+                ShopType::Alchemy => "ALCHEMY LAB",
+                ShopType::Magic => "MAGIC-USER CONCLAVE",
+            };
             if row == 0 {
-                return "--- TOWN GENERAL STORE (BUY) ---".to_string();
+                return format!("--- {} (BUY) ---", shop_name);
             }
             if row == 1 {
                 return format!("Your Gold: {} gp", player.gold);
             }
-            if row == 3 {
-                return "a. Potion of Cure Light Wounds  -  30 gp".to_string();
+            let items = get_shop_items(shop);
+            if row >= 3 && row < items.len() + 3 {
+                let idx = row - 3;
+                let (name, price, _) = &items[idx];
+                return format!("{}. {:<32}  -  {} gp", (b'a' + idx as u8) as char, name, price);
             }
-            if row == 4 {
-                return "b. Scroll of Phase Door         -  20 gp".to_string();
-            }
-            if row == 5 {
-                return "c. Iron Dagger (1d4 damage)     -  50 gp".to_string();
-            }
-            if row == 6 {
-                return "d. Leather Armor (+4 AC)        -  80 gp".to_string();
-            }
-            if row == 8 {
+            if row == items.len() + 4 {
                 return "--------------------------------".to_string();
             }
-            if row == 9 {
+            if row == items.len() + 5 {
                 return "Press 's' to Sell items, or press ESC to exit store.".to_string();
             }
             "".to_string()
@@ -293,6 +338,7 @@ fn draw_map(
     monsters: &[Monster],
     status_msg: &str,
     mode: ScreenMode,
+    shop: ShopType,
 ) -> Result<(), io::Error> {
     execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
     
@@ -327,7 +373,7 @@ fn draw_map(
                 }
             }
         } else {
-            let overlay_row = get_overlay_row_text(map_y, mode, player);
+            let overlay_row = get_overlay_row_text(map_y, mode, player, shop);
             screen_buf.push_str(&format!("{:<66}", overlay_row));
         }
         screen_buf.push_str("\r\n");
@@ -340,26 +386,32 @@ fn draw_map(
     Ok(())
 }
 
-fn generate_monsters_for_depth(depth: u32) -> Vec<Monster> {
+fn generate_monsters_for_depth(depth: u32, player_has_killed_balrog: bool) -> Vec<Monster> {
     if depth == 0 {
-        return Vec::new();
-    }
-    
-    // Final Quest Balrog Boss at depth 5 (250 feet)
-    if depth == 5 {
+        // Town street monsters: give 0 experience!
         return vec![
-            Monster::new("The Balrog", 'B', 33, 11, 100, Dice::new(3, 6)),
+            Monster::new("Filthy Street Urchin", 'u', 22, 9, 6, Dice::new(1, 2), 0),
+            Monster::new("Tavern Ruffian", 'r', 40, 10, 10, Dice::new(1, 4), 0),
+            Monster::new("Beggar", 'b', 15, 12, 4, Dice::new(1, 1), 0),
         ];
     }
     
-    let mut mons = vec![
-        Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
-        Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
-        Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
-    ];
+    let mut mons = Vec::new();
+    
+    // Balrog Quest Boss spawns randomly on depth >= 4 (20% chance per level)
+    if depth >= 4 && !player_has_killed_balrog {
+        let mut rng = rand::thread_rng();
+        if rng.gen_bool(0.20) {
+            mons.push(Monster::new("The Balrog", 'B', 33, 11, 100, Dice::new(3, 6), 500));
+        }
+    }
+    
+    mons.push(Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3), 5));
+    mons.push(Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4), 10));
+    mons.push(Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6), 25));
     
     if depth >= 3 {
-        mons.push(Monster::new("Cave Troll", 'T', 50, 16, 25, Dice::new(2, 6)));
+        mons.push(Monster::new("Cave Troll", 'T', 50, 16, 25, Dice::new(2, 6), 50));
     }
     
     mons
@@ -392,7 +444,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
                 let mut lvl = DungeonLevel::new(66, 22, 0);
                 lvl.generate_simple_floor();
-                let mons = generate_monsters_for_depth(0);
+                let mons = generate_monsters_for_depth(0, false);
                 (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e))
             }
         }
@@ -400,12 +452,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
         let mut lvl = DungeonLevel::new(66, 22, 0);
         lvl.generate_simple_floor();
-        let mons = generate_monsters_for_depth(0);
-        (p, lvl, mons, "New game started! Visit General Store (+) or find stairs down (>)".to_string())
+        let mons = generate_monsters_for_depth(0, false);
+        (p, lvl, mons, "New game started! Visit town stores or descend deep stairs (>)".to_string())
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
-    draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+    let mut active_shop = ShopType::General;
+
+    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
 
     let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
 
@@ -438,25 +492,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let next_x = (player.x as isize + dx) as usize;
                                 let next_y = (player.y as isize + dy) as usize;
 
-                                // 1. Check if there is a store door (ClosedDoor at 25, 5 on Town depth 0)
-                                if next_x == 25 && next_y == 5 && level.depth == 0 {
+                                // Check if there is a store door on Town level (depth 0)
+                                if level.depth == 0 && next_x == 10 && next_y == 5 {
                                     screen_mode = ScreenMode::Shop;
-                                    status_msg = "Welcome to the Alchemist General Store!".to_string();
+                                    active_shop = ShopType::General;
+                                    status_msg = "Welcome to the Town General Store!".to_string();
+                                } else if level.depth == 0 && next_x == 30 && next_y == 5 {
+                                    screen_mode = ScreenMode::Shop;
+                                    active_shop = ShopType::Armory;
+                                    status_msg = "Welcome to the Town Armory!".to_string();
+                                } else if level.depth == 0 && next_x == 50 && next_y == 5 {
+                                    screen_mode = ScreenMode::Shop;
+                                    active_shop = ShopType::Weaponsmith;
+                                    status_msg = "Welcome to the Weaponsmith forge!".to_string();
+                                } else if level.depth == 0 && next_x == 10 && next_y == 15 {
+                                    screen_mode = ScreenMode::Shop;
+                                    active_shop = ShopType::Temple;
+                                    status_msg = "Welcome to the Town Temple!".to_string();
+                                } else if level.depth == 0 && next_x == 30 && next_y == 15 {
+                                    screen_mode = ScreenMode::Shop;
+                                    active_shop = ShopType::Alchemy;
+                                    status_msg = "Welcome to the Alchemy Lab!".to_string();
+                                } else if level.depth == 0 && next_x == 50 && next_y == 15 {
+                                    screen_mode = ScreenMode::Shop;
+                                    active_shop = ShopType::Magic;
+                                    status_msg = "Welcome to the Magic-User Conclave!".to_string();
                                 }
-                                // 2. Check if there is a monster at the destination
+                                // Check if there is a monster at the destination
                                 else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
                                     let damage = player.roll_melee_damage(&mut rng);
                                     status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
                                     
+                                    let monster_name = monsters[m_idx].name.clone();
+                                    let exp_reward = monsters[m_idx].experience_reward;
+
                                     if monsters[m_idx].take_damage(damage) {
-                                        status_msg.push_str(&format!(" You killed {}!", monsters[m_idx].name));
+                                        status_msg.push_str(&format!(" You killed {}!", monster_name));
+                                        
+                                        // Award EXP
+                                        if player.add_experience(exp_reward) {
+                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                        } else if exp_reward > 0 {
+                                            status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
+                                        } else {
+                                            status_msg.push_str(" Gained 0 EXP (Town monster).");
+                                        }
                                         
                                         // Win Condition: slayed the Balrog!
-                                        if monsters[m_idx].name == "The Balrog" {
-                                            draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                                        if monster_name == "The Balrog" {
+                                            player.balrog_killed = true;
+                                            draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                             std::thread::sleep(std::time::Duration::from_secs(1));
                                             
-                                            // Slanted Victory Screen
                                             execute!(stdout, Show, LeaveAlternateScreen)?;
                                             disable_raw_mode()?;
                                             
@@ -496,7 +583,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         let new_depth = level.depth - 1;
                                         level = DungeonLevel::new(66, 22, new_depth);
                                         level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(new_depth);
+                                        monsters = generate_monsters_for_depth(new_depth, player.balrog_killed);
                                         player.move_to(40, 15);
                                         status_msg = format!("You climb up to depth {} ({} feet).", new_depth, new_depth * 50);
                                         player_acted = true;
@@ -511,7 +598,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         let new_depth = level.depth + 1;
                                         level = DungeonLevel::new(66, 22, new_depth);
                                         level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(new_depth);
+                                        monsters = generate_monsters_for_depth(new_depth, player.balrog_killed);
                                         player.move_to(15, 15);
                                         status_msg = format!("You climb down to depth {} ({} feet).", new_depth, new_depth * 50);
                                         player_acted = true;
@@ -546,12 +633,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Action::Quit => {
                                 status_msg = "Saving game and quitting...".to_string();
-                                draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                                draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                 
                                 let state = GameState::new(player.clone(), level.clone(), monsters.clone());
                                 if let Err(e) = state.save_to_file(save_path) {
                                     status_msg = format!("Save failed: {}", e);
-                                    draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                     std::thread::sleep(std::time::Duration::from_secs(2));
                                 } else {
                                     std::thread::sleep(std::time::Duration::from_millis(800));
@@ -585,40 +672,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         screen_mode = ScreenMode::ShopSellMenu;
                                         status_msg = "Sell selection mode. Select item.".to_string();
                                     }
-                                    'a' => {
-                                        if player.gold >= 30 {
-                                            player.gold -= 30;
-                                            add_item_to_inventory(&mut player.inventory, Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }));
-                                            status_msg = "You bought Potion of Cure Light Wounds!".to_string();
-                                        } else {
-                                            status_msg = "You don't have enough gold!".to_string();
-                                        }
-                                    }
-                                    'b' => {
-                                        if player.gold >= 20 {
-                                            player.gold -= 20;
-                                            add_item_to_inventory(&mut player.inventory, Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }));
-                                            status_msg = "You bought Scroll of Phase Door!".to_string();
-                                        } else {
-                                            status_msg = "You don't have enough gold!".to_string();
-                                        }
-                                    }
-                                    'c' => {
-                                        if player.gold >= 50 {
-                                            player.gold -= 50;
-                                            add_item_to_inventory(&mut player.inventory, Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }));
-                                            status_msg = "You bought Iron Dagger!".to_string();
-                                        } else {
-                                            status_msg = "You don't have enough gold!".to_string();
-                                        }
-                                    }
-                                    'd' => {
-                                        if player.gold >= 80 {
-                                            player.gold -= 80;
-                                            add_item_to_inventory(&mut player.inventory, Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }));
-                                            status_msg = "You bought Leather Armor!".to_string();
-                                        } else {
-                                            status_msg = "You don't have enough gold!".to_string();
+                                    letter if letter >= 'a' && letter <= 'z' => {
+                                        let idx = letter as usize - 'a' as usize;
+                                        let items = get_shop_items(active_shop);
+                                        if idx < items.len() {
+                                            let (name, price, ref item_type) = items[idx];
+                                            if player.gold >= price {
+                                                player.gold -= price;
+                                                let it = match item_type {
+                                                    ItemType::Weapon { damage } => ItemType::Weapon { damage: *damage },
+                                                    ItemType::Armor { ac } => ItemType::Armor { ac: *ac },
+                                                    ItemType::Potion { heal_amount } => ItemType::Potion { heal_amount: *heal_amount },
+                                                    ItemType::Scroll { teleport } => ItemType::Scroll { teleport: *teleport },
+                                                };
+                                                let weight = match &it {
+                                                    ItemType::Weapon { .. } => 10,
+                                                    ItemType::Armor { .. } => 80,
+                                                    ItemType::Potion { .. } => 5,
+                                                    ItemType::Scroll { .. } => 2,
+                                                };
+                                                add_item_to_inventory(&mut player.inventory, Item::new(name, 1, weight, it));
+                                                status_msg = format!("You bought {}!", name);
+                                            } else {
+                                                status_msg = "You don't have enough gold!".to_string();
+                                            }
                                         }
                                     }
                                     _ => {}
@@ -769,7 +846,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if player.hp <= 0 {
                                 player.hp = 0;
                                 status_msg.push_str(" You have died! Game Over.");
-                                draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                                draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                 
                                 if Path::new(save_path).exists() {
                                     let _ = fs::remove_file(save_path);
@@ -789,9 +866,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                 } else {
-                    draw_map(&level, &player, &monsters, &status_msg, screen_mode)?;
+                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                 }
             }
         }

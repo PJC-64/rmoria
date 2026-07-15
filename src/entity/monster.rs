@@ -10,10 +10,11 @@ pub struct Monster {
     pub hp: i32,
     pub max_hp: i32,
     pub damage: Dice,
+    pub experience_reward: u32,
 }
 
 impl Monster {
-    pub fn new(name: &str, symbol: char, x: usize, y: usize, max_hp: i32, damage: Dice) -> Self {
+    pub fn new(name: &str, symbol: char, x: usize, y: usize, max_hp: i32, damage: Dice, experience_reward: u32) -> Self {
         Self {
             name: name.to_string(),
             symbol,
@@ -22,6 +23,7 @@ impl Monster {
             hp: max_hp,
             max_hp,
             damage,
+            experience_reward,
         }
     }
 
@@ -34,11 +36,9 @@ impl Monster {
     /// Basic AI movement. Calculates standard grid step closer to player.
     /// Returns `Some((new_x, new_y))` if a valid step is calculated.
     pub fn update_ai(&self, player_x: usize, player_y: usize, level: &crate::dungeon::DungeonLevel) -> Option<(usize, usize)> {
-        // Calculate step directions (-1, 0, or 1)
         let dx = (player_x as isize - self.x as isize).signum();
         let dy = (player_y as isize - self.y as isize).signum();
 
-        // 1. Try moving diagonally first
         let next_x = (self.x as isize + dx) as usize;
         let next_y = (self.y as isize + dy) as usize;
 
@@ -48,7 +48,6 @@ impl Monster {
             }
         }
 
-        // 2. Try moving horizontally
         let next_x_only = (self.x as isize + dx) as usize;
         if let Some(tile) = level.get_tile(next_x_only, self.y) {
             if tile.is_passable() {
@@ -56,7 +55,6 @@ impl Monster {
             }
         }
 
-        // 3. Try moving vertically
         let next_y_only = (self.y as isize + dy) as usize;
         if let Some(tile) = level.get_tile(self.x, next_y_only) {
             if tile.is_passable() {
