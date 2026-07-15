@@ -1,7 +1,10 @@
+use serde::{Serialize, Deserialize};
+
 pub mod tile;
 
 pub use tile::{Tile, TileType};
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DungeonLevel {
     pub width: usize,
     pub height: usize,

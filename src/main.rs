@@ -1,6 +1,7 @@
 mod input;
 mod dungeon;
 mod player;
+mod save;
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -9,18 +10,19 @@ use crossterm::{
     cursor::{Hide, Show},
 };
 use std::io::{self, Write};
+use std::path::Path;
 use input::{InputMapper, KeyboardProfile, Action, Direction};
 use dungeon::{DungeonLevel, TileType};
-use player::Player;
+use player::{Player, Race, Class};
+use save::GameState;
 
-fn draw_map(level: &DungeonLevel, player: &Player) -> Result<(), io::Error> {
-    // Basic terminal draw loop. Position cursor at 0, 0 first.
+fn draw_map(level: &DungeonLevel, player: &Player, status_msg: &str) -> Result<(), io::Error> {
     execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
     
     let mut map_str = String::new();
     map_str.push_str("====================================================\r\n");
-    map_str.push_str("  rmoria (Umoria Rust Rewrite) - Dungeon Map Demo   \r\n");
-    map_str.push_str("  Movement: qweasdzxc | Rest: s | Quit: Q           \r\n");
+    map_str.push_str("  rmoria (Umoria Rust Rewrite) - Save / Load Demo   \r\n");
+    map_str.push_str("  Movement: qweasdzxc | Rest: s | Quit & Save: Q    \r\n");
     map_str.push_str("====================================================\r\n");
 
     for y in 0..level.height {
@@ -42,7 +44,13 @@ fn draw_map(level: &DungeonLevel, player: &Player) -> Result<(), io::Error> {
         map_str.push_str("\r\n");
     }
     map_str.push_str("----------------------------------------------------\r\n");
-    map_str.push_str(&format!("  Player Name: {:<12} | HP: {}/{} | Pos: ({}, {})\r\n", player.name, player.hp, player.max_hp, player.x, player.y));
+    map_str.push_str(&format!(
+        "  Name: {:<8} | Race: {:<8} | Class: {:<8}\r\n  HP: {}/{} | Gold: {:<5} | Pos: ({}, {})\r\n",
+        player.name, format!("{:?}", player.race), format!("{:?}", player.class),
+        player.hp, player.max_hp, player.gold, player.x, player.y
+    ));
+    map_str.push_str("----------------------------------------------------\r\n");
+    map_str.push_str(&format!("  Status: {:<40}\r\n", status_msg));
     
     print!("{}", map_str);
     io::stdout().flush()?;
@@ -50,32 +58,48 @@ fn draw_map(level: &DungeonLevel, player: &Player) -> Result<(), io::Error> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Setup terminal in raw mode and alternate screen
+    let save_path = "save.json";
+    
+    // 1. Initialize terminal raw mode and alternate screen
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, Hide)?;
 
-    // 2. Initialize a simple dungeon level (40 wide, 15 high)
-    let mut level = DungeonLevel::new(40, 15);
-    // Fill interior with floor
-    for y in 1..14 {
-        for x in 1..39 {
-            if let Some(tile) = level.get_tile_mut(x, y) {
-                tile.tile_type = TileType::Floor;
+    // 2. Load game state if save file exists, otherwise create new
+    let (mut player, mut level, mut status_msg) = if Path::new(save_path).exists() {
+        match GameState::load_from_file(save_path) {
+            Ok(state) => {
+                (state.player, state.level, "Save game loaded successfully!".to_string())
+            }
+            Err(e) => {
+                let p = Player::new("GnomeMage", Race::Gnome, Class::Mage, 20, 7);
+                let mut lvl = DungeonLevel::new(40, 15);
+                for y in 1..14 {
+                    for x in 1..39 {
+                        if let Some(tile) = lvl.get_tile_mut(x, y) {
+                            tile.tile_type = TileType::Floor;
+                        }
+                    }
+                }
+                (p, lvl, format!("Failed to load save: {}. Started new game.", e))
             }
         }
-    }
-    // Add some random pillars/walls in the level
-    if let Some(tile) = level.get_tile_mut(10, 5) { tile.tile_type = TileType::Wall; }
-    if let Some(tile) = level.get_tile_mut(10, 6) { tile.tile_type = TileType::Wall; }
-    if let Some(tile) = level.get_tile_mut(25, 8) { tile.tile_type = TileType::Wall; }
-    if let Some(tile) = level.get_tile_mut(25, 9) { tile.tile_type = TileType::Wall; }
+    } else {
+        // Create Gnome Mage
+        let p = Player::new("GnomeMage", Race::Gnome, Class::Mage, 20, 7);
+        let mut lvl = DungeonLevel::new(40, 15);
+        for y in 1..14 {
+            for x in 1..39 {
+                if let Some(tile) = lvl.get_tile_mut(x, y) {
+                    tile.tile_type = TileType::Floor;
+                }
+            }
+        }
+        (p, lvl, "New game started! Gnome Mage created.".to_string())
+    };
 
-    // 3. Initialize player character
-    let mut player = Player::new("Hero", 20, 7);
-
-    // Render initial state
-    draw_map(&level, &player)?;
+    // Render initial view
+    draw_map(&level, &player, &status_msg)?;
 
     let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
 
@@ -91,7 +115,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let action = mapper.map_key(c);
                     match action {
                         Action::Move(direction) => {
-                            // Calculate proposed position
                             let (dx, dy) = match direction {
                                 Direction::NorthWest => (-1, -1),
                                 Direction::North => (0, -1),
@@ -107,23 +130,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let next_x = (player.x as isize + dx) as usize;
                             let next_y = (player.y as isize + dy) as usize;
 
-                            // Walk bounds checking
                             if let Some(tile) = level.get_tile(next_x, next_y) {
                                 if tile.is_passable() || direction == Direction::Rest {
                                     player.move_to(next_x, next_y);
+                                    status_msg = format!("Moved to ({}, {})", next_x, next_y);
+                                } else {
+                                    status_msg = "Ouch! You bumped into a wall.".to_string();
                                 }
                             }
-                            draw_map(&level, &player)?;
+                            draw_map(&level, &player, &status_msg)?;
                         }
                         Action::Quit => {
+                            status_msg = "Saving game and quitting...".to_string();
+                            draw_map(&level, &player, &status_msg)?;
+                            
+                            // Save state
+                            let state = GameState::new(player.clone(), level.clone());
+                            if let Err(e) = state.save_to_file(save_path) {
+                                status_msg = format!("Save failed: {}", e);
+                                draw_map(&level, &player, &status_msg)?;
+                                std::thread::sleep(std::time::Duration::from_secs(2));
+                            } else {
+                                std::thread::sleep(std::time::Duration::from_millis(800));
+                            }
                             break;
                         }
                         other => {
-                            // Just redraw to clean input buffer
-                            draw_map(&level, &player)?;
-                            execute!(io::stdout(), crossterm::cursor::MoveTo(0, 19))?;
-                            println!("Action not implemented: {:?}\r", other);
-                            io::stdout().flush()?;
+                            status_msg = format!("Action not implemented: {:?}", other);
+                            draw_map(&level, &player, &status_msg)?;
                         }
                     }
                 }
@@ -131,7 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // 4. Restore normal terminal
+    // 3. Restore normal terminal
     execute!(stdout, Show, LeaveAlternateScreen)?;
     disable_raw_mode()?;
 
