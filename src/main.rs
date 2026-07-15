@@ -16,21 +16,11 @@ use std::path::Path;
 use std::fs;
 use rand::Rng;
 use input::{InputMapper, KeyboardProfile, Action, Direction};
-use dungeon::{DungeonLevel, TileType};
+use dungeon::{DungeonLevel, TileType, ShopType};
 use player::{Player, Race, Class, Item, ItemType};
 use save::GameState;
 use dice::Dice;
 use entity::monster::Monster;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum ShopType {
-    General,
-    Armory,
-    Weaponsmith,
-    Temple,
-    Alchemy,
-    Magic,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScreenMode {
@@ -386,32 +376,68 @@ fn draw_map(
     Ok(())
 }
 
-fn generate_monsters_for_depth(depth: u32, player_has_killed_balrog: bool) -> Vec<Monster> {
+fn find_passable_tile(level: &DungeonLevel) -> (usize, usize) {
+    let mut rng = rand::thread_rng();
+    for _ in 0..1000 {
+        let tx = rng.gen_range(1..(level.width - 1));
+        let ty = rng.gen_range(1..(level.height - 1));
+        if let Some(tile) = level.get_tile(tx, ty) {
+            if tile.tile_type == TileType::Floor {
+                return (tx, ty);
+            }
+        }
+    }
+    (30, 10) // fallback coordinate
+}
+
+fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: bool) -> Vec<Monster> {
+    let depth = level.depth;
     if depth == 0 {
         // Town street monsters: give 0 experience!
+        let (u_x, u_y) = find_passable_tile(level);
+        let (r_x, r_y) = find_passable_tile(level);
+        let (b_x, b_y) = find_passable_tile(level);
         return vec![
-            Monster::new("Filthy Street Urchin", 'u', 22, 9, 6, Dice::new(1, 2), 0),
-            Monster::new("Tavern Ruffian", 'r', 40, 10, 10, Dice::new(1, 4), 0),
-            Monster::new("Beggar", 'b', 15, 12, 4, Dice::new(1, 1), 0),
+            Monster::new("Filthy Street Urchin", 'u', u_x, u_y, 6, Dice::new(1, 2), 0),
+            Monster::new("Tavern Ruffian", 'r', r_x, r_y, 10, Dice::new(1, 4), 0),
+            Monster::new("Beggar", 'b', b_x, b_y, 4, Dice::new(1, 1), 0),
         ];
     }
     
     let mut mons = Vec::new();
+    let mut rng = rand::thread_rng();
     
-    // Balrog Quest Boss spawns randomly on depth >= 4 (20% chance per level)
-    if depth >= 4 && !player_has_killed_balrog {
-        let mut rng = rand::thread_rng();
-        if rng.gen_bool(0.20) {
-            mons.push(Monster::new("The Balrog", 'B', 33, 11, 100, Dice::new(3, 6), 500));
+    // Balrog Quest Boss spawning scale starting at depth 3:
+    // Depth 3 (150 feet): 5% chance (extremely dangerous)
+    // Depth 4 (200 feet): 20% chance
+    // Depth 5 (250 feet): 40% chance
+    // Depth 6+ (300+ feet): 60% chance
+    if depth >= 3 && !player_has_killed_balrog {
+        let spawn_chance = match depth {
+            3 => 0.05,
+            4 => 0.20,
+            5 => 0.40,
+            _ => 0.60,
+        };
+        if rng.gen_bool(spawn_chance) {
+            let (bx, by) = find_passable_tile(level);
+            mons.push(Monster::new("The Balrog", 'B', bx, by, 100, Dice::new(3, 6), 500));
         }
     }
     
-    mons.push(Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3), 5));
-    mons.push(Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4), 10));
-    mons.push(Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6), 25));
+    // Standard dungeon monsters, placed at random passable floor positions
+    let (mx, my) = find_passable_tile(level);
+    mons.push(Monster::new("Red Mold", 'm', mx, my, 5, Dice::new(1, 3), 5));
+    
+    let (gx, gy) = find_passable_tile(level);
+    mons.push(Monster::new("Goblin", 'g', gx, gy, 8, Dice::new(1, 4), 10));
+    
+    let (ox, oy) = find_passable_tile(level);
+    mons.push(Monster::new("Orc", 'o', ox, oy, 12, Dice::new(1, 6), 25));
     
     if depth >= 3 {
-        mons.push(Monster::new("Cave Troll", 'T', 50, 16, 25, Dice::new(2, 6), 50));
+        let (tx, ty) = find_passable_tile(level);
+        mons.push(Monster::new("Cave Troll", 'T', tx, ty, 25, Dice::new(2, 6), 50));
     }
     
     mons
@@ -441,19 +467,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string())
             }
             Err(e) => {
-                let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
                 let mut lvl = DungeonLevel::new(66, 22, 0);
                 lvl.generate_simple_floor();
-                let mons = generate_monsters_for_depth(0, false);
+                let start_pos = find_passable_tile(&lvl);
+                let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
+                let mons = generate_monsters_for_depth(&lvl, false);
                 (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e))
             }
         }
     } else {
-        let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
         let mut lvl = DungeonLevel::new(66, 22, 0);
         lvl.generate_simple_floor();
-        let mons = generate_monsters_for_depth(0, false);
-        (p, lvl, mons, "New game started! Visit town stores or descend deep stairs (>)".to_string())
+        let start_pos = find_passable_tile(&lvl);
+        let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
+        let mons = generate_monsters_for_depth(&lvl, false);
+        (p, lvl, mons, "New game started! Find town shops or descend stairs (>)".to_string())
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
@@ -493,30 +521,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let next_y = (player.y as isize + dy) as usize;
 
                                 // Check if there is a store door on Town level (depth 0)
-                                if level.depth == 0 && next_x == 10 && next_y == 5 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::General;
-                                    status_msg = "Welcome to the Town General Store!".to_string();
-                                } else if level.depth == 0 && next_x == 30 && next_y == 5 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::Armory;
-                                    status_msg = "Welcome to the Town Armory!".to_string();
-                                } else if level.depth == 0 && next_x == 50 && next_y == 5 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::Weaponsmith;
-                                    status_msg = "Welcome to the Weaponsmith forge!".to_string();
-                                } else if level.depth == 0 && next_x == 10 && next_y == 15 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::Temple;
-                                    status_msg = "Welcome to the Town Temple!".to_string();
-                                } else if level.depth == 0 && next_x == 30 && next_y == 15 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::Alchemy;
-                                    status_msg = "Welcome to the Alchemy Lab!".to_string();
-                                } else if level.depth == 0 && next_x == 50 && next_y == 15 {
-                                    screen_mode = ScreenMode::Shop;
-                                    active_shop = ShopType::Magic;
-                                    status_msg = "Welcome to the Magic-User Conclave!".to_string();
+                                let mut entered_shop = false;
+                                if level.depth == 0 {
+                                    if let Some(shop_info) = level.shops.iter().find(|s| s.door_x == next_x && s.door_y == next_y) {
+                                        screen_mode = ScreenMode::Shop;
+                                        active_shop = shop_info.shop_type;
+                                        let shop_name = match active_shop {
+                                            ShopType::General => "Town General Store",
+                                            ShopType::Armory => "Town Armory",
+                                            ShopType::Weaponsmith => "Weaponsmith Forge",
+                                            ShopType::Temple => "Town Temple",
+                                            ShopType::Alchemy => "Alchemy Lab",
+                                            ShopType::Magic => "Magic-User Conclave",
+                                        };
+                                        status_msg = format!("Welcome to the {}!", shop_name);
+                                        entered_shop = true;
+                                    }
+                                }
+
+                                if entered_shop {
+                                    // Shop entered, don't execute normal movement
                                 }
                                 // Check if there is a monster at the destination
                                 else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
@@ -583,8 +607,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         let new_depth = level.depth - 1;
                                         level = DungeonLevel::new(66, 22, new_depth);
                                         level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(new_depth, player.balrog_killed);
-                                        player.move_to(40, 15);
+                                        monsters = generate_monsters_for_depth(&level, player.balrog_killed);
+                                        
+                                        // Spawn player on StairsDown tile of the new level
+                                        let sd_pos = level.tiles.iter().enumerate()
+                                            .find(|(_, t)| t.tile_type == TileType::StairsDown)
+                                            .map(|(i, _)| (i % level.width, i / level.width))
+                                            .unwrap_or((40, 15));
+                                        player.move_to(sd_pos.0, sd_pos.1);
+                                        
                                         status_msg = format!("You climb up to depth {} ({} feet).", new_depth, new_depth * 50);
                                         player_acted = true;
                                     } else {
@@ -598,8 +629,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         let new_depth = level.depth + 1;
                                         level = DungeonLevel::new(66, 22, new_depth);
                                         level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(new_depth, player.balrog_killed);
-                                        player.move_to(15, 15);
+                                        monsters = generate_monsters_for_depth(&level, player.balrog_killed);
+                                        
+                                        // Spawn player on StairsUp tile of the new level
+                                        let su_pos = level.tiles.iter().enumerate()
+                                            .find(|(_, t)| t.tile_type == TileType::StairsUp)
+                                            .map(|(i, _)| (i % level.width, i / level.width))
+                                            .unwrap_or((15, 15));
+                                        player.move_to(su_pos.0, su_pos.1);
+                                        
                                         status_msg = format!("You climb down to depth {} ({} feet).", new_depth, new_depth * 50);
                                         player_acted = true;
                                     } else {
