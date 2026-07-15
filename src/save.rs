@@ -4,16 +4,18 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use crate::dungeon::DungeonLevel;
 use crate::player::Player;
+use crate::entity::monster::Monster;
 
 #[derive(Serialize, Deserialize)]
 pub struct GameState {
     pub player: Player,
     pub level: DungeonLevel,
+    pub monsters: Vec<Monster>,
 }
 
 impl GameState {
-    pub fn new(player: Player, level: DungeonLevel) -> Self {
-        Self { player, level }
+    pub fn new(player: Player, level: DungeonLevel, monsters: Vec<Monster>) -> Self {
+        Self { player, level, monsters }
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {

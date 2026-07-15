@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use crate::dice::Dice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Race {
@@ -101,6 +102,21 @@ impl Player {
     pub fn move_to(&mut self, x: usize, y: usize) {
         self.x = x;
         self.y = y;
+    }
+
+    pub fn roll_melee_damage<R: rand::Rng>(&self, rng: &mut R) -> i32 {
+        let base_dice = match self.class {
+            Class::Warrior => Dice::new(2, 6),
+            Class::Rogue => Dice::new(1, 8),
+            _ => Dice::new(1, 6),
+        };
+        // Melee damage adds strength modifier
+        let damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
+        if damage < 1 {
+            1
+        } else {
+            damage
+        }
     }
 
     pub fn apply_race_and_class_modifiers(&mut self) {
