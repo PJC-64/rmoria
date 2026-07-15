@@ -921,14 +921,26 @@ fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: b
     let max_depth = level.max_depth;
     
     if depth == 0 {
-        let (u_x, u_y) = find_passable_tile(level);
-        let (r_x, r_y) = find_passable_tile(level);
-        let (b_x, b_y) = find_passable_tile(level);
-        return vec![
-            Monster::new("Filthy Street Urchin", 'u', u_x, u_y, 6, Dice::new(1, 2), 0),
-            Monster::new("Tavern Ruffian", 'r', r_x, r_y, 10, Dice::new(1, 4), 0),
-            Monster::new("Beggar", 'b', b_x, b_y, 4, Dice::new(1, 1), 0),
+        let mut rng = rand::thread_rng();
+        let town_templates = &[
+            ("Filthy Street Urchin", 6, Dice::new(1, 2)),
+            ("Blubbering Idiot", 2, Dice::new(1, 1)),
+            ("Pitiful-Looking Beggar", 4, Dice::new(1, 2)),
+            ("Mangy-Looking Leper", 1, Dice::new(1, 1)),
+            ("Squint-Eyed Rogue", 10, Dice::new(1, 4)),
+            ("Singing, Happy Drunk", 4, Dice::new(1, 3)),
+            ("Mean-Looking Mercenary", 25, Dice::new(2, 4)),
+            ("Battle-Scarred Veteran", 35, Dice::new(2, 6)),
         ];
+
+        let mut mons = Vec::new();
+        for _ in 0..3 {
+            let (tx, ty) = find_passable_tile(level);
+            let r_idx = rng.gen_range(0..town_templates.len());
+            let (name, hp, dmg) = town_templates[r_idx];
+            mons.push(Monster::new(name, 'p', tx, ty, hp, dmg, 0));
+        }
+        return mons;
     }
     
     let mut mons = Vec::new();
