@@ -11,11 +11,12 @@ pub struct GameState {
     pub player: Player,
     pub level: DungeonLevel,
     pub monsters: Vec<Monster>,
+    pub max_depth: u32,
 }
 
 impl GameState {
-    pub fn new(player: Player, level: DungeonLevel, monsters: Vec<Monster>) -> Self {
-        Self { player, level, monsters }
+    pub fn new(player: Player, level: DungeonLevel, monsters: Vec<Monster>, max_depth: u32) -> Self {
+        Self { player, level, monsters, max_depth }
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {

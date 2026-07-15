@@ -29,6 +29,7 @@ pub struct DungeonLevel {
     pub tiles: Vec<Tile>,
     pub depth: u32,
     pub shops: Vec<ShopInfo>,
+    pub max_depth: u32,
 }
 
 struct Room {
@@ -54,9 +55,9 @@ impl Room {
 }
 
 impl DungeonLevel {
-    pub fn new(width: usize, height: usize, depth: u32) -> Self {
+    pub fn new(width: usize, height: usize, depth: u32, max_depth: u32) -> Self {
         let tiles = vec![Tile::new(TileType::Wall); width * height];
-        Self { width, height, tiles, depth, shops: Vec::new() }
+        Self { width, height, tiles, depth, shops: Vec::new(), max_depth }
     }
 
     pub fn get_tile(&self, x: usize, y: usize) -> Option<&Tile> {
@@ -279,7 +280,7 @@ impl DungeonLevel {
                 tile.tile_type = TileType::StairsUp;
             }
 
-            if self.depth < 50 {
+            if self.depth < self.max_depth {
                 let (sd_x, sd_y) = rooms[rooms.len() - 1].center();
                 if let Some(tile) = self.get_tile_mut(sd_x, sd_y) {
                     tile.tile_type = TileType::StairsDown;

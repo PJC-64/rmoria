@@ -35,6 +35,36 @@ pub enum ScreenMode {
     ShopSellMenu,
 }
 
+struct MonsterTemplate {
+    name: &'static str,
+    symbol: char,
+    level: u32,
+    max_hp: i32,
+    damage: Dice,
+    exp_reward: u32,
+}
+
+const MONSTER_DB: &[MonsterTemplate] = &[
+    // Level 1
+    MonsterTemplate { name: "Red Mold", symbol: 'm', level: 1, max_hp: 5, damage: Dice { num: 1, sides: 3 }, exp_reward: 5 },
+    MonsterTemplate { name: "Giant Centipede", symbol: 'c', level: 1, max_hp: 7, damage: Dice { num: 1, sides: 3 }, exp_reward: 7 },
+    // Level 2
+    MonsterTemplate { name: "Goblin", symbol: 'g', level: 2, max_hp: 8, damage: Dice { num: 1, sides: 4 }, exp_reward: 10 },
+    MonsterTemplate { name: "Giant White Rat", symbol: 'r', level: 2, max_hp: 9, damage: Dice { num: 1, sides: 4 }, exp_reward: 12 },
+    // Level 3
+    MonsterTemplate { name: "Orc", symbol: 'o', level: 3, max_hp: 15, damage: Dice { num: 1, sides: 6 }, exp_reward: 25 },
+    MonsterTemplate { name: "Baby Dragon", symbol: 'd', level: 3, max_hp: 20, damage: Dice { num: 2, sides: 4 }, exp_reward: 35 },
+    // Level 4
+    MonsterTemplate { name: "Cave Troll", symbol: 'T', level: 4, max_hp: 30, damage: Dice { num: 2, sides: 6 }, exp_reward: 50 },
+    MonsterTemplate { name: "Spectre", symbol: 'S', level: 4, max_hp: 22, damage: Dice { num: 1, sides: 8 }, exp_reward: 60 },
+    // Level 5
+    MonsterTemplate { name: "Uruk-Hai", symbol: 'U', level: 5, max_hp: 35, damage: Dice { num: 2, sides: 6 }, exp_reward: 80 },
+    MonsterTemplate { name: "Giant Spider", symbol: 's', level: 5, max_hp: 28, damage: Dice { num: 1, sides: 10 }, exp_reward: 75 },
+    // Level 6
+    MonsterTemplate { name: "Ghost Warrior", symbol: 'W', level: 6, max_hp: 40, damage: Dice { num: 2, sides: 8 }, exp_reward: 120 },
+    MonsterTemplate { name: "Lich", symbol: 'L', level: 7, max_hp: 55, damage: Dice { num: 3, sides: 6 }, exp_reward: 180 },
+];
+
 fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
     match shop {
         ShopType::General => vec![
@@ -387,11 +417,13 @@ fn find_passable_tile(level: &DungeonLevel) -> (usize, usize) {
             }
         }
     }
-    (30, 10) // fallback coordinate
+    (30, 10)
 }
 
 fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: bool) -> Vec<Monster> {
     let depth = level.depth;
+    let max_depth = level.max_depth;
+    
     if depth == 0 {
         // Town street monsters: give 0 experience!
         let (u_x, u_y) = find_passable_tile(level);
@@ -407,37 +439,41 @@ fn generate_monsters_for_depth(level: &DungeonLevel, player_has_killed_balrog: b
     let mut mons = Vec::new();
     let mut rng = rand::thread_rng();
     
-    // Balrog Quest Boss spawning scale starting at depth 3:
-    // Depth 3 (150 feet): 5% chance (extremely dangerous)
-    // Depth 4 (200 feet): 20% chance
-    // Depth 5 (250 feet): 40% chance
-    // Depth 6+ (300+ feet): 60% chance
-    if depth >= 3 && !player_has_killed_balrog {
-        let spawn_chance = match depth {
-            3 => 0.05,
-            4 => 0.20,
-            5 => 0.40,
-            _ => 0.60,
-        };
-        if rng.gen_bool(spawn_chance) {
+    // Bottom Level = Boss Level
+    if depth == max_depth {
+        if !player_has_killed_balrog {
             let (bx, by) = find_passable_tile(level);
-            mons.push(Monster::new("The Balrog", 'B', bx, by, 100, Dice::new(3, 6), 500));
+            mons.push(Monster::new("The Balrog", 'B', bx, by, 120, Dice::new(3, 8), 500));
         }
+        
+        // Spawn 3 high-level guards (Liches)
+        for _ in 0..3 {
+            let (gx, gy) = find_passable_tile(level);
+            mons.push(Monster::new("Lich Guardian", 'L', gx, gy, 55, Dice::new(3, 6), 180));
+        }
+        return mons;
     }
     
-    // Standard dungeon monsters, placed at random passable floor positions
-    let (mx, my) = find_passable_tile(level);
-    mons.push(Monster::new("Red Mold", 'm', mx, my, 5, Dice::new(1, 3), 5));
+    // Dungeon Levels scale selection
+    let mut active_level = depth;
     
-    let (gx, gy) = find_passable_tile(level);
-    mons.push(Monster::new("Goblin", 'g', gx, gy, 8, Dice::new(1, 4), 10));
+    // 10% chance of "nasty" monster spawning offset
+    if rng.gen_bool(0.10) {
+        active_level += rng.gen_range(1..=3);
+    }
     
-    let (ox, oy) = find_passable_tile(level);
-    mons.push(Monster::new("Orc", 'o', ox, oy, 12, Dice::new(1, 6), 25));
-    
-    if depth >= 3 {
-        let (tx, ty) = find_passable_tile(level);
-        mons.push(Monster::new("Cave Troll", 'T', tx, ty, 25, Dice::new(2, 6), 50));
+    // Spawn 4 monsters matching the active level cap
+    for _ in 0..4 {
+        let suitable_templates: Vec<&MonsterTemplate> = MONSTER_DB.iter()
+            .filter(|t| t.level <= active_level)
+            .collect();
+            
+        if !suitable_templates.is_empty() {
+            let r_idx = rng.gen_range(0..suitable_templates.len());
+            let t = suitable_templates[r_idx];
+            let (mx, my) = find_passable_tile(level);
+            mons.push(Monster::new(t.name, t.symbol, mx, my, t.max_hp, t.damage, t.exp_reward));
+        }
     }
     
     mons
@@ -461,27 +497,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, EnterAlternateScreen, Hide)?;
 
     // 2. Load game state if save file exists, otherwise create new
-    let (mut player, mut level, mut monsters, mut status_msg) = if Path::new(save_path).exists() {
+    let (mut player, mut level, mut monsters, mut status_msg, max_depth) = if Path::new(save_path).exists() {
         match GameState::load_from_file(save_path) {
             Ok(state) => {
-                (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string())
+                (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth)
             }
             Err(e) => {
-                let mut lvl = DungeonLevel::new(66, 22, 0);
+                let rolled_max = rng.gen_range(8..=15); // Random max depth between 8 and 15
+                let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
                 lvl.generate_simple_floor();
                 let start_pos = find_passable_tile(&lvl);
                 let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
                 let mons = generate_monsters_for_depth(&lvl, false);
-                (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e))
+                (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e), rolled_max)
             }
         }
     } else {
-        let mut lvl = DungeonLevel::new(66, 22, 0);
+        let rolled_max = rng.gen_range(8..=15); // Random max depth between 8 and 15
+        let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
         lvl.generate_simple_floor();
         let start_pos = find_passable_tile(&lvl);
         let p = Player::new("Hero", Race::Human, Class::Warrior, start_pos.0, start_pos.1);
         let mons = generate_monsters_for_depth(&lvl, false);
-        (p, lvl, mons, "New game started! Find town shops or descend stairs (>)".to_string())
+        (p, lvl, mons, "New game started! Find town shops or descend stairs (>)".to_string(), rolled_max)
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
@@ -605,7 +643,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 if let Some(tile) = level.get_tile(player.x, player.y) {
                                     if tile.tile_type == TileType::StairsUp && level.depth > 0 {
                                         let new_depth = level.depth - 1;
-                                        level = DungeonLevel::new(66, 22, new_depth);
+                                        level = DungeonLevel::new(66, 22, new_depth, max_depth);
                                         level.generate_simple_floor();
                                         monsters = generate_monsters_for_depth(&level, player.balrog_killed);
                                         
@@ -625,9 +663,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Action::GoDownStairs => {
                                 if let Some(tile) = level.get_tile(player.x, player.y) {
-                                    if tile.tile_type == TileType::StairsDown {
+                                    if tile.tile_type == TileType::StairsDown && level.depth < max_depth {
                                         let new_depth = level.depth + 1;
-                                        level = DungeonLevel::new(66, 22, new_depth);
+                                        level = DungeonLevel::new(66, 22, new_depth, max_depth);
                                         level.generate_simple_floor();
                                         monsters = generate_monsters_for_depth(&level, player.balrog_killed);
                                         
@@ -673,7 +711,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 status_msg = "Saving game and quitting...".to_string();
                                 draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                 
-                                let state = GameState::new(player.clone(), level.clone(), monsters.clone());
+                                let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
                                 if let Err(e) = state.save_to_file(save_path) {
                                     status_msg = format!("Save failed: {}", e);
                                     draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
