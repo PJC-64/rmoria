@@ -36,6 +36,28 @@ impl Monster {
     /// Basic AI movement. Calculates standard grid step closer to player.
     /// Returns `Some((new_x, new_y))` if a valid step is calculated.
     pub fn update_ai(&self, player_x: usize, player_y: usize, level: &crate::dungeon::DungeonLevel) -> Option<(usize, usize)> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        if self.symbol == 'p' {
+            // Townsfolk wander semi-randomly
+            if rng.gen_bool(0.70) {
+                let dx = rng.gen_range(-1..=1);
+                let dy = rng.gen_range(-1..=1);
+                if dx == 0 && dy == 0 {
+                    return None;
+                }
+                let next_x = (self.x as isize + dx) as usize;
+                let next_y = (self.y as isize + dy) as usize;
+                if let Some(tile) = level.get_tile(next_x, next_y) {
+                    if tile.is_passable() {
+                        return Some((next_x, next_y));
+                    }
+                }
+                return None;
+            }
+        }
+
         let dx = (player_x as isize - self.x as isize).signum();
         let dy = (player_y as isize - self.y as isize).signum();
 
