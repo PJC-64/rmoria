@@ -174,13 +174,21 @@ impl Player {
             max_mana: 0,
             mana: 0,
             stats: base_stats,
-            inventory: vec![
-                Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
-                Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
-                Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false }),
-                Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
-                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
-            ],
+            inventory: {
+                let mut starter = vec![
+                    Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
+                    Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
+                    Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false }),
+                    Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
+                    Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+                ];
+                if matches!(class, Class::Mage | Class::Rogue | Class::Ranger) {
+                    starter.push(Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false }));
+                } else if matches!(class, Class::Priest | Class::Paladin) {
+                    starter.push(Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false }));
+                }
+                starter
+            },
             equipment: Vec::new(),
             balrog_killed: false,
             base_hp_levels,
@@ -190,6 +198,7 @@ impl Player {
         player.apply_race_and_class_modifiers();
         player.update_max_hp_and_mana();
         player.hp = player.max_hp;
+        player.mana = player.max_mana;
         player
     }
 
@@ -227,6 +236,47 @@ impl Player {
         let calculated = base_hp + (con_bonus * self.level as i32);
         self.max_hp = calculated.max(self.level as i32 + 1);
         self.hp = self.hp.min(self.max_hp);
+
+        // Caster Max Mana scaling
+        let is_caster = match self.class {
+            Class::Warrior => false,
+            _ => true,
+        };
+        if is_caster {
+            let min_level = match self.class {
+                Class::Mage => 1,
+                Class::Priest => 1,
+                Class::Rogue => 5,
+                Class::Ranger => 3,
+                Class::Paladin => 1,
+                Class::Warrior => 99,
+            };
+            if self.level >= min_level {
+                let stat_val = match self.class {
+                    Class::Mage | Class::Rogue | Class::Ranger => self.stats.intelligence,
+                    _ => self.stats.wisdom,
+                };
+                let mana_per_level = if stat_val < 10 {
+                    0
+                } else if stat_val <= 14 {
+                    1
+                } else if stat_val <= 16 {
+                    2
+                } else if stat_val == 17 {
+                    3
+                } else if stat_val == 18 {
+                    4
+                } else {
+                    5
+                };
+                self.max_mana = ((self.level - min_level + 1) as i32 * mana_per_level).max(0);
+            } else {
+                self.max_mana = 0;
+            }
+        } else {
+            self.max_mana = 0;
+        }
+        self.mana = self.mana.min(self.max_mana);
     }
 
     pub fn get_exp_to_next_level(&self) -> u32 {

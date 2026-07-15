@@ -33,6 +33,11 @@ pub enum ScreenMode {
     ReadMenu,
     Shop,
     ShopSellMenu,
+    // Magic wielders extensions
+    BrowseBookMenu,
+    CastSpellMenu,
+    PrayMenu,
+    SelectSpellDirection,
 }
 
 struct MonsterTemplate {
@@ -70,6 +75,8 @@ fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
         ShopType::General => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
+            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
             ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
             ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
         ],
@@ -86,6 +93,7 @@ fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
         ShopType::Temple => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
             ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
+            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
         ],
         ShopType::Alchemy => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
@@ -94,6 +102,7 @@ fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
         ShopType::Magic => vec![
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
+            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
         ],
     }
 }
@@ -119,7 +128,7 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
         10 => format!("CON:  {:>5}", player.stats.constitution),
         11 => format!("CHR:  {:>5}", player.stats.charisma),
         13 => format!("LEV:  {:>5}", player.level),
-        14 => format!("MANA: {:>5}", player.mana),
+        14 => format!("MANA: {:>2}/{:<2}", player.mana, player.max_mana),
         15 => format!("MHP:  {:>5}", player.max_hp),
         16 => format!("CHP:  {:>5}", player.hp),
         17 => format!("AC:   {:>5}", player.calculate_ac()),
@@ -160,6 +169,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Scroll { .. } => {
                         if item.name.contains("Torch") {
                             "Light Source".to_string()
+                        } else if item.name.contains("Spellbook") || item.name.contains("Prayerbook") {
+                            "Spell Book".to_string()
                         } else {
                             "Scroll".to_string()
                         }
@@ -286,7 +297,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             let scrolls: Vec<(usize, &Item)> = player.inventory.iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}) && !item.name.contains("Torch"))
+                .filter(|(_, item)| {
+                    matches!(item.item_type, ItemType::Scroll {..}) &&
+                    !item.name.contains("Torch") &&
+                    !item.name.contains("Spellbook") &&
+                    !item.name.contains("Prayerbook")
+                })
                 .collect();
 
             if row == scrolls.len() + 2 {
@@ -302,6 +318,84 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             if scrolls.is_empty() && row == 1 {
                 return "(No scrolls in inventory)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::BrowseBookMenu => {
+            if row == 0 {
+                return "--- BROWSE SPELLS & PRAYERS ---".to_string();
+            }
+            let is_mage = matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
+            if is_mage {
+                let spells = &[
+                    "a) Magic Missile       - 1 Mana, Level 1 (Fires projectile, 2d4 damage)",
+                    "b) Phase Door           - 2 Mana, Level 1 (Short range teleport)",
+                    "c) Light Area          - 3 Mana, Level 3 (Reveals radius 5 tiles)",
+                    "d) Fire Bolt            - 5 Mana, Level 5 (Fires projectile, 4d6 damage)",
+                ];
+                if row > 0 && row <= spells.len() {
+                    return spells[row - 1].to_string();
+                }
+            } else {
+                let prayers = &[
+                    "a) Detect Evil         - 1 Mana, Level 1 (Reveals monster indicators)",
+                    "b) Cure Light Wounds   - 2 Mana, Level 1 (Heals player 2d8 HP)",
+                    "c) Bless               - 3 Mana, Level 3 (Heals player 3d8 HP)",
+                    "d) Portal              - 4 Mana, Level 4 (Teleports to random location)",
+                    "e) Holy Word           - 7 Mana, Level 7 (Divine blast to all adjacent, 6d8)",
+                ];
+                if row > 0 && row <= prayers.len() {
+                    return prayers[row - 1].to_string();
+                }
+            }
+            if row == 7 {
+                return "Press ESC to exit book browser.".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::CastSpellMenu => {
+            if row == 0 {
+                return "--- CAST MAGE SPELL ---".to_string();
+            }
+            let spells = &[
+                "a) Magic Missile       - 1 Mana, Level 1 (2d4 projectile)",
+                "b) Phase Door           - 2 Mana, Level 1 (Short teleport)",
+                "c) Light Area          - 3 Mana, Level 3 (Light flash)",
+                "d) Fire Bolt            - 5 Mana, Level 5 (4d6 projectile)",
+            ];
+            if row > 0 && row <= spells.len() {
+                return spells[row - 1].to_string();
+            }
+            if row == 6 {
+                return "Select spell letter to cast, or press ESC to cancel.".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::PrayMenu => {
+            if row == 0 {
+                return "--- RECITE CLERICAL PRAYER ---".to_string();
+            }
+            let prayers = &[
+                "a) Detect Evil         - 1 Mana, Level 1 (Detect nearby monsters)",
+                "b) Cure Light Wounds   - 2 Mana, Level 1 (Heals 2d8 HP)",
+                "c) Bless               - 3 Mana, Level 3 (Heals 3d8 HP)",
+                "d) Portal              - 4 Mana, Level 4 (Random teleport)",
+                "e) Holy Word           - 7 Mana, Level 7 (Adjacent area blast, 6d8)",
+            ];
+            if row > 0 && row <= prayers.len() {
+                return prayers[row - 1].to_string();
+            }
+            if row == 7 {
+                return "Select prayer letter to recite, or press ESC to cancel.".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::SelectSpellDirection => {
+            if row == 0 {
+                return "--- CASTING TARGETING ---".to_string();
+            }
+            if row == 2 {
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
             }
             "".to_string()
         }
@@ -746,6 +840,9 @@ fn run_character_creation(
     let mut final_player = Player::new(name_str, race, class, 30, 10);
     final_player.stats = stats;
     final_player.apply_race_and_class_modifiers();
+    final_player.update_max_hp_and_mana();
+    final_player.hp = final_player.max_hp;
+    final_player.mana = final_player.max_mana;
 
     Ok(final_player)
 }
@@ -789,6 +886,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut screen_mode = ScreenMode::Dungeon;
     let mut active_shop = ShopType::General;
+    let mut selected_spell_idx: usize = 0;
 
     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
 
@@ -901,7 +999,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             player.move_to(next_x, next_y);
                                             if direction == Direction::Rest {
                                                 player.hp = (player.hp + 1).min(player.max_hp);
-                                                status_msg = "You rest and recover health.".to_string();
+                                                player.mana = (player.mana + 1).min(player.max_mana);
+                                                status_msg = "You rest and recover health/mana.".to_string();
                                             } else {
                                                 status_msg = format!("Moved to ({}, {})", next_x, next_y);
                                             }
@@ -978,6 +1077,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 screen_mode = ScreenMode::ReadMenu;
                                 status_msg = "Select scroll to read.".to_string();
                             }
+                            Action::BrowseBook => {
+                                let has_book = player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
+                                if has_book {
+                                    screen_mode = ScreenMode::BrowseBookMenu;
+                                    status_msg = "Browsing spells/prayers.".to_string();
+                                } else {
+                                    status_msg = "You do not carry a spellbook or prayerbook!".to_string();
+                                }
+                            }
+                            Action::CastSpell => {
+                                let is_mage_caster = matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
+                                if !is_mage_caster {
+                                    status_msg = "Your class cannot cast mage spells!".to_string();
+                                } else {
+                                    let has_book = player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
+                                    if has_book {
+                                        screen_mode = ScreenMode::CastSpellMenu;
+                                        status_msg = "Cast Mage Spell: select a letter.".to_string();
+                                    } else {
+                                        status_msg = "You need a Mage Spellbook to cast spells!".to_string();
+                                    }
+                                }
+                            }
+                            Action::Pray => {
+                                let is_priest_caster = matches!(player.class, Class::Priest | Class::Paladin);
+                                if !is_priest_caster {
+                                    status_msg = "Your class cannot recite priestly prayers!".to_string();
+                                } else {
+                                    let has_book = player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
+                                    if has_book {
+                                        screen_mode = ScreenMode::PrayMenu;
+                                        status_msg = "Recite Clerical Prayer: select a letter.".to_string();
+                                    } else {
+                                        status_msg = "You need a Priest Prayerbook to pray!".to_string();
+                                    }
+                                }
+                            }
                             Action::Quit => {
                                 status_msg = "Saving game and quitting...".to_string();
                                 draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
@@ -1013,6 +1149,250 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else if screen_mode == ScreenMode::EquipmentList && c == 'I' {
                                 screen_mode = ScreenMode::Dungeon;
                                 status_msg = "Returned to dungeon.".to_string();
+                            } else if screen_mode == ScreenMode::BrowseBookMenu {
+                                // Just browse, escape exits
+                            } else if screen_mode == ScreenMode::CastSpellMenu {
+                                match c {
+                                    'a' => { // Magic Missile (1 mana, lvl 1)
+                                        if player.mana >= 1 {
+                                            selected_spell_idx = 0;
+                                            screen_mode = ScreenMode::SelectSpellDirection;
+                                            status_msg = "Aim Magic Missile: choose direction...".to_string();
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'b' => { // Phase Door (2 mana, lvl 1)
+                                        if player.mana >= 2 {
+                                            player.mana -= 2;
+                                            let dest = find_passable_tile(&level);
+                                            player.move_to(dest.0, dest.1);
+                                            status_msg = "You cast Phase Door and warp!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'c' => { // Light Area (3 mana, lvl 3)
+                                        if player.level < 3 {
+                                            status_msg = "Too low level (requires Level 3)!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        } else if player.mana >= 3 {
+                                            player.mana -= 3;
+                                            for y in (player.y as isize - 5)..=(player.y as isize + 5) {
+                                                for x in (player.x as isize - 5)..=(player.x as isize + 5) {
+                                                    if let Some(tile) = level.get_tile_mut(x as usize, y as usize) {
+                                                        tile.visible = true;
+                                                        tile.remembered = true;
+                                                    }
+                                                }
+                                            }
+                                            status_msg = "Brilliant light flashes and illuminates the area!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'd' => { // Fire Bolt (5 mana, lvl 5)
+                                        if player.level < 5 {
+                                            status_msg = "Too low level (requires Level 5)!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        } else if player.mana >= 5 {
+                                            selected_spell_idx = 1;
+                                            screen_mode = ScreenMode::SelectSpellDirection;
+                                            status_msg = "Aim Fire Bolt: choose direction...".to_string();
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            } else if screen_mode == ScreenMode::PrayMenu {
+                                match c {
+                                    'a' => { // Detect Evil (1 mana, lvl 1)
+                                        if player.mana >= 1 {
+                                            player.mana -= 1;
+                                            for m in &monsters {
+                                                if let Some(tile) = level.get_tile_mut(m.x, m.y) {
+                                                    tile.remembered = true;
+                                                }
+                                            }
+                                            status_msg = format!("You sense the presence of {} dark entities!", monsters.len());
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'b' => { // Cure Light Wounds (2 mana, lvl 1)
+                                        if player.mana >= 2 {
+                                            player.mana -= 2;
+                                            let heal = rng.gen_range(2..=16);
+                                            player.hp = (player.hp + heal).min(player.max_hp);
+                                            status_msg = format!("You pray for healing. Restored {} HP.", heal);
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'c' => { // Bless (3 mana, lvl 3)
+                                        if player.level < 3 {
+                                            status_msg = "Too low level (requires Level 3)!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        } else if player.mana >= 3 {
+                                            player.mana -= 3;
+                                            let heal = rng.gen_range(3..=24);
+                                            player.hp = (player.hp + heal).min(player.max_hp);
+                                            status_msg = format!("Divine blessing heals you for {} HP.", heal);
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'd' => { // Portal (4 mana, lvl 4)
+                                        if player.level < 4 {
+                                            status_msg = "Too low level (requires Level 4)!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        } else if player.mana >= 4 {
+                                            player.mana -= 4;
+                                            let dest = find_passable_tile(&level);
+                                            player.move_to(dest.0, dest.1);
+                                            status_msg = "You are pulled through a space portal!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    'e' => { // Holy Word (7 mana, lvl 7)
+                                        if player.level < 7 {
+                                            status_msg = "Too low level (requires Level 7)!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        } else if player.mana >= 7 {
+                                            player.mana -= 7;
+                                            let mut hit = false;
+                                            let mut killed = Vec::new();
+                                            for (m_idx, m) in monsters.iter_mut().enumerate() {
+                                                let dx = (player.x as isize - m.x as isize).abs();
+                                                let dy = (player.y as isize - m.y as isize).abs();
+                                                if dx <= 1 && dy <= 1 {
+                                                    let dmg = rng.gen_range(6..=48);
+                                                    m.take_damage(dmg);
+                                                    hit = true;
+                                                    if m.hp <= 0 {
+                                                        killed.push(m_idx);
+                                                    }
+                                                }
+                                            }
+                                            for &idx in killed.iter().rev() {
+                                                let exp = monsters[idx].experience_reward;
+                                                player.add_experience(exp);
+                                                monsters.remove(idx);
+                                            }
+                                            status_msg = if hit {
+                                                "You chant a Holy Word! Nearby enemies are scorched!".to_string()
+                                            } else {
+                                                "You chant a Holy Word, but hear only whispers.".to_string()
+                                            };
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "Insufficient mana!".to_string();
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            } else if screen_mode == ScreenMode::SelectSpellDirection {
+                                let action = mapper.map_key(c);
+                                if let Action::Move(direction) = action {
+                                    let (dx, dy) = match direction {
+                                        Direction::NorthWest => (-1, -1),
+                                        Direction::North => (0, -1),
+                                        Direction::NorthEast => (1, -1),
+                                        Direction::West => (-1, 0),
+                                        Direction::Rest => (0, 0),
+                                        Direction::East => (1, 0),
+                                        Direction::SouthWest => (-1, 1),
+                                        Direction::South => (0, 1),
+                                        Direction::SouthEast => (1, 1),
+                                    };
+
+                                    if selected_spell_idx == 0 { // Magic Missile (cost 1)
+                                        player.mana -= 1;
+                                        let mut cx = player.x as isize + dx;
+                                        let mut cy = player.y as isize + dy;
+                                        status_msg = "Your Magic Missile fizzles into the dark!".to_string();
+                                        loop {
+                                            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                                                if tile.tile_type == TileType::Wall {
+                                                    status_msg = "Your Magic Missile hits a wall and breaks!".to_string();
+                                                    break;
+                                                }
+                                            } else {
+                                                break;
+                                            }
+                                            if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
+                                                let dmg = rng.gen_range(2..=8);
+                                                let m_name = monsters[m_idx].name.clone();
+                                                let exp = monsters[m_idx].experience_reward;
+                                                status_msg = format!("Magic Missile hits {} for {} damage!", m_name, dmg);
+                                                if monsters[m_idx].take_damage(dmg) {
+                                                    status_msg.push_str(" You killed it!");
+                                                    player.add_experience(exp);
+                                                    monsters.remove(m_idx);
+                                                }
+                                                break;
+                                            }
+                                            cx += dx;
+                                            cy += dy;
+                                        }
+                                    } else { // Fire Bolt (cost 5)
+                                        player.mana -= 5;
+                                        let mut cx = player.x as isize + dx;
+                                        let mut cy = player.y as isize + dy;
+                                        status_msg = "Your Fire Bolt flares out into nothingness!".to_string();
+                                        loop {
+                                            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                                                if tile.tile_type == TileType::Wall {
+                                                    status_msg = "Your Fire Bolt strikes a wall!".to_string();
+                                                    break;
+                                                }
+                                            } else {
+                                                break;
+                                            }
+                                            if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
+                                                let dmg = rng.gen_range(4..=24);
+                                                let m_name = monsters[m_idx].name.clone();
+                                                let exp = monsters[m_idx].experience_reward;
+                                                status_msg = format!("Fire Bolt incinerates {} for {} damage!", m_name, dmg);
+                                                if monsters[m_idx].take_damage(dmg) {
+                                                    status_msg.push_str(" Gained experience.");
+                                                    player.add_experience(exp);
+                                                    monsters.remove(m_idx);
+                                                }
+                                                break;
+                                            }
+                                            cx += dx;
+                                            cy += dy;
+                                        }
+                                    }
+
+                                    screen_mode = ScreenMode::Dungeon;
+                                    player_acted = true;
+                                }
                             } else if screen_mode == ScreenMode::Shop {
                                 match c {
                                     's' => {
@@ -1149,7 +1529,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let idx = c as usize - 'a' as usize;
                                 let scroll_indices: Vec<usize> = player.inventory.iter()
                                     .enumerate()
-                                    .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}) && !item.name.contains("Torch"))
+                                    .filter(|(_, item)| {
+                                        matches!(item.item_type, ItemType::Scroll {..}) &&
+                                        !item.name.contains("Torch") &&
+                                        !item.name.contains("Spellbook") &&
+                                        !item.name.contains("Prayerbook")
+                                    })
                                     .map(|(i, _)| i)
                                     .collect();
 
