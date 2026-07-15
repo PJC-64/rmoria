@@ -3,7 +3,9 @@ use rand::Rng;
 
 pub mod tile;
 
-pub use tile::{Tile, TileType};
+pub use tile::{Tile, TileType, TrapType};
+use crate::player::{Item, ItemType};
+use crate::dice::Dice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShopType {
@@ -32,6 +34,13 @@ pub struct RoomInfo {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct FloorItem {
+    pub x: usize,
+    pub y: usize,
+    pub item: Item,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DungeonLevel {
     pub width: usize,
     pub height: usize,
@@ -40,6 +49,7 @@ pub struct DungeonLevel {
     pub shops: Vec<ShopInfo>,
     pub max_depth: u32,
     pub rooms: Vec<RoomInfo>,
+    pub items: Vec<FloorItem>,
 }
 
 struct Room {
@@ -64,10 +74,49 @@ impl Room {
     }
 }
 
+fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
+    let roll = rng.gen_range(0..100);
+    if roll < 25 {
+        let is_heal = rng.gen_bool(0.3);
+        if is_heal && depth >= 3 {
+            Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 })
+        } else {
+            Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
+        }
+    } else if roll < 50 {
+        let book_roll = rng.gen_range(0..10);
+        if book_roll == 0 {
+            Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false })
+        } else if book_roll == 1 {
+            Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false })
+        } else {
+            let is_teleport = rng.gen_bool(0.3);
+            if is_teleport && depth >= 2 {
+                Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true })
+            } else {
+                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true })
+            }
+        }
+    } else if roll < 70 {
+        let piece = rng.gen_range(0..4);
+        match piece {
+            0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
+            1 => Item::new("Broadsword", 1, 150, ItemType::Weapon { damage: Dice::new(2, 5) }),
+            2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
+            _ => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
+        }
+    } else if roll < 85 {
+        Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false })
+    } else {
+        let gold_amount = rng.gen_range(15..=40) * (depth + 1);
+        Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
+    }
+}
+
 impl DungeonLevel {
     pub fn new(width: usize, height: usize, depth: u32, max_depth: u32) -> Self {
         let tiles = vec![Tile::new(TileType::Wall); width * height];
-        Self { width, height, tiles, depth, shops: Vec::new(), max_depth, rooms: Vec::new() }
+        Self { width, height, tiles, depth, shops: Vec::new(), max_depth, rooms: Vec::new(), items: Vec::new() }
     }
 
     pub fn get_tile(&self, x: usize, y: usize) -> Option<&Tile> {
@@ -110,11 +159,23 @@ impl DungeonLevel {
         }
     }
 
-    /// Generates the dungeon level based on depth.
-    /// Town Level (depth 0) generates shops and streets.
-    /// Deep Levels (depth > 0) generate random rooms, corridors, and doorways.
+    fn find_random_floor_tile(&self) -> (usize, usize) {
+        let mut rng = rand::thread_rng();
+        for _ in 0..2000 {
+            let tx = rng.gen_range(1..(self.width - 1));
+            let ty = rng.gen_range(1..(self.height - 1));
+            if let Some(tile) = self.get_tile(tx, ty) {
+                if tile.tile_type == TileType::Floor {
+                    return (tx, ty);
+                }
+            }
+        }
+        (30, 10)
+    }
+
     pub fn generate_simple_floor(&mut self) {
         let mut rng = rand::thread_rng();
+        self.items.clear();
 
         if self.depth == 0 {
             // --- TOWN LEVEL GENERATION ---
@@ -243,8 +304,6 @@ impl DungeonLevel {
                         }
                     }
 
-                    // Lit Room Probability Scales Down with depth:
-                    // Depth 1: 90% chance, Depth 2: 80% chance, ..., Depth 9: 10% chance, Depth 10+: 0% chance
                     let lit_chance = 1.0 - (self.depth as f64 / 10.0).min(1.0);
                     let is_lit = rng.gen_bool(lit_chance);
 
@@ -286,13 +345,40 @@ impl DungeonLevel {
                             if (w_l && w_r && f_t && f_b) || (w_t && w_b && f_l && f_r) {
                                 if rng.gen_bool(0.35) {
                                     if let Some(mut_tile) = self.get_tile_mut(x, y) {
-                                        mut_tile.tile_type = TileType::DoorClosed;
+                                        // 25% chance this door is a Secret Door!
+                                        if rng.gen_bool(0.25) {
+                                            mut_tile.tile_type = TileType::SecretDoor;
+                                        } else {
+                                            mut_tile.tile_type = TileType::DoorClosed;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            // --- SPAWN TRAPS ---
+            let num_traps = rng.gen_range(3..=6);
+            for _ in 0..num_traps {
+                let (tx, ty) = self.find_random_floor_tile();
+                let trap_type = match rng.gen_range(0..3) {
+                    0 => TrapType::Arrow,
+                    1 => TrapType::PoisonGas,
+                    _ => TrapType::Teleport,
+                };
+                if let Some(tile) = self.get_tile_mut(tx, ty) {
+                    tile.tile_type = TileType::Trap { detected: false, trap_type };
+                }
+            }
+
+            // --- SPAWN RANDOM ITEMS ---
+            let num_items = rng.gen_range(4..=8);
+            for _ in 0..num_items {
+                let (ix, iy) = self.find_random_floor_tile();
+                let item = generate_random_floor_item(self.depth, &mut rng);
+                self.items.push(FloorItem { x: ix, y: iy, item });
             }
 
             let (su_x, su_y) = rooms_temp[0].center();

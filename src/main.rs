@@ -16,7 +16,7 @@ use std::path::Path;
 use std::fs;
 use rand::Rng;
 use input::{InputMapper, KeyboardProfile, Action, Direction};
-use dungeon::{DungeonLevel, TileType, ShopType};
+use dungeon::{DungeonLevel, TileType, ShopType, FloorItem, tile::TrapType};
 use player::{Player, Race, Class, Item, ItemType};
 use save::GameState;
 use dice::Dice;
@@ -38,6 +38,7 @@ pub enum ScreenMode {
     PrayMenu,
     SelectSpellDirection,
     CharacterStatsMenu,
+    SelectDisarmDirection,
 }
 
 struct MonsterTemplate {
@@ -98,6 +99,60 @@ fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
             ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
         ],
+    }
+}
+
+fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
+    let roll = rng.gen_range(0..100);
+    if roll < 25 {
+        let is_heal = rng.gen_bool(0.3);
+        if is_heal && depth >= 3 {
+            Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 })
+        } else {
+            Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
+        }
+    } else if roll < 50 {
+        let book_roll = rng.gen_range(0..10);
+        if book_roll == 0 {
+            Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false })
+        } else if book_roll == 1 {
+            Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false })
+        } else {
+            let is_teleport = rng.gen_bool(0.3);
+            if is_teleport && depth >= 2 {
+                Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true })
+            } else {
+                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true })
+            }
+        }
+    } else if roll < 70 {
+        let piece = rng.gen_range(0..4);
+        match piece {
+            0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
+            1 => Item::new("Broadsword", 1, 150, ItemType::Weapon { damage: Dice::new(2, 5) }),
+            2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
+            _ => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
+        }
+    } else if roll < 85 {
+        Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false })
+    } else {
+        let gold_amount = rng.gen_range(15..=40) * (depth + 1);
+        Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
+    }
+}
+
+fn get_item_symbol(item: &Item) -> char {
+    if item.name.contains("Gold Pile") {
+        '*'
+    } else if item.name.contains("Spellbook") || item.name.contains("Prayerbook") {
+        '?'
+    } else {
+        match &item.item_type {
+            ItemType::Weapon { .. } => ')',
+            ItemType::Armor { .. } => '[',
+            ItemType::Potion { .. } => '!',
+            ItemType::Scroll { .. } => '?',
+        }
     }
 }
 
@@ -415,6 +470,15 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             "".to_string()
         }
+        ScreenMode::SelectDisarmDirection => {
+            if row == 0 {
+                return "--- TRAP DISARMING ---".to_string();
+            }
+            if row == 2 {
+                return "Choose direction of the trap to disarm (q/w/e/a/d/z/x/c):".to_string();
+            }
+            "".to_string()
+        }
         ScreenMode::CharacterStatsMenu => {
             let split_history = wrap_text(&player.history, 62);
             match row {
@@ -518,7 +582,7 @@ fn has_los(x1: usize, y1: usize, x2: usize, y2: usize, level: &DungeonLevel) -> 
         }
         if cx != x1 as isize || cy != y1 as isize {
             if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                if tile.tile_type == TileType::Wall || tile.tile_type == TileType::DoorClosed {
+                if tile.tile_type == TileType::Wall || tile.tile_type == TileType::DoorClosed || tile.tile_type == TileType::SecretDoor {
                     return false;
                 }
             }
@@ -633,6 +697,9 @@ fn draw_map(
                     } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
                         map_part.push(monster.symbol);
+                    } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor) {
+                        let floor_item = level.items.iter().find(|i| i.x == map_x && i.y == map_y).unwrap();
+                        map_part.push(get_item_symbol(&floor_item.item));
                     } else if tile.visible || tile.remembered {
                         match tile.tile_type {
                             TileType::Wall => map_part.push('#'),
@@ -642,6 +709,14 @@ fn draw_map(
                             TileType::StairsUp => map_part.push('<'),
                             TileType::StairsDown => map_part.push('>'),
                             TileType::ShopDoor(num) => map_part.push((b'0' + num) as char),
+                            TileType::SecretDoor => map_part.push('#'), // Secret Door is indistinguishable from wall!
+                            TileType::Trap { detected, .. } => {
+                                if detected {
+                                    map_part.push('^');
+                                } else {
+                                    map_part.push('.');
+                                }
+                            }
                             TileType::Empty => map_part.push(' '),
                         }
                     } else {
@@ -1043,6 +1118,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 } else {
                                                     status_msg.push_str(" Gained 0 EXP (Town monster).");
                                                 }
+
+                                                // Monster Drop check (30% chance or 100% for Boss/Lich)
+                                                let is_boss = monster_name == "The Balrog" || monster_name.contains("Lich");
+                                                if is_boss || rng.gen_bool(0.30) {
+                                                    let drop_item = if monster_name == "The Balrog" {
+                                                        Item::new("Broadsword of Slaying", 1, 150, ItemType::Weapon { damage: Dice::new(3, 6) })
+                                                    } else {
+                                                        generate_random_floor_item(level.depth, &mut rng)
+                                                    };
+                                                    level.items.push(FloorItem { x: next_x, y: next_y, item: drop_item.clone() });
+                                                    status_msg.push_str(&format!(" It dropped a {}!", drop_item.name));
+                                                }
                                                 
                                                 if monster_name == "The Balrog" {
                                                     player.balrog_killed = true;
@@ -1077,7 +1164,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     } else {
                                         if let Some(tile) = level.get_tile(next_x, next_y) {
                                             if tile.is_passable() || direction == Direction::Rest {
+                                                // Trap check on destination
+                                                let mut trigger_trap = None;
+                                                if let TileType::Trap { trap_type, .. } = tile.tile_type {
+                                                    trigger_trap = Some(trap_type);
+                                                }
+
                                                 player.move_to(next_x, next_y);
+                                                
                                                 if direction == Direction::Rest {
                                                     player.hp = (player.hp + 1).min(player.max_hp);
                                                     player.mana = (player.mana + 1).min(player.max_mana);
@@ -1085,6 +1179,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 } else {
                                                     status_msg = format!("Moved to ({}, {})", next_x, next_y);
                                                 }
+
+                                                if let Some(tt) = trigger_trap {
+                                                    match tt {
+                                                        TrapType::Arrow => {
+                                                            let dmg = rng.gen_range(1..=6);
+                                                            player.hp -= dmg;
+                                                            status_msg = format!("Click! You set off an arrow trap! You take {} damage!", dmg);
+                                                        }
+                                                        TrapType::PoisonGas => {
+                                                            let dmg = rng.gen_range(2..=8);
+                                                            player.hp -= dmg;
+                                                            status_msg = format!("Click! Poison gas fills the corridor! You take {} damage!", dmg);
+                                                        }
+                                                        TrapType::Teleport => {
+                                                            let dest = find_passable_tile(&level);
+                                                            player.move_to(dest.0, dest.1);
+                                                            status_msg = "Click! A teleport trap warps you to another location!".to_string();
+                                                        }
+                                                    }
+                                                    if let Some(t) = level.get_tile_mut(player.x, player.y) {
+                                                        t.tile_type = TileType::Floor; // Trap gets consumed
+                                                    }
+                                                }
+
+                                                // Pickup Floor Item Check
+                                                let item_idx = level.items.iter().position(|i| i.x == player.x && i.y == player.y);
+                                                if let Some(idx) = item_idx {
+                                                    let floor_item = level.items.remove(idx);
+                                                    let item = floor_item.item;
+                                                    if item.name.contains("Gold Pile") {
+                                                        let gold_amount = item.name.split('[')
+                                                            .nth(1)
+                                                            .and_then(|s| s.split(' ').next())
+                                                            .and_then(|s| s.parse::<u32>().ok())
+                                                            .unwrap_or(20);
+                                                        player.gold += gold_amount;
+                                                        status_msg = format!("You picked up {} gold pieces.", gold_amount);
+                                                    } else {
+                                                        status_msg = format!("You picked up a {}.", item.name);
+                                                        add_item_to_inventory(&mut player.inventory, item);
+                                                    }
+                                                }
+
                                                 player_acted = true;
                                             } else {
                                                 status_msg = "Ouch! You bumped into a wall.".to_string();
@@ -1199,6 +1336,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     screen_mode = ScreenMode::CharacterStatsMenu;
                                     status_msg = "Viewing character sheet.".to_string();
                                 }
+                                Action::Disarm => {
+                                    screen_mode = ScreenMode::SelectDisarmDirection;
+                                    status_msg = "Disarm trap: choose direction...".to_string();
+                                }
+                                Action::SearchOneTurn => {
+                                    // Search 8 adjacent tiles
+                                    let is_rogue = player.class == Class::Rogue;
+                                    let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
+                                    let trap_chance = if is_rogue { 0.70 } else { 0.30 };
+                                    let door_chance = if is_rogue { 0.60 } else if is_elf { 0.40 } else { 0.20 };
+                                    
+                                    let mut found_something = false;
+
+                                    for dy in -1..=1 {
+                                        for dx in -1..=1 {
+                                            if dx == 0 && dy == 0 { continue; }
+                                            let sx = (player.x as isize + dx) as usize;
+                                            let sy = (player.y as isize + dy) as usize;
+                                            
+                                            if let Some(tile) = level.get_tile_mut(sx, sy) {
+                                                match tile.tile_type {
+                                                    TileType::SecretDoor => {
+                                                        if rng.gen_bool(door_chance) {
+                                                            tile.tile_type = TileType::DoorClosed;
+                                                            status_msg = "You found a secret door!".to_string();
+                                                            found_something = true;
+                                                        }
+                                                    }
+                                                    TileType::Trap { ref mut detected, .. } => {
+                                                        if !*detected && rng.gen_bool(trap_chance) {
+                                                            *detected = true;
+                                                            status_msg = "You detected a trap!".to_string();
+                                                            found_something = true;
+                                                        }
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    if !found_something {
+                                        status_msg = "You search but find nothing.".to_string();
+                                    }
+                                    player_acted = true;
+                                }
                                 Action::Quit => {
                                     status_msg = "Saving game and quitting...".to_string();
                                     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
@@ -1235,9 +1418,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
                                 } else if screen_mode == ScreenMode::BrowseBookMenu {
-                                    // Exit browse via ESC
+                                    // Browse mode exit via ESC
                                 } else if screen_mode == ScreenMode::CharacterStatsMenu {
-                                    // Exit character sheet via ESC
+                                    // Exit sheet via ESC
+                                } else if screen_mode == ScreenMode::SelectDisarmDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let (dx, dy) = match direction {
+                                            Direction::NorthWest => (-1, -1),
+                                            Direction::North => (0, -1),
+                                            Direction::NorthEast => (1, -1),
+                                            Direction::West => (-1, 0),
+                                            Direction::Rest => (0, 0),
+                                            Direction::East => (1, 0),
+                                            Direction::SouthWest => (-1, 1),
+                                            Direction::South => (0, 1),
+                                            Direction::SouthEast => (1, 1),
+                                        };
+                                        let sx = (player.x as isize + dx) as usize;
+                                        let sy = (player.y as isize + dy) as usize;
+
+                                        let mut disarmed = false;
+                                        let mut trap_info = None;
+                                        if let Some(tile) = level.get_tile(sx, sy) {
+                                            if let TileType::Trap { detected, trap_type } = tile.tile_type {
+                                                if detected {
+                                                    trap_info = Some(trap_type);
+                                                }
+                                            }
+                                        }
+
+                                        if let Some(trap_type) = trap_info {
+                                            let is_rogue = player.class == Class::Rogue;
+                                            let check_chance = if is_rogue { 0.85 } else { 0.40 };
+                                            if rng.gen_bool(check_chance) {
+                                                if let Some(tile) = level.get_tile_mut(sx, sy) {
+                                                    tile.tile_type = TileType::Floor;
+                                                }
+                                                status_msg = "You successfully disarmed the trap.".to_string();
+                                            } else {
+                                                status_msg = "You set off the trap while trying to disarm it!".to_string();
+                                                match trap_type {
+                                                    TrapType::Arrow => {
+                                                        let dmg = rng.gen_range(1..=6);
+                                                        player.hp -= dmg;
+                                                        status_msg.push_str(&format!(" Arrow hits you for {}!", dmg));
+                                                    }
+                                                    TrapType::PoisonGas => {
+                                                        let dmg = rng.gen_range(2..=8);
+                                                        player.hp -= dmg;
+                                                        status_msg.push_str(&format!(" Poison gas hits you for {}!", dmg));
+                                                    }
+                                                    TrapType::Teleport => {
+                                                        let dest = find_passable_tile(&level);
+                                                        player.move_to(dest.0, dest.1);
+                                                        status_msg.push_str(" You are teleported!");
+                                                    }
+                                                }
+                                                if let Some(tile) = level.get_tile_mut(sx, sy) {
+                                                    tile.tile_type = TileType::Floor;
+                                                }
+                                            }
+                                            disarmed = true;
+                                        }
+                                        if !disarmed {
+                                            status_msg = "No detected trap in that direction.".to_string();
+                                        }
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
                                 } else if screen_mode == ScreenMode::CastSpellMenu {
                                     match c {
                                         'a' => {
@@ -1415,7 +1664,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             Direction::SouthWest => (-1, 1),
                                             Direction::South => (0, 1),
                                             Direction::SouthEast => (1, 1),
-                                    };
+                                        };
 
                                         if selected_spell_idx == 0 {
                                             player.mana -= 1;
@@ -1424,7 +1673,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             status_msg = "Your Magic Missile fizzles into the dark!".to_string();
                                             loop {
                                                 if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                                                    if tile.tile_type == TileType::Wall {
+                                                    if tile.tile_type == TileType::Wall || tile.tile_type == TileType::SecretDoor {
                                                         status_msg = "Your Magic Missile hits a wall and breaks!".to_string();
                                                         break;
                                                     }
@@ -1453,7 +1702,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             status_msg = "Your Fire Bolt flares out into nothingness!".to_string();
                                             loop {
                                                 if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                                                    if tile.tile_type == TileType::Wall {
+                                                    if tile.tile_type == TileType::Wall || tile.tile_type == TileType::SecretDoor {
                                                         status_msg = "Your Fire Bolt strikes a wall!".to_string();
                                                         break;
                                                     }
