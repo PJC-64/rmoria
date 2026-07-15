@@ -567,19 +567,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
 
                                     // Teleport to a random floor tile
-                                    let mut rx = player.x;
-                                    let mut ry = player.y;
-                                    loop {
+                                    let (rx, ry) = loop {
                                         let tx = rng.gen_range(1..(level.width - 1));
                                         let ty = rng.gen_range(1..(level.height - 1));
                                         if let Some(tile) = level.get_tile(tx, ty) {
                                             if tile.tile_type == TileType::Floor {
-                                                rx = tx;
-                                                ry = ty;
-                                                break;
+                                                break (tx, ty);
                                             }
                                         }
-                                    }
+                                    };
                                     player.move_to(rx, ry);
 
                                     status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);

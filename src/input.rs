@@ -47,6 +47,7 @@ pub enum Action {
 
 /// Keyboard Profiles
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum KeyboardProfile {
     StandardQweasd,
     RoguelikeQweasd,
