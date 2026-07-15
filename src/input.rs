@@ -1,5 +1,7 @@
+use serde::{Serialize, Deserialize};
+
 /// Directions mapped to numeric keypad logic (1-9).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Direction {
     SouthWest = 1,
     South = 2,
@@ -13,7 +15,7 @@ pub enum Direction {
 }
 
 /// Internal actions representations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     Move(Direction),
     Quaff,              // Drink potion
@@ -35,6 +37,8 @@ pub enum Action {
     ReadScroll,         // Read scroll
     TakeOff,            // Unequip item
     UseStaff,           // Activate staff
+    GoUpStairs,         // Go up stairs (<)
+    GoDownStairs,       // Go down stairs (>)
     Quit,               // Save and quit or exit
     Help,               // Display help screen
     Unknown(char),
@@ -100,6 +104,8 @@ impl InputMapper {
             'p' => Action::Pray,
             'r' => Action::ReadScroll,
             't' => Action::TakeOff,
+            '<' => Action::GoUpStairs,
+            '>' => Action::GoDownStairs,
             'Q' => Action::Quit,
             '?' => Action::Help,
 
@@ -138,6 +144,8 @@ impl InputMapper {
             'o' => Action::OpenDoor,
             'm' => Action::CastSpell,
             't' => Action::TakeOff,
+            '<' => Action::GoUpStairs,
+            '>' => Action::GoDownStairs,
             '?' => Action::Help,
 
             other => Action::Unknown(other),

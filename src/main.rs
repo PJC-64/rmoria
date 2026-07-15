@@ -21,7 +21,7 @@ use save::GameState;
 use dice::Dice;
 use entity::monster::Monster;
 
-fn get_lhs_stat_line(y: usize, player: &Player) -> String {
+fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String {
     let rank = match player.class {
         Class::Warrior => "Rookie",
         Class::Mage => "Apprentice",
@@ -47,6 +47,14 @@ fn get_lhs_stat_line(y: usize, player: &Player) -> String {
         16 => format!("CHP:  {:>5}", player.hp),
         17 => format!("AC:   {:>5}", 10), // Base AC
         18 => format!("GOLD: {:>5}", player.gold),
+        20 => {
+            let feet = level.depth * 50;
+            if feet == 0 {
+                "Town Level".to_string()
+            } else {
+                format!("{} feet", feet)
+            }
+        }
         _ => "".to_string(),
     };
     
@@ -63,14 +71,11 @@ fn draw_map(level: &DungeonLevel, player: &Player, monsters: &[Monster], status_
 
     // Rows 1 to 22: LHS Stats + Space Divider + Dungeon map row
     for map_y in 0..level.height {
-        // 1. Get stats string (exactly 12 characters wide)
-        let stats_part = get_lhs_stat_line(map_y + 1, player);
+        let stats_part = get_lhs_stat_line(map_y + 1, player, level);
         screen_buf.push_str(&stats_part);
         
-        // 2. Add the 1 space separator column
         screen_buf.push(' ');
 
-        // 3. Add the dungeon map row (66 characters wide)
         for map_x in 0..level.width {
             if map_x == player.x && map_y == player.y {
                 screen_buf.push('@');
@@ -91,12 +96,30 @@ fn draw_map(level: &DungeonLevel, player: &Player, monsters: &[Monster], status_
         screen_buf.push_str("\r\n");
     }
     
-    // Row 23: Bottom border
     screen_buf.push_str("-------------------------------------------------------------------------------\r\n");
     
     print!("{}", screen_buf);
     io::stdout().flush()?;
     Ok(())
+}
+
+fn generate_monsters_for_depth(depth: u32) -> Vec<Monster> {
+    if depth == 0 {
+        return Vec::new(); // Town is completely safe
+    }
+    
+    let mut mons = vec![
+        Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
+        Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
+        Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
+    ];
+    
+    if depth >= 3 {
+        // Spawn hard-hitting Cave Troll at depth 3+ (150 feet+)
+        mons.push(Monster::new("Cave Troll", 'T', 50, 16, 25, Dice::new(2, 6)));
+    }
+    
+    mons
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -109,45 +132,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, EnterAlternateScreen, Hide)?;
 
     // 2. Load game state if save file exists, otherwise create new
-    let (mut player, level, mut monsters, mut status_msg) = if Path::new(save_path).exists() {
+    let (mut player, mut level, mut monsters, mut status_msg) = if Path::new(save_path).exists() {
         match GameState::load_from_file(save_path) {
             Ok(state) => {
                 (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string())
             }
             Err(e) => {
                 let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
-                let mut lvl = DungeonLevel::new(66, 22);
-                for y in 1..21 {
-                    for x in 1..65 {
-                        if let Some(tile) = lvl.get_tile_mut(x, y) {
-                            tile.tile_type = TileType::Floor;
-                        }
-                    }
-                }
-                let mons = vec![
-                    Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
-                    Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
-                    Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
-                ];
+                let mut lvl = DungeonLevel::new(66, 22, 0); // Start at Town (depth 0)
+                lvl.generate_simple_floor();
+                let mons = generate_monsters_for_depth(0);
                 (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e))
             }
         }
     } else {
         let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
-        let mut lvl = DungeonLevel::new(66, 22);
-        for y in 1..21 {
-            for x in 1..65 {
-                if let Some(tile) = lvl.get_tile_mut(x, y) {
-                    tile.tile_type = TileType::Floor;
-                }
-            }
-        }
-        let mons = vec![
-            Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
-            Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
-            Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
-        ];
-        (p, lvl, mons, "New game started! Defeat the monsters.".to_string())
+        let mut lvl = DungeonLevel::new(66, 22, 0); // Start at Town (depth 0)
+        lvl.generate_simple_floor();
+        let mons = generate_monsters_for_depth(0);
+        (p, lvl, mons, "New game started! Find stairs down (>) to enter the dungeon.".to_string())
     };
 
     // Render initial view
@@ -184,7 +187,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let next_x = (player.x as isize + dx) as usize;
                             let next_y = (player.y as isize + dy) as usize;
 
-                            // 1. Check if there is a monster at the destination
                             if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
                                 // Player attacks!
                                 let damage = player.roll_melee_damage(&mut rng);
@@ -196,7 +198,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 player_acted = true;
                             } else {
-                                // 2. Normal movement or rest
                                 if let Some(tile) = level.get_tile(next_x, next_y) {
                                     if tile.is_passable() || direction == Direction::Rest {
                                         player.move_to(next_x, next_y);
@@ -210,6 +211,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     } else {
                                         status_msg = "Ouch! You bumped into a wall.".to_string();
                                     }
+                                }
+                            }
+                        }
+                        Action::GoUpStairs => {
+                            if let Some(tile) = level.get_tile(player.x, player.y) {
+                                if tile.tile_type == TileType::StairsUp && level.depth > 0 {
+                                    let new_depth = level.depth - 1;
+                                    level = DungeonLevel::new(66, 22, new_depth);
+                                    level.generate_simple_floor();
+                                    monsters = generate_monsters_for_depth(new_depth);
+                                    player.move_to(40, 15); // Place player on the stairs down location of new level
+                                    status_msg = format!("You climb up to depth {} ({} feet).", new_depth, new_depth * 50);
+                                    player_acted = true;
+                                } else {
+                                    status_msg = "You see no up stairs (<) here.".to_string();
+                                }
+                            }
+                        }
+                        Action::GoDownStairs => {
+                            if let Some(tile) = level.get_tile(player.x, player.y) {
+                                if tile.tile_type == TileType::StairsDown {
+                                    let new_depth = level.depth + 1;
+                                    level = DungeonLevel::new(66, 22, new_depth);
+                                    level.generate_simple_floor();
+                                    monsters = generate_monsters_for_depth(new_depth);
+                                    player.move_to(15, 15); // Place player on the stairs up location of new level
+                                    status_msg = format!("You climb down to depth {} ({} feet).", new_depth, new_depth * 50);
+                                    player_acted = true;
+                                } else {
+                                    status_msg = "You see no down stairs (>) here.".to_string();
                                 }
                             }
                         }
