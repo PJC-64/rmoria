@@ -33,7 +33,6 @@ pub enum ScreenMode {
     ReadMenu,
     Shop,
     ShopSellMenu,
-    // Magic wielders extensions
     BrowseBookMenu,
     CastSpellMenu,
     PrayMenu,
@@ -50,22 +49,16 @@ struct MonsterTemplate {
 }
 
 const MONSTER_DB: &[MonsterTemplate] = &[
-    // Level 1
     MonsterTemplate { name: "Red Mold", symbol: 'm', level: 1, max_hp: 5, damage: Dice { num: 1, sides: 3 }, exp_reward: 5 },
     MonsterTemplate { name: "Giant Centipede", symbol: 'c', level: 1, max_hp: 7, damage: Dice { num: 1, sides: 3 }, exp_reward: 7 },
-    // Level 2
     MonsterTemplate { name: "Goblin", symbol: 'g', level: 2, max_hp: 8, damage: Dice { num: 1, sides: 4 }, exp_reward: 10 },
     MonsterTemplate { name: "Giant White Rat", symbol: 'r', level: 2, max_hp: 9, damage: Dice { num: 1, sides: 4 }, exp_reward: 12 },
-    // Level 3
     MonsterTemplate { name: "Orc", symbol: 'o', level: 3, max_hp: 15, damage: Dice { num: 1, sides: 6 }, exp_reward: 25 },
     MonsterTemplate { name: "Baby Dragon", symbol: 'd', level: 3, max_hp: 20, damage: Dice { num: 2, sides: 4 }, exp_reward: 35 },
-    // Level 4
     MonsterTemplate { name: "Cave Troll", symbol: 'T', level: 4, max_hp: 30, damage: Dice { num: 2, sides: 6 }, exp_reward: 50 },
     MonsterTemplate { name: "Spectre", symbol: 'S', level: 4, max_hp: 22, damage: Dice { num: 1, sides: 8 }, exp_reward: 60 },
-    // Level 5
     MonsterTemplate { name: "Uruk-Hai", symbol: 'U', level: 5, max_hp: 35, damage: Dice { num: 2, sides: 6 }, exp_reward: 80 },
     MonsterTemplate { name: "Giant Spider", symbol: 's', level: 5, max_hp: 28, damage: Dice { num: 1, sides: 10 }, exp_reward: 75 },
-    // Level 6
     MonsterTemplate { name: "Ghost Warrior", symbol: 'W', level: 6, max_hp: 40, damage: Dice { num: 2, sides: 8 }, exp_reward: 120 },
     MonsterTemplate { name: "Lich", symbol: 'L', level: 7, max_hp: 55, damage: Dice { num: 3, sides: 6 }, exp_reward: 180 },
 ];
@@ -572,51 +565,55 @@ fn draw_map(
 ) -> Result<(), io::Error> {
     update_visibility(level, player);
 
-    execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
-    
-    let mut screen_buf = String::new();
-    screen_buf.push_str(&format!("Message: {}\x1b[K\r\n", status_msg));
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    let offset_x = ((cols as isize - 80) / 2).max(0) as u16;
+    let offset_y = ((rows as isize - 24) / 2).max(0) as u16;
+
+    let msg_line = format!("Message: {}\x1b[K", status_msg);
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
+    print!("{}", msg_line);
 
     for map_y in 0..level.height {
         let stats_part = get_lhs_stat_line(map_y + 1, player, level);
-        screen_buf.push_str(&stats_part);
-        
-        screen_buf.push(' ');
+        let mut map_part = String::new();
 
         if mode == ScreenMode::Dungeon {
             for map_x in 0..level.width {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
-                        screen_buf.push('@');
+                        map_part.push('@');
                     } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
-                        screen_buf.push(monster.symbol);
+                        map_part.push(monster.symbol);
                     } else if tile.visible || tile.remembered {
                         match tile.tile_type {
-                            TileType::Wall => screen_buf.push('#'),
-                            TileType::Floor => screen_buf.push('.'),
-                            TileType::DoorClosed => screen_buf.push('+'),
-                            TileType::DoorOpen => screen_buf.push('\''),
-                            TileType::StairsUp => screen_buf.push('<'),
-                            TileType::StairsDown => screen_buf.push('>'),
-                            TileType::ShopDoor(num) => screen_buf.push((b'0' + num) as char),
-                            TileType::Empty => screen_buf.push(' '),
+                            TileType::Wall => map_part.push('#'),
+                            TileType::Floor => map_part.push('.'),
+                            TileType::DoorClosed => map_part.push('+'),
+                            TileType::DoorOpen => map_part.push('\''),
+                            TileType::StairsUp => map_part.push('<'),
+                            TileType::StairsDown => map_part.push('>'),
+                            TileType::ShopDoor(num) => map_part.push((b'0' + num) as char),
+                            TileType::Empty => map_part.push(' '),
                         }
                     } else {
-                        screen_buf.push(' ');
+                        map_part.push(' ');
                     }
                 }
             }
         } else {
-            let overlay_row = get_overlay_row_text(map_y, mode, player, shop);
-            screen_buf.push_str(&format!("{:<66}", overlay_row));
+            map_part = format!("{:<66}", get_overlay_row_text(map_y, mode, player, shop));
         }
-        screen_buf.push_str("\r\n");
+
+        let row_line = format!("{} {}\x1b[K", stats_part, map_part);
+        let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 1 + map_y as u16));
+        print!("{}", row_line);
     }
     
-    screen_buf.push_str("-------------------------------------------------------------------------------\r\n");
+    let divider = "-------------------------------------------------------------------------------\x1b[K";
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 23));
+    print!("{}", divider);
     
-    print!("{}", screen_buf);
     io::stdout().flush()?;
     Ok(())
 }
@@ -695,18 +692,30 @@ fn add_item_to_inventory(inventory: &mut Vec<Item>, item: Item) {
 }
 
 fn print_creation_screen(title: &str, options: &[&str]) {
-    let mut buf = String::new();
-    buf.push_str("==========================================================\r\n");
-    buf.push_str(&format!("  Moria Character Creator: {:<30}\r\n", title));
-    buf.push_str("==========================================================\r\n\r\n");
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    let offset_x = ((cols as isize - 58) / 2).max(0) as u16;
+    let offset_y = ((rows as isize - 18) / 2).max(0) as u16;
+
+    let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+    let mut row_idx = 0;
+    
+    let mut print_line = |text: &str| {
+        let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + row_idx));
+        print!("{}", text);
+        row_idx += 1;
+    };
+
+    print_line("==========================================================");
+    print_line(&format!("  Moria Character Creator: {:<30}", title));
+    print_line("==========================================================");
+    print_line("");
     for opt in options {
-        buf.push_str(&format!("  {}\x1b[K\r\n", opt));
+        print_line(&format!("  {}", opt));
     }
-    for _ in 0..12 {
-        buf.push_str("\x1b[K\r\n");
+    for _ in 0..(12 - options.len()) {
+        print_line("");
     }
-    buf.push_str("==========================================================\r\n");
-    print!("{}", buf);
+    print_line("==========================================================");
     let _ = io::stdout().flush();
 }
 
@@ -819,14 +828,22 @@ fn run_character_creation(
         }
     };
 
-    // 4. Input Name
+    // 4. Input Name (centered on terminal)
     disable_raw_mode()?;
     execute!(io::stdout(), Show)?;
     
-    execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    let offset_x = ((cols as isize - 58) / 2).max(0) as u16;
+    let offset_y = ((rows as isize - 8) / 2).max(0) as u16;
+
+    let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
     print!("==========================================================\n");
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 1));
     print!("              ENTER CHARACTER NAME                        \n");
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 2));
     print!("==========================================================\n");
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 4));
     print!("Name: ");
     let _ = io::stdout().flush();
     
@@ -852,9 +869,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_path = "save.json";
     let mut rng = rand::thread_rng();
     
+    // Check terminal size first before entering alternate screen
+    let (cols, rows) = crossterm::terminal::size()?;
+    if cols < 80 || rows < 24 {
+        return Err(format!(
+            "Terminal size is too small (current: {}x{}). Please resize your terminal to at least 80x24.",
+            cols, rows
+        ).into());
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, Hide)?;
+    execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All))?;
 
     let (mut player, mut level, mut monsters, mut status_msg, max_depth) = if Path::new(save_path).exists() {
         match GameState::load_from_file(save_path) {
@@ -895,430 +922,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     'game_loop: loop {
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key_event) = event::read()? {
-                if key_event.code == KeyCode::Char('c') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    break 'game_loop;
+            match event::read()? {
+                Event::Resize(_, _) => {
+                    let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                 }
-
-                let mut player_acted = false;
-
-                if screen_mode == ScreenMode::Dungeon {
-                    if let KeyCode::Char(c) = key_event.code {
-                        let action = mapper.map_key(c);
-                        match action {
-                            Action::Move(direction) => {
-                                let (dx, dy) = match direction {
-                                    Direction::NorthWest => (-1, -1),
-                                    Direction::North => (0, -1),
-                                    Direction::NorthEast => (1, -1),
-                                    Direction::West => (-1, 0),
-                                    Direction::Rest => (0, 0),
-                                    Direction::East => (1, 0),
-                                    Direction::SouthWest => (-1, 1),
-                                    Direction::South => (0, 1),
-                                    Direction::SouthEast => (1, 1),
-                                };
-
-                                let next_x = (player.x as isize + dx) as usize;
-                                let next_y = (player.y as isize + dy) as usize;
-
-                                let mut entered_shop = false;
-                                if level.depth == 0 {
-                                    if let Some(shop_info) = level.shops.iter().find(|s| s.door_x == next_x && s.door_y == next_y) {
-                                        screen_mode = ScreenMode::Shop;
-                                        active_shop = shop_info.shop_type;
-                                        let shop_name = match active_shop {
-                                            ShopType::General => "Town General Store",
-                                            ShopType::Armory => "Town Armory",
-                                            ShopType::Weaponsmith => "Weaponsmith Forge",
-                                            ShopType::Temple => "Town Temple",
-                                            ShopType::Alchemy => "Alchemy Lab",
-                                            ShopType::Magic => "Magic-User Conclave",
-                                        };
-                                        status_msg = format!("Welcome to the {}!", shop_name);
-                                        entered_shop = true;
-                                    }
-                                }
-
-                                if entered_shop {
-                                    // Shop entered
-                                }
-                                else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
-                                    let is_m_visible = level.get_tile(next_x, next_y).map(|t| t.visible).unwrap_or(false);
-                                    
-                                    if is_m_visible {
-                                        let damage = player.roll_melee_damage(&mut rng);
-                                        status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
-                                        
-                                        let monster_name = monsters[m_idx].name.clone();
-                                        let exp_reward = monsters[m_idx].experience_reward;
-
-                                        if monsters[m_idx].take_damage(damage) {
-                                            status_msg.push_str(&format!(" You killed {}!", monster_name));
-                                            
-                                            if player.add_experience(exp_reward) {
-                                                status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
-                                            } else if exp_reward > 0 {
-                                                status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
-                                            } else {
-                                                status_msg.push_str(" Gained 0 EXP (Town monster).");
-                                            }
-                                            
-                                            if monster_name == "The Balrog" {
-                                                player.balrog_killed = true;
-                                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                                                std::thread::sleep(std::time::Duration::from_secs(1));
-                                                
-                                                execute!(stdout, Show, LeaveAlternateScreen)?;
-                                                disable_raw_mode()?;
-                                                
-                                                println!("============================================================");
-                                                println!("         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        ");
-                                                println!("        You have completed the quest and won rmoria!        ");
-                                                println!("============================================================");
-                                                
-                                                if Path::new(save_path).exists() {
-                                                    let _ = fs::remove_file(save_path);
-                                                }
-                                                break 'game_loop;
-                                            }
-                                            monsters.remove(m_idx);
-                                        }
-                                        player_acted = true;
-                                    } else {
-                                        if let Some(tile) = level.get_tile(next_x, next_y) {
-                                            if tile.is_passable() {
-                                                player.move_to(next_x, next_y);
-                                                status_msg = "You step into the darkness and bump into a monster!".to_string();
-                                                player_acted = true;
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    if let Some(tile) = level.get_tile(next_x, next_y) {
-                                        if tile.is_passable() || direction == Direction::Rest {
-                                            player.move_to(next_x, next_y);
-                                            if direction == Direction::Rest {
-                                                player.hp = (player.hp + 1).min(player.max_hp);
-                                                player.mana = (player.mana + 1).min(player.max_mana);
-                                                status_msg = "You rest and recover health/mana.".to_string();
-                                            } else {
-                                                status_msg = format!("Moved to ({}, {})", next_x, next_y);
-                                            }
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Ouch! You bumped into a wall.".to_string();
-                                        }
-                                    }
-                                }
-                            }
-                            Action::GoUpStairs => {
-                                if let Some(tile) = level.get_tile(player.x, player.y) {
-                                    if tile.tile_type == TileType::StairsUp && level.depth > 0 {
-                                        let new_depth = level.depth - 1;
-                                        level = DungeonLevel::new(66, 22, new_depth, max_depth);
-                                        level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(&level, player.balrog_killed);
-                                        
-                                        let sd_pos = level.tiles.iter().enumerate()
-                                            .find(|(_, t)| t.tile_type == TileType::StairsDown)
-                                            .map(|(i, _)| (i % level.width, i / level.width))
-                                            .unwrap_or((40, 15));
-                                        player.move_to(sd_pos.0, sd_pos.1);
-                                        
-                                        status_msg = format!("You climb up to depth {} ({} feet).", new_depth, new_depth * 50);
-                                        player_acted = true;
-                                    } else {
-                                        status_msg = "You see no up stairs (<) here.".to_string();
-                                    }
-                                }
-                            }
-                            Action::GoDownStairs => {
-                                if let Some(tile) = level.get_tile(player.x, player.y) {
-                                    if tile.tile_type == TileType::StairsDown && level.depth < max_depth {
-                                        let new_depth = level.depth + 1;
-                                        level = DungeonLevel::new(66, 22, new_depth, max_depth);
-                                        level.generate_simple_floor();
-                                        monsters = generate_monsters_for_depth(&level, player.balrog_killed);
-                                        
-                                        let su_pos = level.tiles.iter().enumerate()
-                                            .find(|(_, t)| t.tile_type == TileType::StairsUp)
-                                            .map(|(i, _)| (i % level.width, i / level.width))
-                                            .unwrap_or((15, 15));
-                                        player.move_to(su_pos.0, su_pos.1);
-                                        
-                                        status_msg = format!("You climb down to depth {} ({} feet).", new_depth, new_depth * 50);
-                                        player_acted = true;
-                                    } else {
-                                        status_msg = "You see no down stairs (>) here.".to_string();
-                                    }
-                                }
-                            }
-                            Action::InventoryList => {
-                                screen_mode = ScreenMode::InventoryList;
-                                status_msg = "Inspecting inventory.".to_string();
-                            }
-                            Action::EquipmentList => {
-                                screen_mode = ScreenMode::EquipmentList;
-                                status_msg = "Inspecting equipment.".to_string();
-                            }
-                            Action::WearWield => {
-                                screen_mode = ScreenMode::WearMenu;
-                                status_msg = "Equip item from inventory.".to_string();
-                            }
-                            Action::TakeOff => {
-                                screen_mode = ScreenMode::TakeOffMenu;
-                                status_msg = "Select item to unequip.".to_string();
-                            }
-                            Action::Quaff => {
-                                screen_mode = ScreenMode::QuaffMenu;
-                                status_msg = "Select potion to quaff.".to_string();
-                            }
-                            Action::ReadScroll => {
-                                screen_mode = ScreenMode::ReadMenu;
-                                status_msg = "Select scroll to read.".to_string();
-                            }
-                            Action::BrowseBook => {
-                                let has_book = player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
-                                if has_book {
-                                    screen_mode = ScreenMode::BrowseBookMenu;
-                                    status_msg = "Browsing spells/prayers.".to_string();
-                                } else {
-                                    status_msg = "You do not carry a spellbook or prayerbook!".to_string();
-                                }
-                            }
-                            Action::CastSpell => {
-                                let is_mage_caster = matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
-                                if !is_mage_caster {
-                                    status_msg = "Your class cannot cast mage spells!".to_string();
-                                } else {
-                                    let has_book = player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
-                                    if has_book {
-                                        screen_mode = ScreenMode::CastSpellMenu;
-                                        status_msg = "Cast Mage Spell: select a letter.".to_string();
-                                    } else {
-                                        status_msg = "You need a Mage Spellbook to cast spells!".to_string();
-                                    }
-                                }
-                            }
-                            Action::Pray => {
-                                let is_priest_caster = matches!(player.class, Class::Priest | Class::Paladin);
-                                if !is_priest_caster {
-                                    status_msg = "Your class cannot recite priestly prayers!".to_string();
-                                } else {
-                                    let has_book = player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
-                                    if has_book {
-                                        screen_mode = ScreenMode::PrayMenu;
-                                        status_msg = "Recite Clerical Prayer: select a letter.".to_string();
-                                    } else {
-                                        status_msg = "You need a Priest Prayerbook to pray!".to_string();
-                                    }
-                                }
-                            }
-                            Action::Quit => {
-                                status_msg = "Saving game and quitting...".to_string();
-                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                                
-                                let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
-                                if let Err(e) = state.save_to_file(save_path) {
-                                    status_msg = format!("Save failed: {}", e);
-                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                                    std::thread::sleep(std::time::Duration::from_secs(2));
-                                } else {
-                                    std::thread::sleep(std::time::Duration::from_millis(800));
-                                }
-                                break 'game_loop;
-                            }
-                            _ => {}
-                        }
+                Event::Key(key_event) => {
+                    if key_event.code == KeyCode::Char('c') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                        break 'game_loop;
                     }
-                } else {
-                    match key_event.code {
-                        KeyCode::Esc => {
-                            if screen_mode == ScreenMode::ShopSellMenu {
-                                screen_mode = ScreenMode::Shop;
-                                status_msg = "General Store - Buy Menu.".to_string();
-                            } else {
-                                screen_mode = ScreenMode::Dungeon;
-                                status_msg = "Returned to dungeon.".to_string();
-                            }
-                        }
-                        KeyCode::Char(c) => {
-                            if screen_mode == ScreenMode::InventoryList && c == 'i' {
-                                screen_mode = ScreenMode::Dungeon;
-                                status_msg = "Returned to dungeon.".to_string();
-                            } else if screen_mode == ScreenMode::EquipmentList && c == 'I' {
-                                screen_mode = ScreenMode::Dungeon;
-                                status_msg = "Returned to dungeon.".to_string();
-                            } else if screen_mode == ScreenMode::BrowseBookMenu {
-                                // Just browse, escape exits
-                            } else if screen_mode == ScreenMode::CastSpellMenu {
-                                match c {
-                                    'a' => { // Magic Missile (1 mana, lvl 1)
-                                        if player.mana >= 1 {
-                                            selected_spell_idx = 0;
-                                            screen_mode = ScreenMode::SelectSpellDirection;
-                                            status_msg = "Aim Magic Missile: choose direction...".to_string();
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'b' => { // Phase Door (2 mana, lvl 1)
-                                        if player.mana >= 2 {
-                                            player.mana -= 2;
-                                            let dest = find_passable_tile(&level);
-                                            player.move_to(dest.0, dest.1);
-                                            status_msg = "You cast Phase Door and warp!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'c' => { // Light Area (3 mana, lvl 3)
-                                        if player.level < 3 {
-                                            status_msg = "Too low level (requires Level 3)!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        } else if player.mana >= 3 {
-                                            player.mana -= 3;
-                                            for y in (player.y as isize - 5)..=(player.y as isize + 5) {
-                                                for x in (player.x as isize - 5)..=(player.x as isize + 5) {
-                                                    if let Some(tile) = level.get_tile_mut(x as usize, y as usize) {
-                                                        tile.visible = true;
-                                                        tile.remembered = true;
-                                                    }
-                                                }
-                                            }
-                                            status_msg = "Brilliant light flashes and illuminates the area!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'd' => { // Fire Bolt (5 mana, lvl 5)
-                                        if player.level < 5 {
-                                            status_msg = "Too low level (requires Level 5)!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        } else if player.mana >= 5 {
-                                            selected_spell_idx = 1;
-                                            screen_mode = ScreenMode::SelectSpellDirection;
-                                            status_msg = "Aim Fire Bolt: choose direction...".to_string();
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            } else if screen_mode == ScreenMode::PrayMenu {
-                                match c {
-                                    'a' => { // Detect Evil (1 mana, lvl 1)
-                                        if player.mana >= 1 {
-                                            player.mana -= 1;
-                                            for m in &monsters {
-                                                if let Some(tile) = level.get_tile_mut(m.x, m.y) {
-                                                    tile.remembered = true;
-                                                }
-                                            }
-                                            status_msg = format!("You sense the presence of {} dark entities!", monsters.len());
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'b' => { // Cure Light Wounds (2 mana, lvl 1)
-                                        if player.mana >= 2 {
-                                            player.mana -= 2;
-                                            let heal = rng.gen_range(2..=16);
-                                            player.hp = (player.hp + heal).min(player.max_hp);
-                                            status_msg = format!("You pray for healing. Restored {} HP.", heal);
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'c' => { // Bless (3 mana, lvl 3)
-                                        if player.level < 3 {
-                                            status_msg = "Too low level (requires Level 3)!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        } else if player.mana >= 3 {
-                                            player.mana -= 3;
-                                            let heal = rng.gen_range(3..=24);
-                                            player.hp = (player.hp + heal).min(player.max_hp);
-                                            status_msg = format!("Divine blessing heals you for {} HP.", heal);
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'd' => { // Portal (4 mana, lvl 4)
-                                        if player.level < 4 {
-                                            status_msg = "Too low level (requires Level 4)!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        } else if player.mana >= 4 {
-                                            player.mana -= 4;
-                                            let dest = find_passable_tile(&level);
-                                            player.move_to(dest.0, dest.1);
-                                            status_msg = "You are pulled through a space portal!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    'e' => { // Holy Word (7 mana, lvl 7)
-                                        if player.level < 7 {
-                                            status_msg = "Too low level (requires Level 7)!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        } else if player.mana >= 7 {
-                                            player.mana -= 7;
-                                            let mut hit = false;
-                                            let mut killed = Vec::new();
-                                            for (m_idx, m) in monsters.iter_mut().enumerate() {
-                                                let dx = (player.x as isize - m.x as isize).abs();
-                                                let dy = (player.y as isize - m.y as isize).abs();
-                                                if dx <= 1 && dy <= 1 {
-                                                    let dmg = rng.gen_range(6..=48);
-                                                    m.take_damage(dmg);
-                                                    hit = true;
-                                                    if m.hp <= 0 {
-                                                        killed.push(m_idx);
-                                                    }
-                                                }
-                                            }
-                                            for &idx in killed.iter().rev() {
-                                                let exp = monsters[idx].experience_reward;
-                                                player.add_experience(exp);
-                                                monsters.remove(idx);
-                                            }
-                                            status_msg = if hit {
-                                                "You chant a Holy Word! Nearby enemies are scorched!".to_string()
-                                            } else {
-                                                "You chant a Holy Word, but hear only whispers.".to_string()
-                                            };
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
-                                            screen_mode = ScreenMode::Dungeon;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            } else if screen_mode == ScreenMode::SelectSpellDirection {
-                                let action = mapper.map_key(c);
-                                if let Action::Move(direction) = action {
+
+                    let mut player_acted = false;
+
+                    if screen_mode == ScreenMode::Dungeon {
+                        if let KeyCode::Char(c) = key_event.code {
+                            let action = mapper.map_key(c);
+                            match action {
+                                Action::Move(direction) => {
                                     let (dx, dy) = match direction {
                                         Direction::NorthWest => (-1, -1),
                                         Direction::North => (0, -1),
@@ -1331,289 +951,701 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         Direction::SouthEast => (1, 1),
                                     };
 
-                                    if selected_spell_idx == 0 { // Magic Missile (cost 1)
-                                        player.mana -= 1;
-                                        let mut cx = player.x as isize + dx;
-                                        let mut cy = player.y as isize + dy;
-                                        status_msg = "Your Magic Missile fizzles into the dark!".to_string();
-                                        loop {
-                                            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                                                if tile.tile_type == TileType::Wall {
-                                                    status_msg = "Your Magic Missile hits a wall and breaks!".to_string();
-                                                    break;
-                                                }
-                                            } else {
-                                                break;
-                                            }
-                                            if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
-                                                let dmg = rng.gen_range(2..=8);
-                                                let m_name = monsters[m_idx].name.clone();
-                                                let exp = monsters[m_idx].experience_reward;
-                                                status_msg = format!("Magic Missile hits {} for {} damage!", m_name, dmg);
-                                                if monsters[m_idx].take_damage(dmg) {
-                                                    status_msg.push_str(" You killed it!");
-                                                    player.add_experience(exp);
-                                                    monsters.remove(m_idx);
-                                                }
-                                                break;
-                                            }
-                                            cx += dx;
-                                            cy += dy;
-                                        }
-                                    } else { // Fire Bolt (cost 5)
-                                        player.mana -= 5;
-                                        let mut cx = player.x as isize + dx;
-                                        let mut cy = player.y as isize + dy;
-                                        status_msg = "Your Fire Bolt flares out into nothingness!".to_string();
-                                        loop {
-                                            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                                                if tile.tile_type == TileType::Wall {
-                                                    status_msg = "Your Fire Bolt strikes a wall!".to_string();
-                                                    break;
-                                                }
-                                            } else {
-                                                break;
-                                            }
-                                            if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
-                                                let dmg = rng.gen_range(4..=24);
-                                                let m_name = monsters[m_idx].name.clone();
-                                                let exp = monsters[m_idx].experience_reward;
-                                                status_msg = format!("Fire Bolt incinerates {} for {} damage!", m_name, dmg);
-                                                if monsters[m_idx].take_damage(dmg) {
-                                                    status_msg.push_str(" Gained experience.");
-                                                    player.add_experience(exp);
-                                                    monsters.remove(m_idx);
-                                                }
-                                                break;
-                                            }
-                                            cx += dx;
-                                            cy += dy;
+                                    let next_x = (player.x as isize + dx) as usize;
+                                    let next_y = (player.y as isize + dy) as usize;
+
+                                    let mut entered_shop = false;
+                                    if level.depth == 0 {
+                                        if let Some(shop_info) = level.shops.iter().find(|s| s.door_x == next_x && s.door_y == next_y) {
+                                            screen_mode = ScreenMode::Shop;
+                                            active_shop = shop_info.shop_type;
+                                            let shop_name = match active_shop {
+                                                ShopType::General => "Town General Store",
+                                                ShopType::Armory => "Town Armory",
+                                                ShopType::Weaponsmith => "Weaponsmith Forge",
+                                                ShopType::Temple => "Town Temple",
+                                                ShopType::Alchemy => "Alchemy Lab",
+                                                ShopType::Magic => "Magic-User Conclave",
+                                            };
+                                            status_msg = format!("Welcome to the {}!", shop_name);
+                                            entered_shop = true;
                                         }
                                     }
 
-                                    screen_mode = ScreenMode::Dungeon;
-                                    player_acted = true;
-                                }
-                            } else if screen_mode == ScreenMode::Shop {
-                                match c {
-                                    's' => {
-                                        screen_mode = ScreenMode::ShopSellMenu;
-                                        status_msg = "Sell selection mode. Select item.".to_string();
+                                    if entered_shop {
+                                        // Shop entered
                                     }
-                                    letter if letter >= 'a' && letter <= 'z' => {
-                                        let idx = letter as usize - 'a' as usize;
-                                        let items = get_shop_items(active_shop);
-                                        if idx < items.len() {
-                                            let (name, price, ref item_type) = items[idx];
-                                            if player.gold >= price {
-                                                player.gold -= price;
-                                                let it = match item_type {
-                                                    ItemType::Weapon { damage } => ItemType::Weapon { damage: *damage },
-                                                    ItemType::Armor { ac } => ItemType::Armor { ac: *ac },
-                                                    ItemType::Potion { heal_amount } => ItemType::Potion { heal_amount: *heal_amount },
-                                                    ItemType::Scroll { teleport } => ItemType::Scroll { teleport: *teleport },
-                                                };
-                                                let weight = match &it {
-                                                    ItemType::Weapon { .. } => 10,
-                                                    ItemType::Armor { .. } => 80,
-                                                    ItemType::Potion { .. } => 5,
-                                                    ItemType::Scroll { .. } => 2,
-                                                };
-                                                add_item_to_inventory(&mut player.inventory, Item::new(name, 1, weight, it));
-                                                status_msg = format!("You bought {}!", name);
-                                            } else {
-                                                status_msg = "You don't have enough gold!".to_string();
+                                    else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
+                                        let is_m_visible = level.get_tile(next_x, next_y).map(|t| t.visible).unwrap_or(false);
+                                        
+                                        if is_m_visible {
+                                            let damage = player.roll_melee_damage(&mut rng);
+                                            status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
+                                            
+                                            let monster_name = monsters[m_idx].name.clone();
+                                            let exp_reward = monsters[m_idx].experience_reward;
+
+                                            if monsters[m_idx].take_damage(damage) {
+                                                status_msg.push_str(&format!(" You killed {}!", monster_name));
+                                                
+                                                if player.add_experience(exp_reward) {
+                                                    status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                                } else if exp_reward > 0 {
+                                                    status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
+                                                } else {
+                                                    status_msg.push_str(" Gained 0 EXP (Town monster).");
+                                                }
+                                                
+                                                if monster_name == "The Balrog" {
+                                                    player.balrog_killed = true;
+                                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                                    std::thread::sleep(std::time::Duration::from_secs(1));
+                                                    
+                                                    execute!(stdout, Show, LeaveAlternateScreen)?;
+                                                    disable_raw_mode()?;
+                                                    
+                                                    println!("============================================================");
+                                                    println!("         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        ");
+                                                    println!("        You have completed the quest and won rmoria!        ");
+                                                    println!("============================================================");
+                                                    
+                                                    if Path::new(save_path).exists() {
+                                                        let _ = fs::remove_file(save_path);
+                                                    }
+                                                    break 'game_loop;
+                                                }
+                                                monsters.remove(m_idx);
                                             }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            } else if screen_mode == ScreenMode::ShopSellMenu {
-                                let idx = c as usize - 'a' as usize;
-                                if idx < player.inventory.len() {
-                                    let value = match player.inventory[idx].item_type {
-                                        ItemType::Weapon {..} => 25,
-                                        ItemType::Armor {..} => 40,
-                                        ItemType::Potion {..} => 15,
-                                        ItemType::Scroll {..} => 10,
-                                    };
-
-                                    player.gold += value;
-                                    status_msg = format!("You sold 1x {} for {} gp.", player.inventory[idx].name, value);
-                                    
-                                    player.inventory[idx].count -= 1;
-                                    if player.inventory[idx].count == 0 {
-                                        player.inventory.remove(idx);
-                                    }
-
-                                    if player.inventory.is_empty() {
-                                        screen_mode = ScreenMode::Shop;
-                                    }
-                                }
-                            } else if screen_mode == ScreenMode::WearMenu {
-                                let idx = c as usize - 'a' as usize;
-                                let equippable_indices: Vec<usize> = player.inventory.iter()
-                                    .enumerate()
-                                    .filter(|(_, item)| {
-                                        matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}) ||
-                                        item.name.contains("Torch") || item.name.contains("Lantern")
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect();
-
-                                if idx < equippable_indices.len() {
-                                    let inv_idx = equippable_indices[idx];
-                                    let item = player.inventory.remove(inv_idx);
-                                    let is_weapon = matches!(item.item_type, ItemType::Weapon {..});
-                                    let is_armor = matches!(item.item_type, ItemType::Armor {..});
-
-                                    let already_equipped = player.equipment.iter().position(|eq| {
-                                        if is_weapon {
-                                            matches!(eq.item_type, ItemType::Weapon {..})
-                                        } else if is_armor {
-                                            matches!(eq.item_type, ItemType::Armor {..})
+                                            player_acted = true;
                                         } else {
-                                            eq.name.contains("Torch") || eq.name.contains("Lantern")
-                                        }
-                                    });
-
-                                    if let Some(eq_idx) = already_equipped {
-                                        let old = player.equipment.remove(eq_idx);
-                                        status_msg = format!("You take off {} and equip {}.", old.name, item.name);
-                                        player.inventory.push(old);
-                                    } else {
-                                        status_msg = format!("You wear/wield {}.", item.name);
-                                    }
-
-                                    player.equipment.push(item);
-                                    screen_mode = ScreenMode::Dungeon;
-                                    player_acted = true;
-                                }
-                            } else if screen_mode == ScreenMode::TakeOffMenu {
-                                let idx = c as usize - 'a' as usize;
-                                if idx < player.equipment.len() {
-                                    let item = player.equipment.remove(idx);
-                                    status_msg = format!("You took off {}.", item.name);
-                                    player.inventory.push(item);
-                                    screen_mode = ScreenMode::Dungeon;
-                                    player_acted = true;
-                                }
-                            } else if screen_mode == ScreenMode::QuaffMenu {
-                                let idx = c as usize - 'a' as usize;
-                                let potion_indices: Vec<usize> = player.inventory.iter()
-                                    .enumerate()
-                                    .filter(|(_, item)| matches!(item.item_type, ItemType::Potion {..}))
-                                    .map(|(i, _)| i)
-                                    .collect();
-
-                                if idx < potion_indices.len() {
-                                    let inv_idx = potion_indices[idx];
-                                    let heal = if let ItemType::Potion { heal_amount } = player.inventory[inv_idx].item_type {
-                                        heal_amount
-                                    } else {
-                                        0
-                                    };
-                                    
-                                    player.hp = (player.hp + heal).min(player.max_hp);
-                                    let name = player.inventory[inv_idx].name.clone();
-                                    
-                                    player.inventory[inv_idx].count -= 1;
-                                    if player.inventory[inv_idx].count == 0 {
-                                        player.inventory.remove(inv_idx);
-                                    }
-
-                                    status_msg = format!("You quaffed {}! Restored {} HP.", name, heal);
-                                    screen_mode = ScreenMode::Dungeon;
-                                    player_acted = true;
-                                }
-                            } else if screen_mode == ScreenMode::ReadMenu {
-                                let idx = c as usize - 'a' as usize;
-                                let scroll_indices: Vec<usize> = player.inventory.iter()
-                                    .enumerate()
-                                    .filter(|(_, item)| {
-                                        matches!(item.item_type, ItemType::Scroll {..}) &&
-                                        !item.name.contains("Torch") &&
-                                        !item.name.contains("Spellbook") &&
-                                        !item.name.contains("Prayerbook")
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect();
-
-                                if idx < scroll_indices.len() {
-                                    let inv_idx = scroll_indices[idx];
-                                    let name = player.inventory[inv_idx].name.clone();
-                                    
-                                    player.inventory[inv_idx].count -= 1;
-                                    if player.inventory[inv_idx].count == 0 {
-                                        player.inventory.remove(inv_idx);
-                                    }
-
-                                    let (rx, ry) = loop {
-                                        let tx = rng.gen_range(1..(level.width - 1));
-                                        let ty = rng.gen_range(1..(level.height - 1));
-                                        if let Some(tile) = level.get_tile(tx, ty) {
-                                            if tile.tile_type == TileType::Floor {
-                                                break (tx, ty);
+                                            if let Some(tile) = level.get_tile(next_x, next_y) {
+                                                if tile.is_passable() {
+                                                    player.move_to(next_x, next_y);
+                                                    status_msg = "You step into the darkness and bump into a monster!".to_string();
+                                                    player_acted = true;
+                                                }
                                             }
                                         }
-                                    };
-                                    player.move_to(rx, ry);
-
-                                    status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                    } else {
+                                        if let Some(tile) = level.get_tile(next_x, next_y) {
+                                            if tile.is_passable() || direction == Direction::Rest {
+                                                player.move_to(next_x, next_y);
+                                                if direction == Direction::Rest {
+                                                    player.hp = (player.hp + 1).min(player.max_hp);
+                                                    player.mana = (player.mana + 1).min(player.max_mana);
+                                                    status_msg = "You rest and recover health/mana.".to_string();
+                                                } else {
+                                                    status_msg = format!("Moved to ({}, {})", next_x, next_y);
+                                                }
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Ouch! You bumped into a wall.".to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                                Action::GoUpStairs => {
+                                    if let Some(tile) = level.get_tile(player.x, player.y) {
+                                        if tile.tile_type == TileType::StairsUp && level.depth > 0 {
+                                            let new_depth = level.depth - 1;
+                                            level = DungeonLevel::new(66, 22, new_depth, max_depth);
+                                            level.generate_simple_floor();
+                                            monsters = generate_monsters_for_depth(&level, player.balrog_killed);
+                                            
+                                            let sd_pos = level.tiles.iter().enumerate()
+                                                .find(|(_, t)| t.tile_type == TileType::StairsDown)
+                                                .map(|(i, _)| (i % level.width, i / level.width))
+                                                .unwrap_or((40, 15));
+                                            player.move_to(sd_pos.0, sd_pos.1);
+                                            
+                                            status_msg = format!("You climb up to depth {} ({} feet).", new_depth, new_depth * 50);
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "You see no up stairs (<) here.".to_string();
+                                        }
+                                    }
+                                }
+                                Action::GoDownStairs => {
+                                    if let Some(tile) = level.get_tile(player.x, player.y) {
+                                        if tile.tile_type == TileType::StairsDown && level.depth < max_depth {
+                                            let new_depth = level.depth + 1;
+                                            level = DungeonLevel::new(66, 22, new_depth, max_depth);
+                                            level.generate_simple_floor();
+                                            monsters = generate_monsters_for_depth(&level, player.balrog_killed);
+                                            
+                                            let su_pos = level.tiles.iter().enumerate()
+                                                .find(|(_, t)| t.tile_type == TileType::StairsUp)
+                                                .map(|(i, _)| (i % level.width, i / level.width))
+                                                .unwrap_or((15, 15));
+                                            player.move_to(su_pos.0, su_pos.1);
+                                            
+                                            status_msg = format!("You climb down to depth {} ({} feet).", new_depth, new_depth * 50);
+                                            player_acted = true;
+                                        } else {
+                                            status_msg = "You see no down stairs (>) here.".to_string();
+                                        }
+                                    }
+                                }
+                                Action::InventoryList => {
+                                    screen_mode = ScreenMode::InventoryList;
+                                    status_msg = "Inspecting inventory.".to_string();
+                                }
+                                Action::EquipmentList => {
+                                    screen_mode = ScreenMode::EquipmentList;
+                                    status_msg = "Inspecting equipment.".to_string();
+                                }
+                                Action::WearWield => {
+                                    screen_mode = ScreenMode::WearMenu;
+                                    status_msg = "Equip item from inventory.".to_string();
+                                }
+                                Action::TakeOff => {
+                                    screen_mode = ScreenMode::TakeOffMenu;
+                                    status_msg = "Select item to unequip.".to_string();
+                                }
+                                Action::Quaff => {
+                                    screen_mode = ScreenMode::QuaffMenu;
+                                    status_msg = "Select potion to quaff.".to_string();
+                                }
+                                Action::ReadScroll => {
+                                    screen_mode = ScreenMode::ReadMenu;
+                                    status_msg = "Select scroll to read.".to_string();
+                                }
+                                Action::BrowseBook => {
+                                    let has_book = player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
+                                    if has_book {
+                                        screen_mode = ScreenMode::BrowseBookMenu;
+                                        status_msg = "Browsing spells/prayers.".to_string();
+                                    } else {
+                                        status_msg = "You do not carry a spellbook or prayerbook!".to_string();
+                                    }
+                                }
+                                Action::CastSpell => {
+                                    let is_mage_caster = matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
+                                    if !is_mage_caster {
+                                        status_msg = "Your class cannot cast mage spells!".to_string();
+                                    } else {
+                                        let has_book = player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
+                                        if has_book {
+                                            screen_mode = ScreenMode::CastSpellMenu;
+                                            status_msg = "Cast Mage Spell: select a letter.".to_string();
+                                        } else {
+                                            status_msg = "You need a Mage Spellbook to cast spells!".to_string();
+                                        }
+                                    }
+                                }
+                                Action::Pray => {
+                                    let is_priest_caster = matches!(player.class, Class::Priest | Class::Paladin);
+                                    if !is_priest_caster {
+                                        status_msg = "Your class cannot recite priestly prayers!".to_string();
+                                    } else {
+                                        let has_book = player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
+                                        if has_book {
+                                            screen_mode = ScreenMode::PrayMenu;
+                                            status_msg = "Recite Clerical Prayer: select a letter.".to_string();
+                                        } else {
+                                            status_msg = "You need a Priest Prayerbook to pray!".to_string();
+                                        }
+                                    }
+                                }
+                                Action::Quit => {
+                                    status_msg = "Saving game and quitting...".to_string();
+                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                    
+                                    let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
+                                    if let Err(e) = state.save_to_file(save_path) {
+                                        status_msg = format!("Save failed: {}", e);
+                                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                        std::thread::sleep(std::time::Duration::from_secs(2));
+                                    } else {
+                                        std::thread::sleep(std::time::Duration::from_millis(800));
+                                    }
+                                    break 'game_loop;
+                                }
+                                _ => {}
+                            }
+                        }
+                    } else {
+                        match key_event.code {
+                            KeyCode::Esc => {
+                                if screen_mode == ScreenMode::ShopSellMenu {
+                                    screen_mode = ScreenMode::Shop;
+                                    status_msg = "General Store - Buy Menu.".to_string();
+                                } else {
                                     screen_mode = ScreenMode::Dungeon;
-                                    player_acted = true;
+                                    status_msg = "Returned to dungeon.".to_string();
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                if screen_mode == ScreenMode::InventoryList && c == 'i' {
+                                    screen_mode = ScreenMode::Dungeon;
+                                    status_msg = "Returned to dungeon.".to_string();
+                                } else if screen_mode == ScreenMode::EquipmentList && c == 'I' {
+                                    screen_mode = ScreenMode::Dungeon;
+                                    status_msg = "Returned to dungeon.".to_string();
+                                } else if screen_mode == ScreenMode::BrowseBookMenu {
+                                    // Browse mode exit via ESC
+                                } else if screen_mode == ScreenMode::CastSpellMenu {
+                                    match c {
+                                        'a' => {
+                                            if player.mana >= 1 {
+                                                selected_spell_idx = 0;
+                                                screen_mode = ScreenMode::SelectSpellDirection;
+                                                status_msg = "Aim Magic Missile: choose direction...".to_string();
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'b' => {
+                                            if player.mana >= 2 {
+                                                player.mana -= 2;
+                                                let dest = find_passable_tile(&level);
+                                                player.move_to(dest.0, dest.1);
+                                                status_msg = "You cast Phase Door and warp!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'c' => {
+                                            if player.level < 3 {
+                                                status_msg = "Too low level (requires Level 3)!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else if player.mana >= 3 {
+                                                player.mana -= 3;
+                                                for y in (player.y as isize - 5)..=(player.y as isize + 5) {
+                                                    for x in (player.x as isize - 5)..=(player.x as isize + 5) {
+                                                        if let Some(tile) = level.get_tile_mut(x as usize, y as usize) {
+                                                            tile.visible = true;
+                                                            tile.remembered = true;
+                                                        }
+                                                    }
+                                                }
+                                                status_msg = "Brilliant light flashes and illuminates the area!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'd' => {
+                                            if player.level < 5 {
+                                                status_msg = "Too low level (requires Level 5)!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else if player.mana >= 5 {
+                                                selected_spell_idx = 1;
+                                                screen_mode = ScreenMode::SelectSpellDirection;
+                                                status_msg = "Aim Fire Bolt: choose direction...".to_string();
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                } else if screen_mode == ScreenMode::PrayMenu {
+                                    match c {
+                                        'a' => {
+                                            if player.mana >= 1 {
+                                                player.mana -= 1;
+                                                for m in &monsters {
+                                                    if let Some(tile) = level.get_tile_mut(m.x, m.y) {
+                                                        tile.remembered = true;
+                                                    }
+                                                }
+                                                status_msg = format!("You sense the presence of {} dark entities!", monsters.len());
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'b' => {
+                                            if player.mana >= 2 {
+                                                player.mana -= 2;
+                                                let heal = rng.gen_range(2..=16);
+                                                player.hp = (player.hp + heal).min(player.max_hp);
+                                                status_msg = format!("You pray for healing. Restored {} HP.", heal);
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'c' => {
+                                            if player.level < 3 {
+                                                status_msg = "Too low level (requires Level 3)!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else if player.mana >= 3 {
+                                                player.mana -= 3;
+                                                let heal = rng.gen_range(3..=24);
+                                                player.hp = (player.hp + heal).min(player.max_hp);
+                                                status_msg = format!("Divine blessing heals you for {} HP.", heal);
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'd' => {
+                                            if player.level < 4 {
+                                                status_msg = "Too low level (requires Level 4)!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else if player.mana >= 4 {
+                                                player.mana -= 4;
+                                                let dest = find_passable_tile(&level);
+                                                player.move_to(dest.0, dest.1);
+                                                status_msg = "You are pulled through a space portal!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        'e' => {
+                                            if player.level < 7 {
+                                                status_msg = "Too low level (requires Level 7)!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else if player.mana >= 7 {
+                                                player.mana -= 7;
+                                                let mut hit = false;
+                                                let mut killed = Vec::new();
+                                                for (m_idx, m) in monsters.iter_mut().enumerate() {
+                                                    let dx = (player.x as isize - m.x as isize).abs();
+                                                    let dy = (player.y as isize - m.y as isize).abs();
+                                                    if dx <= 1 && dy <= 1 {
+                                                        let dmg = rng.gen_range(6..=48);
+                                                        m.take_damage(dmg);
+                                                        hit = true;
+                                                        if m.hp <= 0 {
+                                                            killed.push(m_idx);
+                                                        }
+                                                    }
+                                                }
+                                                for &idx in killed.iter().rev() {
+                                                    let exp = monsters[idx].experience_reward;
+                                                    player.add_experience(exp);
+                                                    monsters.remove(idx);
+                                                }
+                                                status_msg = if hit {
+                                                    "You chant a Holy Word! Nearby enemies are scorched!".to_string()
+                                                } else {
+                                                    "You chant a Holy Word, but hear only whispers.".to_string()
+                                                };
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Insufficient mana!".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                } else if screen_mode == ScreenMode::SelectSpellDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let (dx, dy) = match direction {
+                                            Direction::NorthWest => (-1, -1),
+                                            Direction::North => (0, -1),
+                                            Direction::NorthEast => (1, -1),
+                                            Direction::West => (-1, 0),
+                                            Direction::Rest => (0, 0),
+                                            Direction::East => (1, 0),
+                                            Direction::SouthWest => (-1, 1),
+                                            Direction::South => (0, 1),
+                                            Direction::SouthEast => (1, 1),
+                                        };
+
+                                        if selected_spell_idx == 0 {
+                                            player.mana -= 1;
+                                            let mut cx = player.x as isize + dx;
+                                            let mut cy = player.y as isize + dy;
+                                            status_msg = "Your Magic Missile fizzles into the dark!".to_string();
+                                            loop {
+                                                if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                                                    if tile.tile_type == TileType::Wall {
+                                                        status_msg = "Your Magic Missile hits a wall and breaks!".to_string();
+                                                        break;
+                                                    }
+                                                } else {
+                                                    break;
+                                                }
+                                                if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
+                                                    let dmg = rng.gen_range(2..=8);
+                                                    let m_name = monsters[m_idx].name.clone();
+                                                    let exp = monsters[m_idx].experience_reward;
+                                                    status_msg = format!("Magic Missile hits {} for {} damage!", m_name, dmg);
+                                                    if monsters[m_idx].take_damage(dmg) {
+                                                        status_msg.push_str(" You killed it!");
+                                                        player.add_experience(exp);
+                                                        monsters.remove(m_idx);
+                                                    }
+                                                    break;
+                                                }
+                                                cx += dx;
+                                                cy += dy;
+                                            }
+                                        } else {
+                                            player.mana -= 5;
+                                            let mut cx = player.x as isize + dx;
+                                            let mut cy = player.y as isize + dy;
+                                            status_msg = "Your Fire Bolt flares out into nothingness!".to_string();
+                                            loop {
+                                                if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                                                    if tile.tile_type == TileType::Wall {
+                                                        status_msg = "Your Fire Bolt strikes a wall!".to_string();
+                                                        break;
+                                                    }
+                                                } else {
+                                                    break;
+                                                }
+                                                if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
+                                                    let dmg = rng.gen_range(4..=24);
+                                                    let m_name = monsters[m_idx].name.clone();
+                                                    let exp = monsters[m_idx].experience_reward;
+                                                    status_msg = format!("Fire Bolt incinerates {} for {} damage!", m_name, dmg);
+                                                    if monsters[m_idx].take_damage(dmg) {
+                                                        status_msg.push_str(" Gained experience.");
+                                                        player.add_experience(exp);
+                                                        monsters.remove(m_idx);
+                                                    }
+                                                    break;
+                                                }
+                                                cx += dx;
+                                                cy += dy;
+                                            }
+                                        }
+
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                } else if screen_mode == ScreenMode::Shop {
+                                    match c {
+                                        's' => {
+                                            screen_mode = ScreenMode::ShopSellMenu;
+                                            status_msg = "Sell selection mode. Select item.".to_string();
+                                        }
+                                        letter if letter >= 'a' && letter <= 'z' => {
+                                            let idx = letter as usize - 'a' as usize;
+                                            let items = get_shop_items(active_shop);
+                                            if idx < items.len() {
+                                                let (name, price, ref item_type) = items[idx];
+                                                if player.gold >= price {
+                                                    player.gold -= price;
+                                                    let it = match item_type {
+                                                        ItemType::Weapon { damage } => ItemType::Weapon { damage: *damage },
+                                                        ItemType::Armor { ac } => ItemType::Armor { ac: *ac },
+                                                        ItemType::Potion { heal_amount } => ItemType::Potion { heal_amount: *heal_amount },
+                                                        ItemType::Scroll { teleport } => ItemType::Scroll { teleport: *teleport },
+                                                    };
+                                                    let weight = match &it {
+                                                        ItemType::Weapon { .. } => 10,
+                                                        ItemType::Armor { .. } => 80,
+                                                        ItemType::Potion { .. } => 5,
+                                                        ItemType::Scroll { .. } => 2,
+                                                    };
+                                                    add_item_to_inventory(&mut player.inventory, Item::new(name, 1, weight, it));
+                                                    status_msg = format!("You bought {}!", name);
+                                                } else {
+                                                    status_msg = "You don't have enough gold!".to_string();
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                } else if screen_mode == ScreenMode::ShopSellMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < player.inventory.len() {
+                                        let value = match player.inventory[idx].item_type {
+                                            ItemType::Weapon {..} => 25,
+                                            ItemType::Armor {..} => 40,
+                                            ItemType::Potion {..} => 15,
+                                            ItemType::Scroll {..} => 10,
+                                        };
+
+                                        player.gold += value;
+                                        status_msg = format!("You sold 1x {} for {} gp.", player.inventory[idx].name, value);
+                                        
+                                        player.inventory[idx].count -= 1;
+                                        if player.inventory[idx].count == 0 {
+                                            player.inventory.remove(idx);
+                                        }
+
+                                        if player.inventory.is_empty() {
+                                            screen_mode = ScreenMode::Shop;
+                                        }
+                                    }
+                                } else if screen_mode == ScreenMode::WearMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    let equippable_indices: Vec<usize> = player.inventory.iter()
+                                        .enumerate()
+                                        .filter(|(_, item)| {
+                                            matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}) ||
+                                            item.name.contains("Torch") || item.name.contains("Lantern")
+                                        })
+                                        .map(|(i, _)| i)
+                                        .collect();
+
+                                    if idx < equippable_indices.len() {
+                                        let inv_idx = equippable_indices[idx];
+                                        let item = player.inventory.remove(inv_idx);
+                                        let is_weapon = matches!(item.item_type, ItemType::Weapon {..});
+                                        let is_armor = matches!(item.item_type, ItemType::Armor {..});
+
+                                        let already_equipped = player.equipment.iter().position(|eq| {
+                                            if is_weapon {
+                                                matches!(eq.item_type, ItemType::Weapon {..})
+                                            } else if is_armor {
+                                                matches!(eq.item_type, ItemType::Armor {..})
+                                            } else {
+                                                eq.name.contains("Torch") || eq.name.contains("Lantern")
+                                            }
+                                        });
+
+                                        if let Some(eq_idx) = already_equipped {
+                                            let old = player.equipment.remove(eq_idx);
+                                            status_msg = format!("You take off {} and equip {}.", old.name, item.name);
+                                            player.inventory.push(old);
+                                        } else {
+                                            status_msg = format!("You wear/wield {}.", item.name);
+                                        }
+
+                                        player.equipment.push(item);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                } else if screen_mode == ScreenMode::TakeOffMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < player.equipment.len() {
+                                        let item = player.equipment.remove(idx);
+                                        status_msg = format!("You took off {}.", item.name);
+                                        player.inventory.push(item);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                } else if screen_mode == ScreenMode::QuaffMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    let potion_indices: Vec<usize> = player.inventory.iter()
+                                        .enumerate()
+                                        .filter(|(_, item)| matches!(item.item_type, ItemType::Potion {..}))
+                                        .map(|(i, _)| i)
+                                        .collect();
+
+                                    if idx < potion_indices.len() {
+                                        let inv_idx = potion_indices[idx];
+                                        let heal = if let ItemType::Potion { heal_amount } = player.inventory[inv_idx].item_type {
+                                            heal_amount
+                                        } else {
+                                            0
+                                        };
+                                        
+                                        player.hp = (player.hp + heal).min(player.max_hp);
+                                        let name = player.inventory[inv_idx].name.clone();
+                                        
+                                        player.inventory[inv_idx].count -= 1;
+                                        if player.inventory[inv_idx].count == 0 {
+                                            player.inventory.remove(inv_idx);
+                                        }
+
+                                        status_msg = format!("You quaffed {}! Restored {} HP.", name, heal);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                } else if screen_mode == ScreenMode::ReadMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    let scroll_indices: Vec<usize> = player.inventory.iter()
+                                        .enumerate()
+                                        .filter(|(_, item)| {
+                                            matches!(item.item_type, ItemType::Scroll {..}) &&
+                                            !item.name.contains("Torch") &&
+                                            !item.name.contains("Spellbook") &&
+                                            !item.name.contains("Prayerbook")
+                                        })
+                                        .map(|(i, _)| i)
+                                        .collect();
+
+                                    if idx < scroll_indices.len() {
+                                        let inv_idx = scroll_indices[idx];
+                                        let name = player.inventory[inv_idx].name.clone();
+                                        
+                                        player.inventory[inv_idx].count -= 1;
+                                        if player.inventory[inv_idx].count == 0 {
+                                            player.inventory.remove(inv_idx);
+                                        }
+
+                                        let (rx, ry) = loop {
+                                            let tx = rng.gen_range(1..(level.width - 1));
+                                            let ty = rng.gen_range(1..(level.height - 1));
+                                            if let Some(tile) = level.get_tile(tx, ty) {
+                                                if tile.tile_type == TileType::Floor {
+                                                    break (tx, ty);
+                                                }
+                                            }
+                                        };
+                                        player.move_to(rx, ry);
+
+                                        status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        player_acted = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if player_acted {
+                        let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
+
+                        for monster in monsters.iter_mut() {
+                            let dx = (player.x as isize - monster.x as isize).abs();
+                            let dy = (player.y as isize - monster.y as isize).abs();
+                            
+                            if dx <= 1 && dy <= 1 {
+                                let m_damage = monster.damage.roll(&mut rng) as i32;
+                                player.hp -= m_damage;
+                                status_msg.push_str(&format!(" {} hits you for {}!", monster.name, m_damage));
+
+                                if player.hp <= 0 {
+                                    player.hp = 0;
+                                    status_msg.push_str(" You have died! Game Over.");
+                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                    
+                                    if Path::new(save_path).exists() {
+                                        let _ = fs::remove_file(save_path);
+                                    }
+                                    std::thread::sleep(std::time::Duration::from_secs(3));
+                                    break 'game_loop;
+                                }
+                            } else {
+                                if let Some((mx, my)) = monster.update_ai(player.x, player.y, &level) {
+                                    let occupied_by_player = mx == player.x && my == player.y;
+                                    let occupied_by_monster = occupied_positions.iter().any(|&(ox, oy)| ox == mx && oy == my);
+                                    
+                                    if !occupied_by_player && !occupied_by_monster {
+                                        monster.x = mx;
+                                        monster.y = my;
+                                    }
                                 }
                             }
                         }
-                        _ => {}
+                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                    } else {
+                        draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                     }
                 }
-
-                // 3. Trigger monster turns if player did a turn-consuming action
-                if player_acted {
-                    let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
-
-                    for monster in monsters.iter_mut() {
-                        let dx = (player.x as isize - monster.x as isize).abs();
-                        let dy = (player.y as isize - monster.y as isize).abs();
-                        
-                        if dx <= 1 && dy <= 1 {
-                            let m_damage = monster.damage.roll(&mut rng) as i32;
-                            player.hp -= m_damage;
-                            status_msg.push_str(&format!(" {} hits you for {}!", monster.name, m_damage));
-
-                            if player.hp <= 0 {
-                                player.hp = 0;
-                                status_msg.push_str(" You have died! Game Over.");
-                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                                
-                                if Path::new(save_path).exists() {
-                                    let _ = fs::remove_file(save_path);
-                                }
-                                std::thread::sleep(std::time::Duration::from_secs(3));
-                                break 'game_loop;
-                            }
-                        } else {
-                            if let Some((mx, my)) = monster.update_ai(player.x, player.y, &level) {
-                                let occupied_by_player = mx == player.x && my == player.y;
-                                let occupied_by_monster = occupied_positions.iter().any(|&(ox, oy)| ox == mx && oy == my);
-                                
-                                if !occupied_by_player && !occupied_by_monster {
-                                    monster.x = mx;
-                                    monster.y = my;
-                                }
-                            }
-                        }
-                    }
-                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                } else {
-                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                }
+                _ => {}
             }
         }
     }
 
-    // 4. Restore normal terminal
     execute!(stdout, Show, LeaveAlternateScreen)?;
     disable_raw_mode()?;
 
