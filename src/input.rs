@@ -20,7 +20,8 @@ pub enum Action {
     Move(Direction),
     Quaff,              // Drink potion
     WearWield,          // Equip item
-    EquipmentList,      // View equipment
+    InventoryList,      // View inventory (i)
+    EquipmentList,      // View equipment (I)
     AimWand,            // Aim a wand
     SearchOneTurn,      // Search around player
     DropItem,           // Drop inventory item
@@ -98,7 +99,7 @@ impl InputMapper {
             'j' => Action::JamDoor,
             'l' => Action::Look,
             'u' => Action::UseStaff,
-            'i' => Action::EquipmentList,    // Inventory view remains 'i'
+            'i' => Action::InventoryList,    // Inventory view remains 'i'
             'm' => Action::CastSpell,
             'o' => Action::OpenDoor,
             'p' => Action::Pray,
@@ -139,6 +140,8 @@ impl InputMapper {
             'H' => Action::CharacterStats,   // Relocated from 'C'
 
             // Unchanged Roguelike Commands
+            'i' => Action::InventoryList,
+            'I' => Action::EquipmentList,
             'p' => Action::Pray,
             'r' => Action::ReadScroll,
             'o' => Action::OpenDoor,

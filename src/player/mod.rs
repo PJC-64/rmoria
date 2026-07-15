@@ -47,10 +47,30 @@ impl Attributes {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ItemType {
+    Weapon { damage: Dice },
+    Armor { ac: i32 },
+    Potion { heal_amount: i32 },
+    Scroll { teleport: bool },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Item {
     pub name: String,
     pub count: u32,
     pub weight: u32,
+    pub item_type: ItemType,
+}
+
+impl Item {
+    pub fn new(name: &str, count: u32, weight: u32, item_type: ItemType) -> Self {
+        Self {
+            name: name.to_string(),
+            count,
+            weight,
+            item_type,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,7 +112,12 @@ impl Player {
             max_mana: 0,
             mana: 0,
             stats: base_stats,
-            inventory: Vec::new(),
+            inventory: vec![
+                Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
+                Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
+                Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
+                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+            ],
             equipment: Vec::new(),
         };
         player.apply_race_and_class_modifiers();
@@ -105,18 +130,41 @@ impl Player {
     }
 
     pub fn roll_melee_damage<R: rand::Rng>(&self, rng: &mut R) -> i32 {
-        let base_dice = match self.class {
-            Class::Warrior => Dice::new(2, 6),
-            Class::Rogue => Dice::new(1, 8),
-            _ => Dice::new(1, 6),
+        // Use equipped weapon damage dice if present, otherwise bare fists
+        let base_dice = if let Some(weapon_item) = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. })) {
+            match &weapon_item.item_type {
+                ItemType::Weapon { damage } => *damage,
+                _ => Dice::new(1, 4),
+            }
+        } else {
+            match self.class {
+                Class::Warrior => Dice::new(2, 6),
+                Class::Rogue => Dice::new(1, 8),
+                _ => Dice::new(1, 6),
+            }
         };
-        // Melee damage adds strength modifier
+
         let damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
         if damage < 1 {
             1
         } else {
             damage
         }
+    }
+
+    pub fn calculate_ac(&self) -> i32 {
+        let mut ac = 10; // Base AC
+        // Add Dexterity modifier
+        ac += (self.stats.dexterity as i32 - 10) / 2;
+        
+        // Add equipped armor values
+        for item in &self.equipment {
+            if let ItemType::Armor { ac: item_ac } = &item.item_type {
+                ac += item_ac;
+            }
+        }
+        
+        ac
     }
 
     pub fn apply_race_and_class_modifiers(&mut self) {
@@ -147,7 +195,6 @@ impl Player {
         self.stats.constitution += r_con + c_con;
         self.stats.charisma += r_chr + c_chr;
 
-        // Health formula: class base HP adjusted by Constitution modifier
         self.max_hp = base_hp as i32 + (self.stats.constitution as i32 - 10) / 2;
         if self.max_hp < 1 {
             self.max_hp = 1;
