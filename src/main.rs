@@ -21,47 +21,80 @@ use save::GameState;
 use dice::Dice;
 use entity::monster::Monster;
 
+fn get_lhs_stat_line(y: usize, player: &Player) -> String {
+    let rank = match player.class {
+        Class::Warrior => "Rookie",
+        Class::Mage => "Apprentice",
+        Class::Priest => "Believer",
+        Class::Rogue => "Footpad",
+        Class::Ranger => "Runner",
+        Class::Paladin => "Gallant",
+    };
+
+    let text = match y {
+        2 => format!("{:?}", player.race),
+        3 => format!("{:?}", player.class),
+        4 => format!("'{}'", rank),
+        6 => format!("STR:  {:>5}", player.stats.strength),
+        7 => format!("INT:  {:>5}", player.stats.intelligence),
+        8 => format!("WIS:  {:>5}", player.stats.wisdom),
+        9 => format!("DEX:  {:>5}", player.stats.dexterity),
+        10 => format!("CON:  {:>5}", player.stats.constitution),
+        11 => format!("CHR:  {:>5}", player.stats.charisma),
+        13 => format!("LEV:  {:>5}", player.level),
+        14 => format!("MANA: {:>5}", player.mana),
+        15 => format!("MHP:  {:>5}", player.max_hp),
+        16 => format!("CHP:  {:>5}", player.hp),
+        17 => format!("AC:   {:>5}", 10), // Base AC
+        18 => format!("GOLD: {:>5}", player.gold),
+        _ => "".to_string(),
+    };
+    
+    format!("{:<12}", text)
+}
+
 fn draw_map(level: &DungeonLevel, player: &Player, monsters: &[Monster], status_msg: &str) -> Result<(), io::Error> {
     execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
     
-    let mut map_str = String::new();
-    map_str.push_str("====================================================\r\n");
-    map_str.push_str("  rmoria (Umoria Rust Rewrite) - Combat & AI Demo   \r\n");
-    map_str.push_str("  Movement: qweasdzxc | Rest: s | Quit & Save: Q    \r\n");
-    map_str.push_str("====================================================\r\n");
+    let mut screen_buf = String::new();
+    
+    // Row 0: Message line (Status/combat log, padded to 79 chars to clear previous text)
+    screen_buf.push_str(&format!("Message: {:<70}\r\n", status_msg));
 
-    for y in 0..level.height {
-        for x in 0..level.width {
-            if x == player.x && y == player.y {
-                map_str.push('@');
-            } else if let Some(monster) = monsters.iter().find(|m| m.x == x && m.y == y) {
-                map_str.push(monster.symbol);
-            } else if let Some(tile) = level.get_tile(x, y) {
+    // Rows 1 to 22: LHS Stats + Space Divider + Dungeon map row
+    for map_y in 0..level.height {
+        // 1. Get stats string (exactly 12 characters wide)
+        let stats_part = get_lhs_stat_line(map_y + 1, player);
+        screen_buf.push_str(&stats_part);
+        
+        // 2. Add the 1 space separator column
+        screen_buf.push(' ');
+
+        // 3. Add the dungeon map row (66 characters wide)
+        for map_x in 0..level.width {
+            if map_x == player.x && map_y == player.y {
+                screen_buf.push('@');
+            } else if let Some(monster) = monsters.iter().find(|m| m.x == map_x && m.y == map_y) {
+                screen_buf.push(monster.symbol);
+            } else if let Some(tile) = level.get_tile(map_x, map_y) {
                 match tile.tile_type {
-                    TileType::Wall => map_str.push('#'),
-                    TileType::Floor => map_str.push('.'),
-                    TileType::DoorClosed => map_str.push('+'),
-                    TileType::DoorOpen => map_str.push('\''),
-                    TileType::StairsUp => map_str.push('<'),
-                    TileType::StairsDown => map_str.push('>'),
-                    TileType::Empty => map_str.push(' '),
+                    TileType::Wall => screen_buf.push('#'),
+                    TileType::Floor => screen_buf.push('.'),
+                    TileType::DoorClosed => screen_buf.push('+'),
+                    TileType::DoorOpen => screen_buf.push('\''),
+                    TileType::StairsUp => screen_buf.push('<'),
+                    TileType::StairsDown => screen_buf.push('>'),
+                    TileType::Empty => screen_buf.push(' '),
                 }
             }
         }
-        map_str.push_str("\r\n");
+        screen_buf.push_str("\r\n");
     }
-    map_str.push_str("----------------------------------------------------\r\n");
-    map_str.push_str(&format!(
-        "  Name: {:<8} | Race: {:<8} | Class: {:<8}\r\n  HP: {:<4}/{} | Gold: {:<5} | Pos: ({}, {})\r\n",
-        player.name, format!("{:?}", player.race), format!("{:?}", player.class),
-        player.hp, player.max_hp, player.gold, player.x, player.y
-    ));
-    map_str.push_str("----------------------------------------------------\r\n");
     
-    // Pad to 76 characters to clear out any old long messages
-    map_str.push_str(&format!("  Status: {:<76}\r\n", status_msg));
+    // Row 23: Bottom border
+    screen_buf.push_str("-------------------------------------------------------------------------------\r\n");
     
-    print!("{}", map_str);
+    print!("{}", screen_buf);
     io::stdout().flush()?;
     Ok(())
 }
@@ -82,39 +115,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string())
             }
             Err(e) => {
-                // Default fallback to Human Warrior
-                let p = Player::new("Hero", Race::Human, Class::Warrior, 20, 7);
-                let mut lvl = DungeonLevel::new(40, 15);
-                for y in 1..14 {
-                    for x in 1..39 {
+                let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
+                let mut lvl = DungeonLevel::new(66, 22);
+                for y in 1..21 {
+                    for x in 1..65 {
                         if let Some(tile) = lvl.get_tile_mut(x, y) {
                             tile.tile_type = TileType::Floor;
                         }
                     }
                 }
                 let mons = vec![
-                    Monster::new("Red Mold", 'm', 15, 5, 5, Dice::new(1, 3)),
-                    Monster::new("Goblin", 'g', 25, 10, 8, Dice::new(1, 4)),
-                    Monster::new("Orc", 'o', 12, 12, 12, Dice::new(1, 6)),
+                    Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
+                    Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
+                    Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
                 ];
                 (p, lvl, mons, format!("Failed to load save: {}. Started new game.", e))
             }
         }
     } else {
-        // Human Warrior
-        let p = Player::new("Hero", Race::Human, Class::Warrior, 20, 7);
-        let mut lvl = DungeonLevel::new(40, 15);
-        for y in 1..14 {
-            for x in 1..39 {
+        let p = Player::new("Hero", Race::Human, Class::Warrior, 30, 10);
+        let mut lvl = DungeonLevel::new(66, 22);
+        for y in 1..21 {
+            for x in 1..65 {
                 if let Some(tile) = lvl.get_tile_mut(x, y) {
                     tile.tile_type = TileType::Floor;
                 }
             }
         }
         let mons = vec![
-            Monster::new("Red Mold", 'm', 15, 5, 5, Dice::new(1, 3)),
-            Monster::new("Goblin", 'g', 25, 10, 8, Dice::new(1, 4)),
-            Monster::new("Orc", 'o', 12, 12, 12, Dice::new(1, 6)),
+            Monster::new("Red Mold", 'm', 20, 5, 5, Dice::new(1, 3)),
+            Monster::new("Goblin", 'g', 45, 12, 8, Dice::new(1, 4)),
+            Monster::new("Orc", 'o', 15, 18, 12, Dice::new(1, 6)),
         ];
         (p, lvl, mons, "New game started! Defeat the monsters.".to_string())
     };
@@ -170,7 +201,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     if tile.is_passable() || direction == Direction::Rest {
                                         player.move_to(next_x, next_y);
                                         if direction == Direction::Rest {
-                                            // Recover 1 HP
                                             player.hp = (player.hp + 1).min(player.max_hp);
                                             status_msg = "You rest and recover health.".to_string();
                                         } else {
@@ -207,12 +237,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
 
                         for monster in monsters.iter_mut() {
-                            // Check if adjacent to player
                             let dx = (player.x as isize - monster.x as isize).abs();
                             let dy = (player.y as isize - monster.y as isize).abs();
                             
                             if dx <= 1 && dy <= 1 {
-                                // Monster attacks player!
                                 let m_damage = monster.damage.roll(&mut rng) as i32;
                                 player.hp -= m_damage;
                                 status_msg.push_str(&format!(" {} hits you for {}!", monster.name, m_damage));
@@ -222,7 +250,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     status_msg.push_str(" You have died! Game Over.");
                                     draw_map(&level, &player, &monsters, &status_msg)?;
                                     
-                                    // Remove save file on death
                                     if Path::new(save_path).exists() {
                                         let _ = fs::remove_file(save_path);
                                     }
@@ -230,7 +257,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     break 'game_loop;
                                 }
                             } else {
-                                // Monster moves towards player using AI pathing
                                 if let Some((mx, my)) = monster.update_ai(player.x, player.y, &level) {
                                     let occupied_by_player = mx == player.x && my == player.y;
                                     let occupied_by_monster = occupied_positions.iter().any(|&(ox, oy)| ox == mx && oy == my);
@@ -242,10 +268,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }
-                        // Redraw map with updated player and monster states
                         draw_map(&level, &player, &monsters, &status_msg)?;
                     } else {
-                        // Redraw only for message updates
                         draw_map(&level, &player, &monsters, &status_msg)?;
                     }
                 }
