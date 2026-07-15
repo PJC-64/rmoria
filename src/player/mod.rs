@@ -74,7 +74,6 @@ impl Item {
     }
 }
 
-// C++ Original Experience Levels Table
 pub const BASE_EXP_LEVELS: &[u32] = &[
     10,   25,   45,    70,    100,   140,   200,    280,    380,    500,
     650,     850,     1100,    1400,    1800,    2300,    2900,     3600,     4400,     5400,
@@ -104,9 +103,174 @@ pub struct Player {
     pub equipment: Vec<Item>,
     pub balrog_killed: bool,
     
-    // Character progression details
     pub base_hp_levels: Vec<i32>,
     pub exp_factor: u32,
+    pub history: String,
+}
+
+pub fn generate_history(race: Race) -> String {
+    let mut rng = rand::thread_rng();
+    let mut history = String::new();
+    let mut chart = match race {
+        Race::Human => 1,
+        Race::HalfElf => 4,
+        Race::Elf => 7,
+        Race::Halfling => 10,
+        Race::Gnome => 13,
+        Race::Dwarf => 16,
+        Race::HalfOrc => 19,
+        Race::HalfTroll => 22,
+    };
+
+    loop {
+        let roll = rng.gen_range(1..=100);
+        let (text, next_chart) = match chart {
+            1 => {
+                if roll <= 10 { ("You are the illegitimate and unacknowledged child ", 2) }
+                else if roll <= 20 { ("You are the illegitimate but acknowledged child ", 2) }
+                else if roll <= 95 { ("You are one of several children ", 2) }
+                else { ("You are the first child ", 2) }
+            }
+            2 => {
+                if roll <= 40 { ("of a Serf. ", 3) }
+                else if roll <= 65 { ("of a Yeoman. ", 3) }
+                else if roll <= 80 { ("of a Townsman. ", 3) }
+                else if roll <= 90 { ("of a Guildsman. ", 3) }
+                else if roll <= 96 { ("of a Landed Knight. ", 3) }
+                else if roll <= 99 { ("of a Titled Noble. ", 3) }
+                else { ("of a Royal Blood Line. ", 3) }
+            }
+            3 => {
+                if roll <= 20 { ("You are the black sheep of the family. ", 50) }
+                else if roll <= 80 { ("You are a credit to the family. ", 50) }
+                else { ("You are a well liked child. ", 50) }
+            }
+            4 => {
+                if roll <= 40 { ("Your mother was a Green-Elf. ", 1) }
+                else if roll <= 75 { ("Your father was a Green-Elf. ", 1) }
+                else if roll <= 90 { ("Your mother was a Grey-Elf. ", 1) }
+                else if roll <= 95 { ("Your father was a Grey-Elf. ", 1) }
+                else if roll <= 98 { ("Your mother was a High-Elf. ", 1) }
+                else { ("Your father was a High-Elf. ", 1) }
+            }
+            7 => {
+                if roll <= 60 { ("You are one of several children ", 8) }
+                else { ("You are the only child ", 8) }
+            }
+            8 => {
+                if roll <= 75 { ("of a Green-Elf ", 9) }
+                else if roll <= 95 { ("of a Grey-Elf ", 9) }
+                else { ("of a High-Elf ", 9) }
+            }
+            9 => {
+                if roll <= 40 { ("Ranger. ", 50) }
+                else if roll <= 70 { ("Archer. ", 50) }
+                else if roll <= 87 { ("Warrior. ", 50) }
+                else if roll <= 95 { ("Mage. ", 50) }
+                else if roll <= 99 { ("Prince. ", 50) }
+                else { ("King. ", 50) }
+            }
+            10 => {
+                if roll <= 85 { ("You are one of several children of a Halfling ", 11) }
+                else { ("You are the only child of a Halfling ", 11) }
+            }
+            11 => {
+                if roll <= 20 { ("Bum. ", 3) }
+                else if roll <= 30 { ("Tavern Owner. ", 3) }
+                else if roll <= 40 { ("Miller. ", 3) }
+                else if roll <= 50 { ("Home Owner. ", 3) }
+                else if roll <= 80 { ("Burglar. ", 3) }
+                else if roll <= 95 { ("Warrior. ", 3) }
+                else if roll <= 99 { ("Mage. ", 3) }
+                else { ("Clan Elder. ", 3) }
+            }
+            13 => {
+                if roll <= 85 { ("You are one of several children of a Gnome ", 14) }
+                else { ("You are the only child of a Gnome ", 14) }
+            }
+            14 => {
+                if roll <= 20 { ("Beggar. ", 3) }
+                else if roll <= 50 { ("Braggart. ", 3) }
+                else if roll <= 75 { ("Prankster. ", 3) }
+                else if roll <= 95 { ("Warrior. ", 3) }
+                else { ("Mage. ", 3) }
+            }
+            16 => {
+                if roll <= 25 { ("You are one of two children of a Dwarven ", 17) }
+                else { ("You are the only child of a Dwarven ", 17) }
+            }
+            17 => {
+                if roll <= 10 { ("Thief. ", 18) }
+                else if roll <= 25 { ("Prison Guard. ", 18) }
+                else if roll <= 75 { ("Miner. ", 18) }
+                else if roll <= 90 { ("Warrior. ", 18) }
+                else if roll <= 99 { ("Priest. ", 18) }
+                else { ("King. ", 18) }
+            }
+            18 => {
+                if roll <= 15 { ("You are the black sheep of the family. ", 50) }
+                else if roll <= 85 { ("You are a credit to the family. ", 50) }
+                else { ("You are a well liked child. ", 50) }
+            }
+            19 => {
+                if roll <= 25 { ("Your mother was an Orc, but it is unacknowledged. ", 20) }
+                else { ("Your father was an Orc, but it is unacknowledged. ", 20) }
+            }
+            20 => {
+                ("You are the adopted child ", 2)
+            }
+            22 => {
+                if roll <= 30 { ("Your mother was a Cave-Troll ", 23) }
+                else if roll <= 60 { ("Your father was a Cave-Troll ", 23) }
+                else if roll <= 75 { ("Your mother was a Hill-Troll ", 23) }
+                else if roll <= 90 { ("Your father was a Hill-Troll ", 23) }
+                else if roll <= 95 { ("Your mother was a Water-Troll ", 23) }
+                else { ("Your father was a Water-Troll ", 23) }
+            }
+            23 => {
+                if roll <= 5 { ("Cook. ", 50) }
+                else if roll <= 95 { ("Warrior. ", 50) }
+                else if roll <= 99 { ("Shaman. ", 50) }
+                else { ("Clan Chief. ", 50) }
+            }
+            50 => {
+                if roll <= 20 { ("You have dark brown eyes, ", 51) }
+                else if roll <= 60 { ("You have brown eyes, ", 51) }
+                else if roll <= 70 { ("You have hazel eyes, ", 51) }
+                else if roll <= 80 { ("You have green eyes, ", 51) }
+                else if roll <= 90 { ("You have blue eyes, ", 51) }
+                else { ("You have blue-gray eyes, ", 51) }
+            }
+            51 => {
+                if roll <= 70 { ("straight ", 52) }
+                else if roll <= 90 { ("wavy ", 52) }
+                else { ("curly ", 52) }
+            }
+            52 => {
+                if roll <= 30 { ("black hair, ", 53) }
+                else if roll <= 70 { ("brown hair, ", 53) }
+                else if roll <= 80 { ("auburn hair, ", 53) }
+                else if roll <= 90 { ("red hair, ", 53) }
+                else { ("blond hair, ", 53) }
+            }
+            53 => {
+                if roll <= 10 { ("and a very dark complexion.", 0) }
+                else if roll <= 30 { ("and a dark complexion.", 0) }
+                else if roll <= 80 { ("and an average complexion.", 0) }
+                else if roll <= 90 { ("and a fair complexion.", 0) }
+                else { ("and a very fair complexion.", 0) }
+            }
+            _ => ("", 0),
+        };
+
+        history.push_str(text);
+        if next_chart == 0 {
+            break;
+        }
+        chart = next_chart;
+    }
+
+    history
 }
 
 impl Player {
@@ -159,6 +323,7 @@ impl Player {
             Class::Paladin => 35,
         };
         let exp_factor = race_exp + class_exp;
+        let history = generate_history(race);
 
         let mut player = Self {
             name: name.to_string(),
@@ -193,6 +358,7 @@ impl Player {
             balrog_killed: false,
             base_hp_levels,
             exp_factor,
+            history,
         };
         
         player.apply_race_and_class_modifiers();
@@ -237,7 +403,6 @@ impl Player {
         self.max_hp = calculated.max(self.level as i32 + 1);
         self.hp = self.hp.min(self.max_hp);
 
-        // Caster Max Mana scaling
         let is_caster = match self.class {
             Class::Warrior => false,
             _ => true,
@@ -304,7 +469,7 @@ impl Player {
 
         if leveled_up {
             self.update_max_hp_and_mana();
-            self.hp = self.max_hp; // Heal to full on level up
+            self.hp = self.max_hp;
         }
         leveled_up
     }

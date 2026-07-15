@@ -37,6 +37,7 @@ pub enum ScreenMode {
     CastSpellMenu,
     PrayMenu,
     SelectSpellDirection,
+    CharacterStatsMenu,
 }
 
 struct MonsterTemplate {
@@ -138,6 +139,28 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
     };
     
     format!("{:<12}", text)
+}
+
+fn wrap_text(text: &str, limit: usize) -> Vec<String> {
+    let mut words = text.split_whitespace();
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    while let Some(word) = words.next() {
+        if current_line.is_empty() {
+            current_line.push_str(word);
+        } else if current_line.len() + 1 + word.len() <= limit {
+            current_line.push(' ');
+            current_line.push_str(word);
+        } else {
+            lines.push(current_line);
+            current_line = word.to_string();
+        }
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    lines
 }
 
 fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: ShopType) -> String {
@@ -391,6 +414,31 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
             }
             "".to_string()
+        }
+        ScreenMode::CharacterStatsMenu => {
+            let split_history = wrap_text(&player.history, 62);
+            match row {
+                0 => format!("--- CHARACTER SHEET: {} ---", player.name),
+                2 => format!("Race:      {:?}      Class:      {:?}", player.race, player.class),
+                4 => "Attributes:".to_string(),
+                5 => format!("  STR: {:>2}   INT: {:>2}   WIS: {:>2}", player.stats.strength, player.stats.intelligence, player.stats.wisdom),
+                6 => format!("  DEX: {:>2}   CON: {:>2}   CHR: {:>2}", player.stats.dexterity, player.stats.constitution, player.stats.charisma),
+                8 => "Combat Stats:".to_string(),
+                9 => format!("  HP:   {}/{}       Mana: {}/{}", player.hp, player.max_hp, player.mana, player.max_mana),
+                10 => format!("  AC:   {:<10} Gold: {} gp", player.calculate_ac(), player.gold),
+                11 => format!("  Level: {:<9} Exp:  {} exp", player.level, player.exp),
+                13 => "Racial History & Background:".to_string(),
+                r if r >= 14 && r < 14 + split_history.len() => {
+                    format!("  {}", split_history[r - 14])
+                }
+                r if r == 14 + split_history.len() + 1 => {
+                    "--------------------------------------------".to_string()
+                }
+                r if r == 14 + split_history.len() + 2 => {
+                    "Press ESC to return to the dungeon.".to_string()
+                }
+                _ => "".to_string(),
+            }
         }
         ScreenMode::Shop => {
             let shop_name = match shop {
@@ -805,6 +853,7 @@ fn run_character_creation(
             balrog_killed: false,
             base_hp_levels: vec![15; 40],
             exp_factor: 100,
+            history: "".to_string(),
         };
         temp_player.apply_race_and_class_modifiers();
 
@@ -828,7 +877,7 @@ fn run_character_creation(
         }
     };
 
-    // 4. Input Name (centered on terminal)
+    // 4. Input Name
     disable_raw_mode()?;
     execute!(io::stdout(), Show)?;
     
@@ -869,7 +918,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_path = "save.json";
     let mut rng = rand::thread_rng();
     
-    // Check terminal size first before entering alternate screen
     let (cols, rows) = crossterm::terminal::size()?;
     if cols < 80 || rows < 24 {
         return Err(format!(
@@ -1147,6 +1195,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                     }
                                 }
+                                Action::CharacterStats => {
+                                    screen_mode = ScreenMode::CharacterStatsMenu;
+                                    status_msg = "Viewing character sheet.".to_string();
+                                }
                                 Action::Quit => {
                                     status_msg = "Saving game and quitting...".to_string();
                                     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
@@ -1183,7 +1235,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
                                 } else if screen_mode == ScreenMode::BrowseBookMenu {
-                                    // Browse mode exit via ESC
+                                    // Exit browse via ESC
+                                } else if screen_mode == ScreenMode::CharacterStatsMenu {
+                                    // Exit character sheet via ESC
                                 } else if screen_mode == ScreenMode::CastSpellMenu {
                                     match c {
                                         'a' => {
@@ -1361,7 +1415,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             Direction::SouthWest => (-1, 1),
                                             Direction::South => (0, 1),
                                             Direction::SouthEast => (1, 1),
-                                        };
+                                    };
 
                                         if selected_spell_idx == 0 {
                                             player.mana -= 1;
