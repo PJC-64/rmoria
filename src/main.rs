@@ -157,7 +157,13 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
                     ItemType::Potion { heal_amount } => format!("Potion (heals {} HP)", heal_amount),
-                    ItemType::Scroll { .. } => "Scroll".to_string(),
+                    ItemType::Scroll { .. } => {
+                        if item.name.contains("Torch") {
+                            "Light Source".to_string()
+                        } else {
+                            "Scroll".to_string()
+                        }
+                    }
                 };
                 return format!("{}. {} ({}) x{}", (b'a' + idx as u8) as char, item.name, details, item.count);
             }
@@ -179,7 +185,13 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let slot = match item.item_type {
                     ItemType::Weapon { .. } => "Weapon",
                     ItemType::Armor { .. } => "Armor",
-                    _ => "Accessory",
+                    _ => {
+                        if item.name.contains("Torch") || item.name.contains("Lantern") {
+                            "Light Source"
+                        } else {
+                            "Accessory"
+                        }
+                    }
                 };
                 return format!("{}. {}: {}", (b'a' + idx as u8) as char, slot, item.name);
             }
@@ -194,7 +206,10 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             let equippable: Vec<(usize, &Item)> = player.inventory.iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}))
+                .filter(|(_, item)| {
+                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}) ||
+                    item.name.contains("Torch") || item.name.contains("Lantern")
+                })
                 .collect();
 
             if row == equippable.len() + 2 {
@@ -209,12 +224,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let details = match &item.item_type {
                     ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
-                    _ => "".to_string(),
+                    _ => "Light Source (radius 2)".to_string(),
                 };
                 return format!("{}. {} ({})", (b'a' + idx as u8) as char, item.name, details);
             }
             if equippable.is_empty() && row == 1 {
-                return "(No equippable weapons or armors in inventory)".to_string();
+                return "(No equippable weapons, armors or lights in inventory)".to_string();
             }
             "".to_string()
         }
@@ -271,7 +286,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             let scrolls: Vec<(usize, &Item)> = player.inventory.iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}))
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}) && !item.name.contains("Torch"))
                 .collect();
 
             if row == scrolls.len() + 2 {
@@ -352,14 +367,95 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
     }
 }
 
+fn has_los(x1: usize, y1: usize, x2: usize, y2: usize, level: &DungeonLevel) -> bool {
+    let dx = (x2 as isize - x1 as isize).abs();
+    let dy = (y2 as isize - y1 as isize).abs();
+    let sx = if x1 < x2 { 1 } else { -1 };
+    let sy = if y1 < y2 { 1 } else { -1 };
+    let mut err = dx - dy;
+    
+    let mut cx = x1 as isize;
+    let mut cy = y1 as isize;
+    
+    loop {
+        if cx == x2 as isize && cy == y2 as isize {
+            return true;
+        }
+        // Wall or Closed Door blocks LOS light
+        if cx != x1 as isize || cy != y1 as isize {
+            if let Some(tile) = level.get_tile(cx as usize, cy as usize) {
+                if tile.tile_type == TileType::Wall || tile.tile_type == TileType::DoorClosed {
+                    return false;
+                }
+            }
+        }
+        let e2 = 2 * err;
+        if e2 > -dy {
+            err -= dy;
+            cx += sx;
+        }
+        if e2 < dx {
+            err += dx;
+            cy += sy;
+        }
+    }
+}
+
+fn update_visibility(level: &mut DungeonLevel, player: &Player) {
+    // 1. Reset all visible flags
+    for tile in level.tiles.iter_mut() {
+        tile.visible = false;
+    }
+    
+    // 2. Town Level (depth 0) is fully lit
+    if level.depth == 0 {
+        for tile in level.tiles.iter_mut() {
+            tile.visible = true;
+            tile.remembered = true;
+        }
+        return;
+    }
+    
+    // 3. Dungeon Level light calculations (LOS raycast within radius limit)
+    let radius = player.get_light_radius();
+    let max_dist = 8; // Memory limit distance
+    
+    for y in 0..level.height {
+        for x in 0..level.width {
+            let dx = (x as isize - player.x as isize).abs();
+            let dy = (y as isize - player.y as isize).abs();
+            let dist = dx.max(dy) as usize; // Chebyshev distance
+            
+            if dist <= max_dist {
+                if has_los(player.x, player.y, x, y, level) {
+                    if dist <= radius {
+                        if let Some(tile) = level.get_tile_mut(x, y) {
+                            tile.visible = true;
+                            tile.remembered = true;
+                        }
+                    } else {
+                        // Explored but in shadow
+                        if let Some(tile) = level.get_tile_mut(x, y) {
+                            tile.remembered = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn draw_map(
-    level: &DungeonLevel,
+    level: &mut DungeonLevel,
     player: &Player,
     monsters: &[Monster],
     status_msg: &str,
     mode: ScreenMode,
     shop: ShopType,
 ) -> Result<(), io::Error> {
+    // Run visibility calculations before rendering
+    update_visibility(level, player);
+
     execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
     
     let mut screen_buf = String::new();
@@ -376,19 +472,27 @@ fn draw_map(
 
         if mode == ScreenMode::Dungeon {
             for map_x in 0..level.width {
-                if map_x == player.x && map_y == player.y {
-                    screen_buf.push('@');
-                } else if let Some(monster) = monsters.iter().find(|m| m.x == map_x && m.y == map_y) {
-                    screen_buf.push(monster.symbol);
-                } else if let Some(tile) = level.get_tile(map_x, map_y) {
-                    match tile.tile_type {
-                        TileType::Wall => screen_buf.push('#'),
-                        TileType::Floor => screen_buf.push('.'),
-                        TileType::DoorClosed => screen_buf.push('+'),
-                        TileType::DoorOpen => screen_buf.push('\''),
-                        TileType::StairsUp => screen_buf.push('<'),
-                        TileType::StairsDown => screen_buf.push('>'),
-                        TileType::Empty => screen_buf.push(' '),
+                if let Some(tile) = level.get_tile(map_x, map_y) {
+                    if map_x == player.x && map_y == player.y {
+                        screen_buf.push('@');
+                    } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
+                        // Only render monsters on tiles that are actively lit/visible!
+                        let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
+                        screen_buf.push(monster.symbol);
+                    } else if tile.visible || tile.remembered {
+                        // Render visible or remembered tiles
+                        match tile.tile_type {
+                            TileType::Wall => screen_buf.push('#'),
+                            TileType::Floor => screen_buf.push('.'),
+                            TileType::DoorClosed => screen_buf.push('+'),
+                            TileType::DoorOpen => screen_buf.push('\''),
+                            TileType::StairsUp => screen_buf.push('<'),
+                            TileType::StairsDown => screen_buf.push('>'),
+                            TileType::Empty => screen_buf.push(' '),
+                        }
+                    } else {
+                        // Unexplored darkness shroud
+                        screen_buf.push(' ');
                     }
                 }
             }
@@ -503,7 +607,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth)
             }
             Err(e) => {
-                let rolled_max = rng.gen_range(8..=15); // Random max depth between 8 and 15
+                let rolled_max = rng.gen_range(8..=15);
                 let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
                 lvl.generate_simple_floor();
                 let start_pos = find_passable_tile(&lvl);
@@ -513,7 +617,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else {
-        let rolled_max = rng.gen_range(8..=15); // Random max depth between 8 and 15
+        let rolled_max = rng.gen_range(8..=15);
         let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
         lvl.generate_simple_floor();
         let start_pos = find_passable_tile(&lvl);
@@ -525,7 +629,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut screen_mode = ScreenMode::Dungeon;
     let mut active_shop = ShopType::General;
 
-    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
 
     let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
 
@@ -578,50 +682,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
 
                                 if entered_shop {
-                                    // Shop entered, don't execute normal movement
+                                    // Shop entered
                                 }
-                                // Check if there is a monster at the destination
+                                // Check if there is a monster at the destination (must be visible to attack!)
                                 else if let Some(m_idx) = monsters.iter().position(|m| m.x == next_x && m.y == next_y) {
-                                    let damage = player.roll_melee_damage(&mut rng);
-                                    status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
+                                    // Check if the tile the monster stands on is visible (lit) to player
+                                    let is_m_visible = level.get_tile(next_x, next_y).map(|t| t.visible).unwrap_or(false);
                                     
-                                    let monster_name = monsters[m_idx].name.clone();
-                                    let exp_reward = monsters[m_idx].experience_reward;
+                                    if is_m_visible {
+                                        let damage = player.roll_melee_damage(&mut rng);
+                                        status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
+                                        
+                                        let monster_name = monsters[m_idx].name.clone();
+                                        let exp_reward = monsters[m_idx].experience_reward;
 
-                                    if monsters[m_idx].take_damage(damage) {
-                                        status_msg.push_str(&format!(" You killed {}!", monster_name));
-                                        
-                                        // Award EXP
-                                        if player.add_experience(exp_reward) {
-                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
-                                        } else if exp_reward > 0 {
-                                            status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
-                                        } else {
-                                            status_msg.push_str(" Gained 0 EXP (Town monster).");
-                                        }
-                                        
-                                        // Win Condition: slayed the Balrog!
-                                        if monster_name == "The Balrog" {
-                                            player.balrog_killed = true;
-                                            draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
-                                            std::thread::sleep(std::time::Duration::from_secs(1));
+                                        if monsters[m_idx].take_damage(damage) {
+                                            status_msg.push_str(&format!(" You killed {}!", monster_name));
                                             
-                                            execute!(stdout, Show, LeaveAlternateScreen)?;
-                                            disable_raw_mode()?;
-                                            
-                                            println!("============================================================");
-                                            println!("         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        ");
-                                            println!("        You have completed the quest and won rmoria!        ");
-                                            println!("============================================================");
-                                            
-                                            if Path::new(save_path).exists() {
-                                                let _ = fs::remove_file(save_path);
+                                            if player.add_experience(exp_reward) {
+                                                status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                            } else if exp_reward > 0 {
+                                                status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
+                                            } else {
+                                                status_msg.push_str(" Gained 0 EXP (Town monster).");
                                             }
-                                            break 'game_loop;
+                                            
+                                            if monster_name == "The Balrog" {
+                                                player.balrog_killed = true;
+                                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                                std::thread::sleep(std::time::Duration::from_secs(1));
+                                                
+                                                execute!(stdout, Show, LeaveAlternateScreen)?;
+                                                disable_raw_mode()?;
+                                                
+                                                println!("============================================================");
+                                                println!("         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        ");
+                                                println!("        You have completed the quest and won rmoria!        ");
+                                                println!("============================================================");
+                                                
+                                                if Path::new(save_path).exists() {
+                                                    let _ = fs::remove_file(save_path);
+                                                }
+                                                break 'game_loop;
+                                            }
+                                            monsters.remove(m_idx);
                                         }
-                                        monsters.remove(m_idx);
+                                        player_acted = true;
+                                    } else {
+                                        // Stepping into dark tile containing monster -> bump/attack in the dark!
+                                        if let Some(tile) = level.get_tile(next_x, next_y) {
+                                            if tile.is_passable() {
+                                                player.move_to(next_x, next_y);
+                                                status_msg = "You step into the darkness and bump into a monster!".to_string();
+                                                player_acted = true;
+                                            }
+                                        }
                                     }
-                                    player_acted = true;
                                 } else {
                                     if let Some(tile) = level.get_tile(next_x, next_y) {
                                         if tile.is_passable() || direction == Direction::Rest {
@@ -647,7 +763,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         level.generate_simple_floor();
                                         monsters = generate_monsters_for_depth(&level, player.balrog_killed);
                                         
-                                        // Spawn player on StairsDown tile of the new level
                                         let sd_pos = level.tiles.iter().enumerate()
                                             .find(|(_, t)| t.tile_type == TileType::StairsDown)
                                             .map(|(i, _)| (i % level.width, i / level.width))
@@ -669,7 +784,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         level.generate_simple_floor();
                                         monsters = generate_monsters_for_depth(&level, player.balrog_killed);
                                         
-                                        // Spawn player on StairsUp tile of the new level
                                         let su_pos = level.tiles.iter().enumerate()
                                             .find(|(_, t)| t.tile_type == TileType::StairsUp)
                                             .map(|(i, _)| (i % level.width, i / level.width))
@@ -709,12 +823,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Action::Quit => {
                                 status_msg = "Saving game and quitting...".to_string();
-                                draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                 
                                 let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
                                 if let Err(e) = state.save_to_file(save_path) {
                                     status_msg = format!("Save failed: {}", e);
-                                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                     std::thread::sleep(std::time::Duration::from_secs(2));
                                 } else {
                                     std::thread::sleep(std::time::Duration::from_millis(800));
@@ -802,7 +916,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let idx = c as usize - 'a' as usize;
                                 let equippable_indices: Vec<usize> = player.inventory.iter()
                                     .enumerate()
-                                    .filter(|(_, item)| matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}))
+                                    .filter(|(_, item)| {
+                                        matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..}) ||
+                                        item.name.contains("Torch") || item.name.contains("Lantern")
+                                    })
                                     .map(|(i, _)| i)
                                     .collect();
 
@@ -810,12 +927,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let inv_idx = equippable_indices[idx];
                                     let item = player.inventory.remove(inv_idx);
                                     let is_weapon = matches!(item.item_type, ItemType::Weapon {..});
+                                    let is_armor = matches!(item.item_type, ItemType::Armor {..});
 
                                     let already_equipped = player.equipment.iter().position(|eq| {
                                         if is_weapon {
                                             matches!(eq.item_type, ItemType::Weapon {..})
-                                        } else {
+                                        } else if is_armor {
                                             matches!(eq.item_type, ItemType::Armor {..})
+                                        } else {
+                                            eq.name.contains("Torch") || eq.name.contains("Lantern")
                                         }
                                     });
 
@@ -872,7 +992,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let idx = c as usize - 'a' as usize;
                                 let scroll_indices: Vec<usize> = player.inventory.iter()
                                     .enumerate()
-                                    .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}))
+                                    .filter(|(_, item)| matches!(item.item_type, ItemType::Scroll {..}) && !item.name.contains("Torch"))
                                     .map(|(i, _)| i)
                                     .collect();
 
@@ -922,7 +1042,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if player.hp <= 0 {
                                 player.hp = 0;
                                 status_msg.push_str(" You have died! Game Over.");
-                                draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                                draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                                 
                                 if Path::new(save_path).exists() {
                                     let _ = fs::remove_file(save_path);
@@ -942,9 +1062,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                 } else {
-                    draw_map(&level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
+                    draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop)?;
                 }
             }
         }

@@ -116,6 +116,7 @@ impl Player {
             inventory: vec![
                 Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
                 Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
+                Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false }), // Treated as accessory/light
                 Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
                 Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
             ],
@@ -131,7 +132,15 @@ impl Player {
         self.y = y;
     }
 
-    /// Add experience. Returns `true` if player leveled up.
+    pub fn get_light_radius(&self) -> usize {
+        // Return radius 2 if wielding a Torch, otherwise radius 1 in pitch dark
+        if self.equipment.iter().any(|item| item.name.contains("Torch") || item.name.contains("Lantern")) {
+            2
+        } else {
+            1
+        }
+    }
+
     pub fn add_experience(&mut self, amount: u32) -> bool {
         if amount == 0 {
             return false;
@@ -148,8 +157,8 @@ impl Player {
 
         if self.exp >= next_level_threshold {
             self.level += 1;
-            self.max_hp += 8; // Fixed HP increase on level up
-            self.hp = self.max_hp; // Fully heal on level up
+            self.max_hp += 8;
+            self.hp = self.max_hp;
             true
         } else {
             false
