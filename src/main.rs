@@ -416,12 +416,42 @@ fn update_visibility(level: &mut DungeonLevel, player: &Player) {
         return;
     }
     
-    // 3. Dungeon Level light calculations (LOS raycast within radius limit)
+    // 3. Lit room checks: If player is inside a lit room, reveal the entire room (including 1-tile boundary walls)
+    let mut lit_rooms_to_reveal = Vec::new();
+    for room in &level.rooms {
+        if room.is_lit {
+            let player_inside = player.x >= room.x && player.x < room.x + room.w &&
+                                player.y >= room.y && player.y < room.y + room.h;
+            if player_inside {
+                lit_rooms_to_reveal.push(room.clone());
+            }
+        }
+    }
+    
+    // 4. Dungeon Level light calculations (LOS raycast within radius limit)
     let radius = player.get_light_radius();
     let max_dist = 8; // Memory limit distance
     
     for y in 0..level.height {
         for x in 0..level.width {
+            // Check if this tile falls within an illuminated lit room
+            let mut is_revealed_by_room = false;
+            for room in &lit_rooms_to_reveal {
+                if x >= room.x - 1 && x <= room.x + room.w &&
+                   y >= room.y - 1 && y <= room.y + room.h {
+                    is_revealed_by_room = true;
+                    break;
+                }
+            }
+
+            if is_revealed_by_room {
+                if let Some(tile) = level.get_tile_mut(x, y) {
+                    tile.visible = true;
+                    tile.remembered = true;
+                }
+                continue;
+            }
+
             let dx = (x as isize - player.x as isize).abs();
             let dy = (y as isize - player.y as isize).abs();
             let dist = dx.max(dy) as usize; // Chebyshev distance
