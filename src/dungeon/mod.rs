@@ -80,11 +80,15 @@ impl Room {
 pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
     let roll = rng.gen_range(0..100);
     if roll < 20 {
-        let is_heal = rng.gen_bool(0.3);
-        if is_heal && depth >= 3 {
-            Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 })
-        } else {
-            Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
+        let potion_choice = rng.gen_range(0..10);
+        match potion_choice {
+            0..=2 => Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
+            3 | 4 if depth >= 2 => Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 }),
+            5 => Item::new("Potion of Cure Poison", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            6 => Item::new("Potion of Speed", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            7 => Item::new("Potion of Heroism", 1, 5, ItemType::Potion { heal_amount: 10 }),
+            8 => Item::new("Potion of Restore Strength", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            _ => Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
         }
     } else if roll < 40 {
         let book_roll = rng.gen_range(0..10);
@@ -93,11 +97,11 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
         } else if book_roll == 1 {
             Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false })
         } else {
-            let is_teleport = rng.gen_bool(0.3);
-            if is_teleport && depth >= 2 {
-                Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true })
-            } else {
-                Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true })
+            let scroll_roll = rng.gen_range(0..10);
+            match scroll_roll {
+                0..=3 => Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+                4..=6 => Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true }),
+                _ => Item::new("Scroll of Word of Recall", 1, 2, ItemType::Scroll { teleport: false }),
             }
         }
     } else if roll < 55 {
@@ -448,10 +452,13 @@ impl DungeonLevel {
             let num_traps = rng.gen_range(3..=6);
             for _ in 0..num_traps {
                 let (tx, ty) = self.find_random_floor_tile();
-                let trap_type = match rng.gen_range(0..3) {
+                let trap_type = match rng.gen_range(0..6) {
                     0 => TrapType::Arrow,
                     1 => TrapType::PoisonGas,
-                    _ => TrapType::Teleport,
+                    2 => TrapType::Teleport,
+                    3 => TrapType::SleepingGas,
+                    4 => TrapType::BlindGas,
+                    _ => TrapType::ConfusionGas,
                 };
                 if let Some(tile) = self.get_tile_mut(tx, ty) {
                     tile.tile_type = TileType::Trap { detected: false, trap_type };
@@ -528,6 +535,13 @@ impl DungeonLevel {
     pub fn update_fov(&mut self, player: &Player) {
         for tile in self.tiles.iter_mut() {
             tile.visible = false;
+        }
+
+        if player.flags.blind > 0 {
+            if let Some(tile) = self.get_tile_mut(player.x, player.y) {
+                tile.visible = true;
+            }
+            return;
         }
         
         if self.depth == 0 {
@@ -785,15 +799,23 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
         ShopType::Temple => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
             ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
+            ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
+            ("Potion of Heroism", 50, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
             ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
         ],
         ShopType::Alchemy => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
+            ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
+            ("Potion of Speed", 50, ItemType::Potion { heal_amount: 0 }),
+            ("Potion of Restore Strength", 100, ItemType::Potion { heal_amount: 0 }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
         ],
         ShopType::Magic => vec![
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
+            ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
             ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
         ],
     }

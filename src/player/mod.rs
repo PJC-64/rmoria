@@ -27,7 +27,7 @@ pub enum Class {
     Paladin,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attributes {
     pub strength: i16,
     pub intelligence: i16,
@@ -35,6 +35,19 @@ pub struct Attributes {
     pub dexterity: i16,
     pub constitution: i16,
     pub charisma: i16,
+}
+
+impl Default for Attributes {
+    fn default() -> Self {
+        Self {
+            strength: 10,
+            intelligence: 10,
+            wisdom: 10,
+            dexterity: 10,
+            constitution: 10,
+            charisma: 10,
+        }
+    }
 }
 
 impl Attributes {
@@ -48,6 +61,72 @@ impl Attributes {
             charisma: chr_,
         }
     }
+}
+
+/// Formats a stat value according to the canonical 18/xx percentile display:
+/// - Values <= 18 display as right-aligned integer (e.g. `"    18"`).
+/// - Values > 18 display as percentile (e.g. `" 18/01"`, `" 18/50"`, `"18/100"`).
+pub fn format_stat(val: i16) -> String {
+    if val <= 18 {
+        format!("{:>6}", val)
+    } else {
+        let percentile = val - 18;
+        if percentile >= 100 {
+            "18/100".to_string()
+        } else {
+            format!(" 18/{:02}", percentile)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PlayerFlags {
+    pub rest: i16,
+    pub blind: i16,
+    pub paralysis: i16,
+    pub confused: i16,
+    pub afraid: i16,
+    pub poisoned: i16,
+    pub fast: i16,
+    pub slow: i16,
+    pub protect_evil: i16,
+    pub invulnerability: i16,
+    pub heroism: i16,
+    pub super_heroism: i16,
+    pub blessed: i16,
+    pub heat_resistance: i16,
+    pub cold_resistance: i16,
+    pub detect_invisible: i16,
+    pub word_of_recall: i16,
+    pub see_infra: i16,
+    pub timed_infra: i16,
+    pub image: i16,
+
+    pub see_invisible: bool,
+    pub teleport: bool,
+    pub free_action: bool,
+    pub slow_digest: bool,
+    pub aggravate: bool,
+    pub resistant_to_fire: bool,
+    pub resistant_to_cold: bool,
+    pub resistant_to_acid: bool,
+    pub regenerate_hp: bool,
+    pub resistant_to_light: bool,
+    pub free_fall: bool,
+    pub sustain_str: bool,
+    pub sustain_int: bool,
+    pub sustain_wis: bool,
+    pub sustain_con: bool,
+    pub sustain_dex: bool,
+    pub sustain_chr: bool,
+    pub confuse_monster: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ConditionTickResult {
+    pub messages: Vec<String>,
+    pub died_from_poison: bool,
+    pub recall_triggered: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -159,6 +238,12 @@ pub struct Player {
     pub food: i32,
     
     pub stats: Attributes,
+    #[serde(default)]
+    pub max_stats: Attributes,
+    #[serde(default)]
+    pub flags: PlayerFlags,
+    #[serde(default)]
+    pub max_depth_reached: u32,
     pub inventory: Vec<Item>,
     pub equipment: Vec<Item>,
     pub balrog_killed: bool,
@@ -407,7 +492,10 @@ impl Player {
             max_mana: 0,
             mana: 0,
             food: 7500,
-            stats: base_stats,
+            stats: base_stats.clone(),
+            max_stats: base_stats,
+            flags: PlayerFlags::default(),
+            max_depth_reached: 0,
             inventory: {
                 let mut starter = vec![
                     Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
@@ -437,6 +525,7 @@ impl Player {
         };
         
         player.apply_race_and_class_modifiers();
+        player.max_stats = player.stats.clone();
         player.update_max_hp_and_mana();
         player.hp = player.max_hp;
         player.mana = player.max_mana;
@@ -476,8 +565,12 @@ impl Player {
 
     pub fn tick_digestion_and_regen(&mut self, is_resting: bool) -> (Option<&'static str>, bool) {
         // Natural HP/Mana regeneration when active (not resting, since resting has accelerated 1 HP/turn)
+        // Note: Poison prevents natural HP regeneration in Moria
+        let can_regen_hp = self.flags.poisoned < 1 && self.hp < self.max_hp;
+        let hp_interval = if self.flags.regenerate_hp { 10 } else { 20 };
+
         if !is_resting && self.food > 0 {
-            if self.food % 20 == 0 {
+            if can_regen_hp && self.food % hp_interval == 0 {
                 self.hp = (self.hp + 1).min(self.max_hp);
             }
             if self.food % 15 == 0 {
@@ -485,8 +578,16 @@ impl Player {
             }
         }
 
-        // Food consumption: 1 unit per turn
-        self.food -= 1;
+        // Food consumption: 1 unit per turn, or 1 every 2 turns if slow_digest
+        let consumes_food = if self.flags.slow_digest {
+            self.food % 2 == 0
+        } else {
+            true
+        };
+
+        if consumes_food {
+            self.food -= 1;
+        }
 
         if self.food < 0 {
             // Starvation: damage ticks every 15 turns instead of every single turn
@@ -521,15 +622,331 @@ impl Player {
         let con = self.stats.constitution;
         if con < 7 {
             con as i32 - 7
-        } else if con <= 16 {
+        } else if con < 17 {
             0
         } else if con == 17 {
             1
-        } else if con == 18 {
+        } else if con < 94 {
             2
-        } else {
+        } else if con < 117 {
             3
+        } else {
+            4
         }
+    }
+
+    pub fn is_stat_sustained(&self, stat_idx: usize) -> bool {
+        match stat_idx {
+            0 => self.flags.sustain_str,
+            1 => self.flags.sustain_int,
+            2 => self.flags.sustain_wis,
+            3 => self.flags.sustain_dex,
+            4 => self.flags.sustain_con,
+            5 => self.flags.sustain_chr,
+            _ => false,
+        }
+    }
+
+    /// Drains a stat by 1 or percentile chunk according to canonical Umoria rules.
+    /// If sustained, does nothing and returns false.
+    pub fn drain_stat<R: rand::Rng>(&mut self, stat_idx: usize, rng: &mut R) -> bool {
+        if self.is_stat_sustained(stat_idx) {
+            return false;
+        }
+
+        let current = match stat_idx {
+            0 => self.stats.strength,
+            1 => self.stats.intelligence,
+            2 => self.stats.wisdom,
+            3 => self.stats.dexterity,
+            4 => self.stats.constitution,
+            5 => self.stats.charisma,
+            _ => return false,
+        };
+
+        if current <= 3 {
+            return false;
+        }
+
+        let new_stat = if (19..117).contains(&current) {
+            let loss = (((118 - current as i32) >> 1) + 1) >> 1;
+            let roll = rng.gen_range(1..=loss);
+            (current as i32 - roll - loss).max(18) as i16
+        } else {
+            current - 1
+        };
+
+        match stat_idx {
+            0 => self.stats.strength = new_stat,
+            1 => self.stats.intelligence = new_stat,
+            2 => self.stats.wisdom = new_stat,
+            3 => self.stats.dexterity = new_stat,
+            4 => self.stats.constitution = new_stat,
+            5 => self.stats.charisma = new_stat,
+            _ => {}
+        }
+
+        self.update_max_hp_and_mana();
+        true
+    }
+
+    /// Restores a single stat back to its natural maximum.
+    pub fn restore_stat(&mut self, stat_idx: usize) -> bool {
+        let (current, max) = match stat_idx {
+            0 => (self.stats.strength, self.max_stats.strength),
+            1 => (self.stats.intelligence, self.max_stats.intelligence),
+            2 => (self.stats.wisdom, self.max_stats.wisdom),
+            3 => (self.stats.dexterity, self.max_stats.dexterity),
+            4 => (self.stats.constitution, self.max_stats.constitution),
+            5 => (self.stats.charisma, self.max_stats.charisma),
+            _ => return false,
+        };
+
+        if current >= max {
+            return false;
+        }
+
+        match stat_idx {
+            0 => self.stats.strength = max,
+            1 => self.stats.intelligence = max,
+            2 => self.stats.wisdom = max,
+            3 => self.stats.dexterity = max,
+            4 => self.stats.constitution = max,
+            5 => self.stats.charisma = max,
+            _ => {}
+        }
+
+        self.update_max_hp_and_mana();
+        true
+    }
+
+    /// Restores all 6 stats to natural maximums.
+    pub fn restore_all_stats(&mut self) -> bool {
+        let mut any = false;
+        for i in 0..6 {
+            if self.restore_stat(i) {
+                any = true;
+            }
+        }
+        any
+    }
+
+    /// Increases a stat (e.g. via stat gain potion) up to 118 (18/100).
+    pub fn increase_stat<R: rand::Rng>(&mut self, stat_idx: usize, rng: &mut R) -> bool {
+        let current = match stat_idx {
+            0 => self.stats.strength,
+            1 => self.stats.intelligence,
+            2 => self.stats.wisdom,
+            3 => self.stats.dexterity,
+            4 => self.stats.constitution,
+            5 => self.stats.charisma,
+            _ => return false,
+        };
+
+        if current >= 118 {
+            return false;
+        }
+
+        let new_stat = if (18..116).contains(&current) {
+            let gain = ((118 - current as i32) / 3 + 1) >> 1;
+            let roll = rng.gen_range(1..=gain);
+            (current as i32 + roll + gain).min(118) as i16
+        } else {
+            current + 1
+        };
+
+        match stat_idx {
+            0 => {
+                self.stats.strength = new_stat;
+                if new_stat > self.max_stats.strength { self.max_stats.strength = new_stat; }
+            }
+            1 => {
+                self.stats.intelligence = new_stat;
+                if new_stat > self.max_stats.intelligence { self.max_stats.intelligence = new_stat; }
+            }
+            2 => {
+                self.stats.wisdom = new_stat;
+                if new_stat > self.max_stats.wisdom { self.max_stats.wisdom = new_stat; }
+            }
+            3 => {
+                self.stats.dexterity = new_stat;
+                if new_stat > self.max_stats.dexterity { self.max_stats.dexterity = new_stat; }
+            }
+            4 => {
+                self.stats.constitution = new_stat;
+                if new_stat > self.max_stats.constitution { self.max_stats.constitution = new_stat; }
+            }
+            5 => {
+                self.stats.charisma = new_stat;
+                if new_stat > self.max_stats.charisma { self.max_stats.charisma = new_stat; }
+            }
+            _ => {}
+        }
+
+        self.update_max_hp_and_mana();
+        true
+    }
+
+    /// Ticks active conditions, counters, and status effects for one game turn.
+    pub fn tick_conditions(&mut self, turn: u64) -> ConditionTickResult {
+        let mut result = ConditionTickResult::default();
+
+        // 1. Blindness
+        if self.flags.blind > 0 {
+            self.flags.blind -= 1;
+            if self.flags.blind == 0 {
+                result.messages.push("The veil of darkness lifts.".to_string());
+            }
+        }
+
+        // 2. Confusion
+        if self.flags.confused > 0 {
+            self.flags.confused -= 1;
+            if self.flags.confused == 0 {
+                result.messages.push("You feel less confused now.".to_string());
+            }
+        }
+
+        // 3. Fear
+        if self.flags.afraid > 0 {
+            if self.flags.heroism > 0 || self.flags.super_heroism > 0 {
+                self.flags.afraid = 0;
+                result.messages.push("You feel bolder now.".to_string());
+            } else {
+                self.flags.afraid -= 1;
+                if self.flags.afraid == 0 {
+                    result.messages.push("You feel bolder now.".to_string());
+                }
+            }
+        }
+
+        // 4. Poison
+        if self.flags.poisoned > 0 {
+            self.flags.poisoned -= 1;
+            if self.flags.poisoned == 0 {
+                result.messages.push("You feel better.".to_string());
+            } else {
+                let con_adj = self.get_con_hp_bonus();
+                let damage = match con_adj {
+                    a if a <= -4 => 4,
+                    -3 | -2 => 3,
+                    -1 => 2,
+                    0 => 1,
+                    1..=3 => if turn.is_multiple_of(2) { 1 } else { 0 },
+                    4..=5 => if turn.is_multiple_of(3) { 1 } else { 0 },
+                    _ => if turn.is_multiple_of(4) { 1 } else { 0 },
+                };
+                if damage > 0 {
+                    self.hp -= damage;
+                    if self.hp <= 0 {
+                        self.hp = 0;
+                        result.died_from_poison = true;
+                    }
+                }
+            }
+        }
+
+        // 5. Speed (Fast / Slow)
+        if self.flags.fast > 0 {
+            self.flags.fast -= 1;
+            if self.flags.fast == 0 {
+                result.messages.push("You feel yourself slow down.".to_string());
+            }
+        }
+        if self.flags.slow > 0 {
+            self.flags.slow -= 1;
+            if self.flags.slow == 0 {
+                result.messages.push("You feel yourself speed up.".to_string());
+            }
+        }
+
+        // 6. Evil protection
+        if self.flags.protect_evil > 0 {
+            self.flags.protect_evil -= 1;
+            if self.flags.protect_evil == 0 {
+                result.messages.push("You no longer feel safe from evil.".to_string());
+            }
+        }
+
+        // 7. Invulnerability
+        if self.flags.invulnerability > 0 {
+            self.flags.invulnerability -= 1;
+            if self.flags.invulnerability == 0 {
+                result.messages.push("Your skin returns to normal.".to_string());
+            }
+        }
+
+        // 8. Heroism
+        if self.flags.heroism > 0 {
+            self.flags.heroism -= 1;
+            if self.flags.heroism == 0 {
+                self.max_hp = (self.max_hp - 10).max(1);
+                self.hp = self.hp.min(self.max_hp);
+                result.messages.push("The heroism wears off.".to_string());
+            }
+        }
+
+        // 9. Super Heroism
+        if self.flags.super_heroism > 0 {
+            self.flags.super_heroism -= 1;
+            if self.flags.super_heroism == 0 {
+                self.max_hp = (self.max_hp - 20).max(1);
+                self.hp = self.hp.min(self.max_hp);
+                result.messages.push("The super heroism wears off.".to_string());
+            }
+        }
+
+        // 10. Blessed
+        if self.flags.blessed > 0 {
+            self.flags.blessed -= 1;
+            if self.flags.blessed == 0 {
+                result.messages.push("The prayer has expired.".to_string());
+            }
+        }
+
+        // 11. Heat & Cold Resistance
+        if self.flags.heat_resistance > 0 {
+            self.flags.heat_resistance -= 1;
+            if self.flags.heat_resistance == 0 {
+                result.messages.push("You no longer feel safe from flame.".to_string());
+            }
+        }
+        if self.flags.cold_resistance > 0 {
+            self.flags.cold_resistance -= 1;
+            if self.flags.cold_resistance == 0 {
+                result.messages.push("You no longer feel safe from cold.".to_string());
+            }
+        }
+
+        // 12. Detect invisible & infra
+        if self.flags.detect_invisible > 0 {
+            self.flags.detect_invisible -= 1;
+        }
+        if self.flags.timed_infra > 0 {
+            self.flags.timed_infra -= 1;
+        }
+
+        // 13. Hallucination
+        if self.flags.image > 0 {
+            self.flags.image -= 1;
+        }
+
+        // 14. Paralysis
+        if self.flags.paralysis > 0 {
+            self.flags.paralysis -= 1;
+        }
+
+        // 15. Word of recall
+        if self.flags.word_of_recall > 0 {
+            if self.flags.word_of_recall == 1 {
+                self.flags.word_of_recall = 0;
+                result.recall_triggered = true;
+            } else {
+                self.flags.word_of_recall -= 1;
+            }
+        }
+
+        result
     }
 
     pub fn update_max_hp_and_mana(&mut self) {
@@ -621,7 +1038,13 @@ impl Player {
             }
         };
 
-        let damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
+        let mut damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
+        if self.flags.heroism > 0 {
+            damage += 2;
+        }
+        if self.flags.super_heroism > 0 {
+            damage += 4;
+        }
         if damage < 1 {
             1
         } else {
@@ -658,6 +1081,13 @@ impl Player {
             if let ItemType::Armor { ac: item_ac } = &item.item_type {
                 ac += item_ac;
             }
+        }
+
+        if self.flags.invulnerability > 0 {
+            ac += 100;
+        }
+        if self.flags.blessed > 0 {
+            ac += 2;
         }
         
         ac
@@ -961,5 +1391,137 @@ mod tests {
         player.food = 300;
         let (msg, _) = player.tick_digestion_and_regen(false);
         assert_eq!(msg, Some(" You are getting faint from hunger."));
+    }
+
+    #[test]
+    fn test_format_stat_18_xx() {
+        assert_eq!(format_stat(3), "     3");
+        assert_eq!(format_stat(10), "    10");
+        assert_eq!(format_stat(18), "    18");
+        assert_eq!(format_stat(19), " 18/01");
+        assert_eq!(format_stat(28), " 18/10");
+        assert_eq!(format_stat(117), " 18/99");
+        assert_eq!(format_stat(118), "18/100");
+        assert_eq!(format_stat(120), "18/100");
+    }
+
+    #[test]
+    fn test_stat_drain_restore_and_sustain() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.stats.strength = 18;
+        player.max_stats.strength = 18;
+
+        let mut rng = rand::thread_rng();
+
+        // 1. Unprotected drain reduces STR from 18 to 17
+        let drained = player.drain_stat(0, &mut rng);
+        assert!(drained);
+        assert_eq!(player.stats.strength, 17);
+        assert_eq!(player.max_stats.strength, 18);
+
+        // 2. Sustain prevents drain
+        player.flags.sustain_str = true;
+        let drained_again = player.drain_stat(0, &mut rng);
+        assert!(!drained_again, "Sustained stat must not be drained");
+        assert_eq!(player.stats.strength, 17);
+
+        // 3. Restore restores back to max_stats
+        let restored = player.restore_stat(0);
+        assert!(restored);
+        assert_eq!(player.stats.strength, 18);
+
+        // 4. Restoring an undrained stat returns false
+        let restored_again = player.restore_stat(0);
+        assert!(!restored_again);
+    }
+
+    #[test]
+    fn test_condition_ticks_and_messages() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.flags.blind = 2;
+        player.flags.confused = 1;
+        player.flags.heroism = 1;
+
+        // Turn 1
+        let res1 = player.tick_conditions(1);
+        assert_eq!(player.flags.blind, 1);
+        assert_eq!(player.flags.confused, 0);
+        assert_eq!(player.flags.heroism, 0);
+        assert!(res1.messages.contains(&"You feel less confused now.".to_string()));
+        assert!(res1.messages.contains(&"The heroism wears off.".to_string()));
+
+        // Turn 2: blindness expires
+        let res2 = player.tick_conditions(2);
+        assert_eq!(player.flags.blind, 0);
+        assert!(res2.messages.contains(&"The veil of darkness lifts.".to_string()));
+    }
+
+    #[test]
+    fn test_poison_damage_and_lethality() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.hp = 2;
+        player.flags.poisoned = 5;
+        player.stats.constitution = 10; // con adj = 0 -> 1 damage per turn
+
+        let res1 = player.tick_conditions(1);
+        assert_eq!(player.hp, 1);
+        assert!(!res1.died_from_poison);
+
+        let res2 = player.tick_conditions(2);
+        assert_eq!(player.hp, 0);
+        assert!(res2.died_from_poison);
+    }
+
+    #[test]
+    fn test_word_of_recall_countdown() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.flags.word_of_recall = 3;
+
+        let res1 = player.tick_conditions(1);
+        assert!(!res1.recall_triggered);
+        assert_eq!(player.flags.word_of_recall, 2);
+
+        let res2 = player.tick_conditions(2);
+        assert!(!res2.recall_triggered);
+        assert_eq!(player.flags.word_of_recall, 1);
+
+        let res3 = player.tick_conditions(3);
+        assert!(res3.recall_triggered);
+        assert_eq!(player.flags.word_of_recall, 0);
+    }
+
+    #[test]
+    fn test_poison_suppresses_natural_regen() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.food = 7500;
+        player.hp = 10;
+        player.max_hp = 30;
+        player.flags.poisoned = 10;
+
+        // When poisoned, 7500 divisible by 20 does NOT heal HP
+        let (_msg, starved) = player.tick_digestion_and_regen(false);
+        assert!(!starved);
+        assert_eq!(player.hp, 10, "Poison must prevent natural HP regeneration");
+    }
+
+    #[test]
+    fn test_stat_increase_into_percentile() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.stats.strength = 18;
+        player.max_stats.strength = 18;
+
+        let mut rng = rand::thread_rng();
+        let increased = player.increase_stat(0, &mut rng);
+        assert!(increased);
+        assert!(player.stats.strength > 18);
+        assert!(player.stats.strength <= 118);
+        assert_eq!(player.max_stats.strength, player.stats.strength);
+    }
+
+    #[test]
+    fn test_free_action_intrinsic() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.flags.free_action = true;
+        assert!(player.flags.free_action);
     }
 }

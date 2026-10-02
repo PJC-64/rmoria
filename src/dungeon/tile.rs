@@ -5,6 +5,9 @@ pub enum TrapType {
     Arrow,
     PoisonGas,
     Teleport,
+    SleepingGas,
+    BlindGas,
+    ConfusionGas,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

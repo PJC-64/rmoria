@@ -177,6 +177,8 @@ fn process_end_of_turn(
     active_shop: ShopType,
     active_haggle: Option<&HaggleState>,
     is_resting: bool,
+    turn: u64,
+    max_depth: u32,
 ) -> Result<(), std::io::Error> {
     let mut rng = rand::thread_rng();
 
@@ -196,6 +198,37 @@ fn process_end_of_turn(
                 }
             }
 
+    // Condition ticks (poison, confusion, blindness, fear, speed, heroism, blessed, word of recall)
+    let cond_result = player.tick_conditions(turn);
+    if cond_result.died_from_poison {
+        if save_path.exists() {
+            let _ = std::fs::remove_file(save_path);
+        }
+        *screen_mode = ScreenMode::GameOver;
+        *status_msg = format!("{} You have died from poison! Game Over. Press [r] to restart, or [q] to quit.", status_msg);
+        draw_map(level, player, monsters, status_msg, *screen_mode, active_shop, active_haggle, None)?;
+        return Ok(());
+    }
+    for msg in cond_result.messages {
+        status_msg.push(' ');
+        status_msg.push_str(&msg);
+    }
+    if cond_result.recall_triggered {
+        let new_depth = if level.depth > 0 {
+            status_msg.push_str(" You feel yourself yanked upwards!");
+            0
+        } else {
+            let target = player.max_depth_reached.max(1);
+            status_msg.push_str(" You feel yourself yanked downwards!");
+            target
+        };
+        *level = DungeonLevel::new(66, 22, new_depth, max_depth);
+        let (px, py) = level.find_random_floor_tile();
+        player.move_to(px, py);
+        *monsters = level.generate_monsters(player.balrog_killed);
+        level.update_fov(player);
+    }
+
     // Food consumption, natural health/mana regeneration, and starvation
     let (hunger_msg, starved) = player.tick_digestion_and_regen(is_resting);
     if starved {
@@ -210,6 +243,9 @@ fn process_end_of_turn(
         && !status_msg.contains(msg.trim()) {
             status_msg.push_str(msg);
         }
+
+    // Track max depth visited
+    player.max_depth_reached = player.max_depth_reached.max(level.depth);
 
     let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
 
@@ -228,6 +264,46 @@ fn process_end_of_turn(
             player.hp -= m_damage;
             player.searching = false;
             status_msg.push_str(&format!(" {} hits you for {}!", monster.name, m_damage));
+
+            // Special monster status afflictions:
+            let m_name = monster.name.to_lowercase();
+            if (m_name.contains("spider") || m_name.contains("snake") || m_name.contains("viper") || m_name.contains("scorpion")) && rng.gen_bool(0.35) {
+                player.flags.poisoned += rng.gen_range(10..=25);
+                status_msg.push_str(" You have been poisoned!");
+            } else if (m_name.contains("ghost") || m_name.contains("phantom") || m_name.contains("wraith") || m_name.contains("banshee")) && rng.gen_bool(0.35) {
+                if player.flags.heroism == 0 && player.flags.super_heroism == 0 {
+                    player.flags.afraid += rng.gen_range(5..=15);
+                    status_msg.push_str(" You are terrified!");
+                }
+            } else if (m_name.contains("ghoul") || m_name.contains("crawler") || m_name.contains("lich")) && rng.gen_bool(0.25) {
+                if player.flags.free_action {
+                    status_msg.push_str(" You resist the paralysis!");
+                } else {
+                    player.flags.paralysis += rng.gen_range(2..=5);
+                    status_msg.push_str(" You are paralyzed!");
+                }
+            } else if (m_name.contains("gazer") || m_name.contains("umber")) && rng.gen_bool(0.30) {
+                player.flags.confused += rng.gen_range(5..=15);
+                status_msg.push_str(" You feel confused!");
+            } else if m_name.contains("eye") && rng.gen_bool(0.25) {
+                player.flags.blind += rng.gen_range(10..=20);
+                status_msg.push_str(" You are blinded!");
+            } else if (m_name.contains("shadow") || m_name.contains("vampire") || m_name.contains("spectre")) && rng.gen_bool(0.25) {
+                let stat_to_drain = rng.gen_range(0..6);
+                if player.drain_stat(stat_to_drain, &mut rng) {
+                    let stat_name = match stat_to_drain {
+                        0 => "strength",
+                        1 => "intelligence",
+                        2 => "wisdom",
+                        3 => "dexterity",
+                        4 => "constitution",
+                        _ => "charisma",
+                    };
+                    status_msg.push_str(&format!(" Your {} was drained!", stat_name));
+                } else if player.is_stat_sustained(stat_to_drain) {
+                    status_msg.push_str(" Your stats were sustained!");
+                }
+            }
 
             if player.hp <= 0 {
                 player.hp = 0;
@@ -594,6 +670,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     let mut resting_turns: Option<i32> = None;
     let mut resting_until_healed = false;
     let mut rest_input_buffer = String::new();
+    let mut game_turn: u64 = 0;
 
     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
 
@@ -640,6 +717,29 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
             player.hp = player.max_hp;
             player.mana = player.max_mana;
             player.food = 15000;
+        }
+
+        if screen_mode != ScreenMode::GameOver && player.flags.paralysis > 0 {
+            resting_turns = None;
+            resting_until_healed = false;
+            status_msg = "You are paralyzed!".to_string();
+            game_turn += 1;
+            process_end_of_turn(
+                &mut player,
+                &mut level,
+                &mut monsters,
+                &mut status_msg,
+                &mut screen_mode,
+                &save_path,
+                active_shop,
+                active_haggle.as_ref(),
+                false,
+                game_turn,
+                max_depth,
+            )?;
+            draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            continue 'game_loop;
         }
 
         let is_resting = resting_turns.is_some() || resting_until_healed;
@@ -760,7 +860,16 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                         if let KeyCode::Char(c) = key_event.code {
                             let action = mapper.map_key(c);
                             match action {
-                                Action::Move(direction) => {
+                                Action::Move(mut direction) => {
+                                    if player.flags.confused > 0 && direction != Direction::Rest && rng.gen_bool(0.75) {
+                                        let random_dirs = [
+                                            Direction::NorthWest, Direction::North, Direction::NorthEast,
+                                            Direction::West, Direction::East,
+                                            Direction::SouthWest, Direction::South, Direction::SouthEast,
+                                        ];
+                                        direction = random_dirs[rng.gen_range(0..random_dirs.len())];
+                                    }
+
                                     let (dx, dy) = match direction {
                                         Direction::NorthWest => (-1, -1),
                                         Direction::North => (0, -1),
@@ -800,8 +909,12 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         let is_m_visible = level.get_tile(next_x, next_y).map(|t| t.visible).unwrap_or(false);
                                         
                                         if is_m_visible {
-                                            let damage = player.roll_melee_damage(&mut rng);
-                                            status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
+                                            if player.flags.afraid > 0 {
+                                                status_msg = "You are too afraid!".to_string();
+                                                player_acted = true;
+                                            } else {
+                                                let damage = player.roll_melee_damage(&mut rng);
+                                                status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
                                             
                                             monsters[m_idx].was_attacked = true;
                                             let monster_name = monsters[m_idx].name.clone();
@@ -853,6 +966,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 monsters.remove(m_idx);
                                             }
                                             player_acted = true;
+                                            }
                                         } else {
                                             if let Some(tile) = level.get_tile(next_x, next_y)
                                                 && tile.is_passable() {
@@ -895,12 +1009,29 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         TrapType::PoisonGas => {
                                                             let dmg = rng.gen_range(2..=8);
                                                             player.hp -= dmg;
-                                                            status_msg = format!("Click! Poison gas fills the corridor! You take {} damage!", dmg);
+                                                            player.flags.poisoned += rng.gen_range(10..=30);
+                                                            status_msg = format!("Click! Poison gas fills the corridor! You take {} damage and are poisoned!", dmg);
                                                         }
                                                         TrapType::Teleport => {
                                                             let dest = level.find_random_floor_tile();
                                                             player.move_to(dest.0, dest.1);
                                                             status_msg = "Click! A teleport trap warps you to another location!".to_string();
+                                                        }
+                                                        TrapType::SleepingGas => {
+                                                            if player.flags.free_action {
+                                                                status_msg = "Click! A strange white mist surrounds you! You are unaffected.".to_string();
+                                                            } else {
+                                                                player.flags.paralysis += rng.gen_range(1..=10) + 4;
+                                                                status_msg = "Click! A strange white mist surrounds you! You fall asleep.".to_string();
+                                                            }
+                                                        }
+                                                        TrapType::BlindGas => {
+                                                            player.flags.blind += rng.gen_range(1..=50) + 50;
+                                                            status_msg = "Click! Black gas surrounds you! You are blinded!".to_string();
+                                                        }
+                                                        TrapType::ConfusionGas => {
+                                                            player.flags.confused += rng.gen_range(1..=15) + 15;
+                                                            status_msg = "Click! Gas of scintillating colors surrounds you! You are confused!".to_string();
                                                         }
                                                     }
                                                     if let Some(t) = level.get_tile_mut(player.x, player.y) {
@@ -1068,43 +1199,65 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     status_msg = "Select potion to quaff.".to_string();
                                 }
                                 Action::ReadScroll => {
-                                    screen_mode = ScreenMode::ReadMenu;
-                                    status_msg = "Select scroll to read.".to_string();
+                                    if player.flags.blind > 0 {
+                                        status_msg = "You can't see to read the scroll.".to_string();
+                                    } else if player.flags.confused > 0 {
+                                        status_msg = "You are too confused to read a scroll.".to_string();
+                                    } else {
+                                        screen_mode = ScreenMode::ReadMenu;
+                                        status_msg = "Select scroll to read.".to_string();
+                                    }
                                 }
                                 Action::BrowseBook => {
-                                    let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
-                                    if has_book {
-                                        screen_mode = ScreenMode::BrowseBookMenu;
-                                        status_msg = "Browsing spells/prayers.".to_string();
+                                    if player.flags.blind > 0 {
+                                        status_msg = "You can't see to read your book!".to_string();
                                     } else {
-                                        status_msg = "You do not carry a spellbook or prayerbook!".to_string();
+                                        let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
+                                        if has_book {
+                                            screen_mode = ScreenMode::BrowseBookMenu;
+                                            status_msg = "Browsing spells/prayers.".to_string();
+                                        } else {
+                                            status_msg = "You do not carry a spellbook or prayerbook!".to_string();
+                                        }
                                     }
                                 }
                                 Action::CastSpell => {
-                                    let is_mage_caster = player.is_wizard || matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
-                                    if !is_mage_caster {
-                                        status_msg = "Your class cannot cast mage spells!".to_string();
+                                    if player.flags.blind > 0 {
+                                        status_msg = "You can't see to read your spell book!".to_string();
+                                    } else if player.flags.confused > 0 {
+                                        status_msg = "You are too confused.".to_string();
                                     } else {
-                                        let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
-                                        if has_book {
-                                            screen_mode = ScreenMode::CastSpellMenu;
-                                            status_msg = "Cast Mage Spell: select a letter.".to_string();
+                                        let is_mage_caster = player.is_wizard || matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
+                                        if !is_mage_caster {
+                                            status_msg = "Your class cannot cast mage spells!".to_string();
                                         } else {
-                                            status_msg = "You need a Mage Spellbook to cast spells!".to_string();
+                                            let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
+                                            if has_book {
+                                                screen_mode = ScreenMode::CastSpellMenu;
+                                                status_msg = "Cast Mage Spell: select a letter.".to_string();
+                                            } else {
+                                                status_msg = "You need a Mage Spellbook to cast spells!".to_string();
+                                            }
                                         }
                                     }
                                 }
                                 Action::Pray => {
-                                    let is_priest_caster = player.is_wizard || matches!(player.class, Class::Priest | Class::Paladin);
-                                    if !is_priest_caster {
-                                        status_msg = "Your class cannot recite priestly prayers!".to_string();
+                                    if player.flags.blind > 0 {
+                                        status_msg = "You can't see to read your prayer!".to_string();
+                                    } else if player.flags.confused > 0 {
+                                        status_msg = "You are too confused.".to_string();
                                     } else {
-                                        let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
-                                        if has_book {
-                                            screen_mode = ScreenMode::PrayMenu;
-                                            status_msg = "Recite Clerical Prayer: select a letter.".to_string();
+                                        let is_priest_caster = player.is_wizard || matches!(player.class, Class::Priest | Class::Paladin);
+                                        if !is_priest_caster {
+                                            status_msg = "Your class cannot recite priestly prayers!".to_string();
                                         } else {
-                                            status_msg = "You need a Priest Prayerbook to pray!".to_string();
+                                            let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
+                                            if has_book {
+                                                screen_mode = ScreenMode::PrayMenu;
+                                                status_msg = "Recite Clerical Prayer: select a letter.".to_string();
+                                            } else {
+                                                status_msg = "You need a Priest Prayerbook to pray!".to_string();
+                                            }
                                         }
                                     }
                                 }
@@ -1332,12 +1485,29 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                          TrapType::PoisonGas => {
                                                              let dmg = rng.gen_range(2..=8);
                                                              player.hp -= dmg;
-                                                             status_msg.push_str(&format!(" Poison gas hits you for {}!", dmg));
+                                                             player.flags.poisoned += rng.gen_range(10..=30);
+                                                             status_msg.push_str(&format!(" Poison gas hits you for {}! You are poisoned!", dmg));
                                                          }
                                                          TrapType::Teleport => {
                                                              let dest = level.find_random_floor_tile();
                                                              player.move_to(dest.0, dest.1);
                                                              status_msg.push_str(" You are teleported!");
+                                                         }
+                                                         TrapType::SleepingGas => {
+                                                             if player.flags.free_action {
+                                                                 status_msg.push_str(" A strange white mist surrounds you! You are unaffected.");
+                                                             } else {
+                                                                 player.flags.paralysis += rng.gen_range(1..=10) + 4;
+                                                                 status_msg.push_str(" A strange white mist surrounds you! You fall asleep.");
+                                                             }
+                                                         }
+                                                         TrapType::BlindGas => {
+                                                             player.flags.blind += rng.gen_range(1..=50) + 50;
+                                                             status_msg.push_str(" Black gas surrounds you! You are blinded!");
+                                                         }
+                                                         TrapType::ConfusionGas => {
+                                                             player.flags.confused += rng.gen_range(1..=15) + 15;
+                                                             status_msg.push_str(" Scintillating colors swirl! You are confused!");
                                                          }
                                                      }
                                                      if let Some(tile) = level.get_tile_mut(sx, sy) {
@@ -2443,21 +2613,63 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                     if idx < potion_indices.len() {
                                         let inv_idx = potion_indices[idx];
+                                        let name = player.inventory[inv_idx].name.clone();
                                         let heal = if let ItemType::Potion { heal_amount } = player.inventory[inv_idx].item_type {
                                             heal_amount
                                         } else {
                                             0
                                         };
                                         
-                                        player.hp = (player.hp + heal).min(player.max_hp);
-                                        let name = player.inventory[inv_idx].name.clone();
-                                        
                                         player.inventory[inv_idx].count -= 1;
                                         if player.inventory[inv_idx].count == 0 {
                                             player.inventory.remove(inv_idx);
                                         }
 
-                                        status_msg = format!("You quaffed {}! Restored {} HP.", name, heal);
+                                        if name.contains("Cure Light Wounds") {
+                                            player.hp = (player.hp + heal).min(player.max_hp);
+                                            player.flags.blind = 0;
+                                            player.flags.afraid = 0;
+                                            status_msg = format!("You quaffed {}! Restored {} HP. You feel much better.", name, heal);
+                                        } else if name.contains("Healing") {
+                                            player.hp = player.max_hp;
+                                            player.flags.blind = 0;
+                                            player.flags.afraid = 0;
+                                            player.flags.poisoned = 0;
+                                            player.flags.confused = 0;
+                                            status_msg = format!("You quaffed {}! Restored full HP and cured conditions.", name);
+                                        } else if name.contains("Cure Poison") {
+                                            player.flags.poisoned = 0;
+                                            status_msg = format!("You quaffed {}! The poison leaves your veins.", name);
+                                        } else if name.contains("Speed") {
+                                            player.flags.fast += rng.gen_range(15..=40);
+                                            status_msg = format!("You quaffed {}! You feel yourself moving faster!", name);
+                                        } else if name.contains("Heroism") {
+                                            player.hp = (player.hp + 10).min(player.max_hp);
+                                            player.flags.afraid = 0;
+                                            player.flags.heroism += rng.gen_range(25..=50);
+                                            status_msg = format!("You quaffed {}! You feel like a HERO!", name);
+                                        } else if name.contains("Restore Strength") {
+                                            player.restore_stat(0);
+                                            status_msg = format!("You quaffed {}! You feel your strength returning.", name);
+                                        } else if name.contains("Restore Dexterity") {
+                                            player.restore_stat(3);
+                                            status_msg = format!("You quaffed {}! You feel less clumsy.", name);
+                                        } else if name.contains("Restore Constitution") {
+                                            player.restore_stat(4);
+                                            status_msg = format!("You quaffed {}! You feel your health returning.", name);
+                                        } else if name.contains("Restore Intelligence") {
+                                            player.restore_stat(1);
+                                            status_msg = format!("You quaffed {}! Your mind feels clearer.", name);
+                                        } else if name.contains("Restore Wisdom") {
+                                            player.restore_stat(2);
+                                            status_msg = format!("You quaffed {}! You feel your wisdom returning.", name);
+                                        } else if name.contains("Restore Charisma") {
+                                            player.restore_stat(5);
+                                            status_msg = format!("You quaffed {}! You feel your looks returning.", name);
+                                        } else {
+                                            player.hp = (player.hp + heal).min(player.max_hp);
+                                            status_msg = format!("You quaffed {}! Restored {} HP.", name, heal);
+                                        }
                                         screen_mode = ScreenMode::Dungeon;
                                         player_acted = true;
                                     }
@@ -2483,17 +2695,53 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             player.inventory.remove(inv_idx);
                                         }
 
-                                        let (rx, ry) = loop {
-                                            let tx = rng.gen_range(1..(level.width - 1));
-                                            let ty = rng.gen_range(1..(level.height - 1));
-                                            if let Some(tile) = level.get_tile(tx, ty)
-                                                && tile.tile_type == TileType::Floor {
-                                                    break (tx, ty);
+                                        if name.contains("Word of Recall") {
+                                            if player.flags.word_of_recall == 0 {
+                                                player.flags.word_of_recall = rng.gen_range(25..=55);
+                                                status_msg = format!("You read the {}! The air about you becomes charged...", name);
+                                            } else {
+                                                player.flags.word_of_recall = 0;
+                                                status_msg = format!("You read the {}! A tension leaves the air around you.", name);
+                                            }
+                                        } else if name.contains("Phase Door") {
+                                            let mut candidates = Vec::new();
+                                            for dy in -10..=10 {
+                                                for dx in -10..=10 {
+                                                    let dist = ((dx * dx + dy * dy) as f32).sqrt();
+                                                    if dist <= 10.0 && (dx != 0 || dy != 0) {
+                                                        let nx = player.x as isize + dx;
+                                                        let ny = player.y as isize + dy;
+                                                        if nx > 0 && nx < (level.width - 1) as isize && ny > 0 && ny < (level.height - 1) as isize {
+                                                            let (ux, uy) = (nx as usize, ny as usize);
+                                                            if let Some(tile) = level.get_tile(ux, uy)
+                                                                && tile.tile_type == TileType::Floor
+                                                                && !monsters.iter().any(|m| m.x == ux && m.y == uy) {
+                                                                    candidates.push((ux, uy));
+                                                                }
+                                                        }
+                                                    }
                                                 }
-                                        };
-                                        player.move_to(rx, ry);
+                                            }
+                                            if !candidates.is_empty() {
+                                                let (rx, ry) = candidates[rng.gen_range(0..candidates.len())];
+                                                player.move_to(rx, ry);
+                                                status_msg = format!("You read the {}! You phase door to ({}, {}).", name, rx, ry);
+                                            } else {
+                                                status_msg = format!("You read the {}, but nothing seems to happen.", name);
+                                            }
+                                        } else {
+                                            let (rx, ry) = loop {
+                                                let tx = rng.gen_range(1..(level.width - 1));
+                                                let ty = rng.gen_range(1..(level.height - 1));
+                                                if let Some(tile) = level.get_tile(tx, ty)
+                                                    && tile.tile_type == TileType::Floor {
+                                                        break (tx, ty);
+                                                    }
+                                            };
+                                            player.move_to(rx, ry);
 
-                                        status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                            status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                        }
                                         screen_mode = ScreenMode::Dungeon;
                                         player_acted = true;
                                     }
@@ -2543,6 +2791,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
+                        game_turn += 1;
                         process_end_of_turn(
                             &mut player,
                             &mut level,
@@ -2553,6 +2802,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             active_shop,
                             active_haggle.as_ref(),
                             false,
+                            game_turn,
+                            max_depth,
                         )?;
                         draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
                     } else {
@@ -2607,6 +2858,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
             // Same digestion & monster updates for the rest tick
             if player_acted {
+                game_turn += 1;
                 process_end_of_turn(
                     &mut player,
                     &mut level,
@@ -2617,6 +2869,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                     active_shop,
                     active_haggle.as_ref(),
                     true,
+                    game_turn,
+                    max_depth,
                 )?;
                 draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
             }

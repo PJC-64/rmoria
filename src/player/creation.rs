@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use crossterm::{execute, event::{self, Event, KeyCode}, cursor::{Show, Hide}, terminal::{enable_raw_mode, disable_raw_mode}};
 
-use crate::player::{Player, Race, Class, Attributes, generate_history};
+use crate::player::{Player, Race, Class, Attributes, PlayerFlags, format_stat, generate_history};
 use crate::rendering::wrap_text;
 
 fn print_creation_screen(title: &str, options: &[&str]) {
@@ -74,10 +74,12 @@ pub fn run_character_creation(
         let stats = Attributes::new(s_str, s_int, s_wis, s_dex, s_con, s_chr);
 
         let mut final_player = Player::new(&name, race, class, 30, 10);
-        final_player.stats = stats;
+        final_player.stats = stats.clone();
+        final_player.max_stats = stats;
         let history = generate_history(race);
         final_player.history = history;
         final_player.apply_race_and_class_modifiers();
+        final_player.max_stats = final_player.stats.clone();
         final_player.update_max_hp_and_mana();
         final_player.hp = final_player.max_hp;
         final_player.mana = final_player.max_mana;
@@ -157,6 +159,9 @@ pub fn run_character_creation(
             max_mana: 0, mana: 0,
             food: 7500,
             stats: rolled.clone(),
+            max_stats: rolled.clone(),
+            flags: PlayerFlags::default(),
+            max_depth_reached: 0,
             inventory: Vec::new(),
             equipment: Vec::new(),
             balrog_killed: false,
@@ -169,12 +174,13 @@ pub fn run_character_creation(
             history: "".to_string(),
         };
         temp_player.apply_race_and_class_modifiers();
+        temp_player.max_stats = temp_player.stats.clone();
         let history = generate_history(race);
         let split_history = wrap_text(&history, 54);
 
         let mut options = vec![
-            format!("STR:  {:>2}     INT:  {:>2}     WIS:  {:>2}", temp_player.stats.strength, temp_player.stats.intelligence, temp_player.stats.wisdom),
-            format!("DEX:  {:>2}     CON:  {:>2}     CHR:  {:>2}", temp_player.stats.dexterity, temp_player.stats.constitution, temp_player.stats.charisma),
+            format!("STR: {:>6}     INT: {:>6}     WIS: {:>6}", format_stat(temp_player.stats.strength), format_stat(temp_player.stats.intelligence), format_stat(temp_player.stats.wisdom)),
+            format!("DEX: {:>6}     CON: {:>6}     CHR: {:>6}", format_stat(temp_player.stats.dexterity), format_stat(temp_player.stats.constitution), format_stat(temp_player.stats.charisma)),
             "".to_string(),
             "Racial History:".to_string(),
         ];
@@ -223,9 +229,11 @@ pub fn run_character_creation(
     execute!(io::stdout(), Hide)?;
 
     let mut final_player = Player::new(name_str, race, class, 30, 10);
-    final_player.stats = stats;
+    final_player.stats = stats.clone();
+    final_player.max_stats = stats;
     final_player.history = history;
     final_player.apply_race_and_class_modifiers();
+    final_player.max_stats = final_player.stats.clone();
     final_player.update_max_hp_and_mana();
     final_player.hp = final_player.max_hp;
     final_player.mana = final_player.max_mana;

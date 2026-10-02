@@ -2,9 +2,8 @@ use std::io::{self, Write};
 use crossterm::execute;
 use crate::{GUI_ACTIVE, GUI_STATE_TX, GuiState, ScreenMode};
 use crate::dungeon::{DungeonLevel, TileType, ShopType, get_shop_items, HaggleState};
-use crate::player::{Player, Item, ItemType, Class, InscribeState};
+use crate::player::{Player, Item, ItemType, Class, InscribeState, format_stat};
 use crate::entity::monster::Monster;
-
 
 fn get_food_status_str(food: i32) -> &'static str {
     if food < 0 {
@@ -20,6 +19,79 @@ fn get_food_status_str(food: i32) -> &'static str {
     } else {
         "FED"
     }
+}
+
+pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> String {
+    let hunger_str = if player.food < 0 {
+        "Starve"
+    } else if player.food < 300 {
+        "Faint "
+    } else if player.food < 1000 {
+        "Weak  "
+    } else if player.food < 2000 {
+        "Hungry"
+    } else {
+        "      "
+    };
+
+    let blind_str = if player.flags.blind > 0 {
+        "Blind"
+    } else {
+        "     "
+    };
+
+    let confused_str = if player.flags.confused > 0 {
+        "Confused"
+    } else {
+        "        "
+    };
+
+    let afraid_str = if player.flags.afraid > 0 {
+        "Afraid"
+    } else {
+        "      "
+    };
+
+    let poisoned_str = if player.flags.poisoned > 0 {
+        "Poisoned"
+    } else {
+        "        "
+    };
+
+    let movement_str = if player.flags.paralysis > 0 {
+        "Paralysed "
+    } else if is_resting {
+        "Rest      "
+    } else if player.searching {
+        "Searching "
+    } else {
+        "          "
+    };
+
+    let speed_str = if player.flags.fast > 0 && player.flags.slow == 0 {
+        "Fast     "
+    } else if player.flags.slow > 0 && player.flags.fast == 0 {
+        "Slow     "
+    } else {
+        "         "
+    };
+
+    let recall_str = if player.flags.word_of_recall > 0 {
+        "Recall"
+    } else {
+        "      "
+    };
+
+    let depth_str = if depth == 0 {
+        "Town".to_string()
+    } else {
+        format!("{:>4} FT", depth * 50)
+    };
+
+    format!(
+        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<10} {:<9} {:<6} {:>7}",
+        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, movement_str, speed_str, recall_str, depth_str
+    )
 }
 
 pub fn render_gui_screen(
@@ -39,7 +111,7 @@ pub fn render_gui_screen(
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
-                    } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
+                    } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
                         map_part.push(monster.symbol);
                     } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
@@ -114,12 +186,12 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
         2 => format!("{:?}", player.race),
         3 => format!("{:?}", player.class),
         4 => format!("'{}'", rank),
-        6 => format!("STR:  {:>5}", player.stats.strength),
-        7 => format!("INT:  {:>5}", player.stats.intelligence),
-        8 => format!("WIS:  {:>5}", player.stats.wisdom),
-        9 => format!("DEX:  {:>5}", player.stats.dexterity),
-        10 => format!("CON:  {:>5}", player.stats.constitution),
-        11 => format!("CHR:  {:>5}", player.stats.charisma),
+        6 => format!("STR: {}", format_stat(player.stats.strength)),
+        7 => format!("INT: {}", format_stat(player.stats.intelligence)),
+        8 => format!("WIS: {}", format_stat(player.stats.wisdom)),
+        9 => format!("DEX: {}", format_stat(player.stats.dexterity)),
+        10 => format!("CON: {}", format_stat(player.stats.constitution)),
+        11 => format!("CHR: {}", format_stat(player.stats.charisma)),
         13 => format!("LEV:  {:>5}", player.level),
         14 => format!("MANA: {:>2}/{:<2}", player.mana, player.max_mana),
         15 => format!("MHP:  {:>5}", player.max_hp),
@@ -528,8 +600,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 0 => format!("--- CHARACTER SHEET: {} ---", player.name),
                 2 => format!("Race:      {:?}      Class:      {:?}", player.race, player.class),
                 4 => "Attributes:".to_string(),
-                5 => format!("  STR: {:>2}   INT: {:>2}   WIS: {:>2}", player.stats.strength, player.stats.intelligence, player.stats.wisdom),
-                6 => format!("  DEX: {:>2}   CON: {:>2}   CHR: {:>2}", player.stats.dexterity, player.stats.constitution, player.stats.charisma),
+                5 => format!("  STR: {:>6}   INT: {:>6}   WIS: {:>6}", format_stat(player.stats.strength), format_stat(player.stats.intelligence), format_stat(player.stats.wisdom)),
+                6 => format!("  DEX: {:>6}   CON: {:>6}   CHR: {:>6}", format_stat(player.stats.dexterity), format_stat(player.stats.constitution), format_stat(player.stats.charisma)),
                 8 => "Combat Stats:".to_string(),
                 9 => format!("  HP:   {}/{}       Mana: {}/{}", player.hp, player.max_hp, player.mana, player.max_mana),
                 10 => format!("  AC:   {:<10} Gold: {} gp", player.calculate_ac(), player.gold),
@@ -845,6 +917,28 @@ pub fn draw_map(
                 "dexterity": player.stats.dexterity,
                 "constitution": player.stats.constitution,
                 "charisma": player.stats.charisma,
+            },
+            "max_stats": {
+                "strength": player.max_stats.strength,
+                "intelligence": player.max_stats.intelligence,
+                "wisdom": player.max_stats.wisdom,
+                "dexterity": player.max_stats.dexterity,
+                "constitution": player.max_stats.constitution,
+                "charisma": player.max_stats.charisma,
+            },
+            "status_effects": {
+                "blind": player.flags.blind > 0,
+                "confused": player.flags.confused > 0,
+                "afraid": player.flags.afraid > 0,
+                "poisoned": player.flags.poisoned > 0,
+                "paralyzed": player.flags.paralysis > 0,
+                "fast": player.flags.fast > 0,
+                "slow": player.flags.slow > 0,
+                "word_of_recall": player.flags.word_of_recall > 0,
+                "heroism": player.flags.heroism > 0,
+                "blessed": player.flags.blessed > 0,
+                "protect_evil": player.flags.protect_evil > 0,
+                "invulnerable": player.flags.invulnerability > 0,
             }
         });
         if let Some(tx_mutex) = GUI_STATE_TX.get() {
@@ -875,7 +969,7 @@ pub fn draw_map(
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
-                    } else if tile.visible && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
+                    } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
                         map_part.push(monster.symbol);
                     } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
@@ -918,9 +1012,9 @@ pub fn draw_map(
         print!("{}", row_line);
     }
     
-    let divider = "-------------------------------------------------------------------------------\x1b[K";
+    let status_bar = get_bottom_status_line(player, level.depth, false);
     let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 23));
-    print!("{}", divider);
+    print!("{}\x1b[K", status_bar);
     
     io::stdout().flush()?;
     Ok(())
