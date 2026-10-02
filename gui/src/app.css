@@ -1,0 +1,218 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Outfit:wght@300;400;600;700&display=swap');
+
+:root {
+  --bg-primary: #0b0f19;
+  --bg-secondary: rgba(17, 24, 39, 0.7);
+  --bg-tertiary: rgba(31, 41, 55, 0.4);
+  --border-glow: rgba(59, 130, 246, 0.3);
+  --text-primary: #f3f4f6;
+  --text-muted: #9ca3af;
+  --color-gold: #f59e0b;
+  --color-gold-glow: rgba(245, 158, 11, 0.3);
+  --color-health: #ef4444;
+  --color-health-glow: rgba(239, 68, 68, 0.3);
+  --color-mana: #3b82f6;
+  --color-mana-glow: rgba(59, 130, 246, 0.3);
+  --color-green: #10b981;
+  --color-green-glow: rgba(16, 185, 129, 0.3);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(29, 78, 216, 0.15) 0, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(124, 58, 237, 0.1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(219, 39, 119, 0.15) 0, transparent 50%);
+  color: var(--text-primary);
+  font-family: 'Outfit', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+#app {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+/* Glassmorphism panel styles */
+.glass-panel {
+  background: var(--bg-secondary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15);
+}
+
+/* Monospace font for the map */
+.map-font {
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+}
+
+/* Map Character Colors */
+.char-default {
+  color: #6b7280;
+}
+
+.char-player {
+  color: #fbbf24;
+  font-weight: 700;
+  text-shadow: 0 0 8px #fbbf24;
+  animation: pulse-glow 1.5s infinite alternate;
+}
+
+.char-wall {
+  color: #4b5563;
+}
+
+.char-floor {
+  color: #374151;
+}
+
+.char-vein {
+  color: #b45309;
+}
+
+.char-rubble {
+  color: #6b7280;
+}
+
+.char-door {
+  color: #d97706;
+}
+
+.char-stairs {
+  color: #10b981;
+  font-weight: 600;
+  text-shadow: 0 0 4px #10b981;
+}
+
+.char-chest {
+  color: #fbbf24;
+  font-weight: 600;
+  text-shadow: 0 0 6px #fbbf24;
+}
+
+.char-trap {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.char-monster {
+  color: #f87171;
+  font-weight: 600;
+  text-shadow: 0 0 4px rgba(248, 113, 113, 0.5);
+}
+
+.char-item {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+@keyframes pulse-glow {
+  0% {
+    text-shadow: 0 0 4px #fbbf24;
+  }
+  100% {
+    text-shadow: 0 0 12px #fbbf24, 0 0 20px #f59e0b;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Rolled Character Screen Styles */
+.rolled-card {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.rolled-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .rolled-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rolled-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-gold);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.stat-roll-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.history-content {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.history-line {
+  margin-bottom: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: justify;
+}
+
+.btn-group-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 1rem;
+}

@@ -12,13 +12,17 @@ pub enum TileType {
     Empty,
     Wall,
     Floor,
-    DoorClosed,
+    DoorClosed { spikes: u32 },
     DoorOpen,
     StairsUp,
     StairsDown,
     ShopDoor(u8),
     SecretDoor,
     Trap { detected: bool, trap_type: TrapType },
+    Chest { trapped: bool, locked: bool },
+    MagmaVein { gold: bool },
+    QuartzVein { gold: bool },
+    Rubble,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

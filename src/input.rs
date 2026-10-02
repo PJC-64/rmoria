@@ -32,16 +32,23 @@ pub enum Action {
     BrowseBook,         // Read spellbook
     JamDoor,            // Jam/spike door
     Look,               // Look/examine surroundings
+    Inscribe,           // Add inscription to item
     OpenDoor,           // Open door/chest
     CastSpell,          // Mage spellcasting
     Pray,               // Cleric prayers
     ReadScroll,         // Read scroll
     TakeOff,            // Unequip item
     UseStaff,           // Activate staff
+    Eat,                // Eat food (E)
+    Rest,               // Rest a while (R)
+    Bash,               // Bash door/chest/monster
+    Tunnel,             // Tunnel/Mine (T)
     GoUpStairs,         // Go up stairs (<)
     GoDownStairs,       // Go down stairs (>)
     Quit,               // Save and quit or exit
     Help,               // Display help screen
+    RefillLight,        // Refill lamp/lantern (F)
+    ToggleSearch,       // Toggle search mode (#)
     Unknown(char),
 }
 
@@ -94,6 +101,14 @@ impl InputMapper {
             'C' => Action::CloseDoor,        // Relocated from 'c'
             'H' => Action::CharacterStats,   // Relocated from 'C'
             'X' => Action::ExchangeWeapon,   // Relocated from 'x'
+            'E' => Action::Eat,              // Eat food
+            'R' => Action::Rest,             // Rest a while
+            'f' => Action::Bash,             // Bash
+            'T' => Action::Tunnel,           // Tunnel
+            'F' => Action::RefillLight,      // Refill light
+            '#' => Action::ToggleSearch,     // Toggle search
+
+
 
             // Unchanged Standard Commands
             'b' => Action::BrowseBook,
@@ -106,6 +121,7 @@ impl InputMapper {
             'p' => Action::Pray,
             'r' => Action::ReadScroll,
             't' => Action::TakeOff,
+            '{' => Action::Inscribe,
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,
             'Q' => Action::Quit,
@@ -131,7 +147,13 @@ impl InputMapper {
             // Remapped Actions (Roguelike mode conflicts resolved)
             'Q' => Action::Quit,             // Relocated from 'q'
             'W' => Action::WearWield,        // Relocated from 'w'
-            'E' => Action::Quaff,            // Relocated from 'e' (actually Eat, but matches layout shift)
+            'E' => Action::Eat,              // Eat food
+            'R' => Action::Rest,             // Rest a while
+            'B' => Action::Bash,             // Bash
+            'T' => Action::Tunnel,           // Tunnel
+            'F' => Action::RefillLight,      // Refill light
+            '#' => Action::ToggleSearch,     // Toggle search
+            'h' => Action::Quaff,            // Quaff potion (same as standard)
             'k' => Action::SearchOneTurn,    // Relocated from 's'
             'D' => Action::DropItem,         // Relocated from 'd' (originally disarm)
             'n' => Action::Disarm,           // Relocated from 'D'
@@ -148,9 +170,12 @@ impl InputMapper {
             'o' => Action::OpenDoor,
             'm' => Action::CastSpell,
             't' => Action::TakeOff,
+            '{' => Action::Inscribe,
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,
             '?' => Action::Help,
+            'j' => Action::JamDoor,
+            'u' => Action::UseStaff,
 
             other => Action::Unknown(other),
         }

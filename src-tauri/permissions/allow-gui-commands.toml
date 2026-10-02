@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-gui-commands"
+description = "Enables all gui commands for the rmoria frontend"
+commands.allow = [
+  "gui_send_key",
+  "gui_send_setup",
+  "gui_check_save",
+  "gui_activate_cheat"
+]

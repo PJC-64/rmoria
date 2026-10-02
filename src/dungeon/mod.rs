@@ -2,10 +2,13 @@ use serde::{Serialize, Deserialize};
 use rand::Rng;
 
 pub mod tile;
+pub mod shop;
 
 pub use tile::{Tile, TileType, TrapType};
-use crate::player::{Item, ItemType};
+pub use shop::{HaggleState, handle_haggle_input};
+use crate::player::{Item, ItemType, Player};
 use crate::dice::Dice;
+use crate::entity::monster::{Monster, MonsterTemplate, MONSTER_DB};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShopType {
@@ -112,8 +115,10 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
         } else {
             Item::new("Staff of Cure Light Wounds [3 charges]", 1, 12, ItemType::Staff { charges: 3, prayer_index: 1 })
         }
-    } else if roll < 82 {
-        Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false })
+    } else if roll < 78 {
+        Item::new("Ration of Food", 1, 10, ItemType::Food { nutrition: 5000 })
+    } else if roll < 87 {
+        Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 })
     } else {
         let gold_amount = rng.gen_range(15..=40) * (depth + 1);
         Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
@@ -146,11 +151,10 @@ impl DungeonLevel {
         let start = x1.min(x2);
         let end = x1.max(x2);
         for x in start..=end {
-            if let Some(tile) = self.get_tile_mut(x, y) {
-                if tile.tile_type == TileType::Wall {
+            if let Some(tile) = self.get_tile_mut(x, y)
+                && tile.tile_type == TileType::Wall {
                     tile.tile_type = TileType::Floor;
                 }
-            }
         }
     }
 
@@ -158,24 +162,69 @@ impl DungeonLevel {
         let start = y1.min(y2);
         let end = y1.max(y2);
         for y in start..=end {
-            if let Some(tile) = self.get_tile_mut(x, y) {
-                if tile.tile_type == TileType::Wall {
+            if let Some(tile) = self.get_tile_mut(x, y)
+                && tile.tile_type == TileType::Wall {
                     tile.tile_type = TileType::Floor;
                 }
-            }
         }
     }
 
-    fn find_random_floor_tile(&self) -> (usize, usize) {
+    pub fn is_in_room(&self, x: usize, y: usize) -> bool {
+        self.rooms.iter().any(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+    }
+
+    pub fn room_index_at(&self, x: usize, y: usize) -> Option<usize> {
+        self.rooms.iter().position(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+    }
+
+    pub fn is_room_entrance(&self, x: usize, y: usize) -> bool {
+        if self.is_in_room(x, y) {
+            return false;
+        }
+
+        let is_wall = |tt: TileType| matches!(tt, TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. });
+        let is_passage = |tt: TileType| !is_wall(tt);
+
+        if let Some(tile) = self.get_tile(x, y) {
+            if !is_passage(tile.tile_type) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        let w_l = self.get_tile(x - 1, y).map(|t| is_wall(t.tile_type)).unwrap_or(false);
+        let w_r = self.get_tile(x + 1, y).map(|t| is_wall(t.tile_type)).unwrap_or(false);
+        let f_t = self.get_tile(x, y - 1).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+        let f_b = self.get_tile(x, y + 1).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+
+        let w_t = self.get_tile(x, y - 1).map(|t| is_wall(t.tile_type)).unwrap_or(false);
+        let w_b = self.get_tile(x, y + 1).map(|t| is_wall(t.tile_type)).unwrap_or(false);
+        let f_l = self.get_tile(x - 1, y).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+        let f_r = self.get_tile(x + 1, y).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+
+        if w_l && w_r && f_t && f_b {
+            let r_t = self.room_index_at(x, y - 1);
+            let r_b = self.room_index_at(x, y + 1);
+            (r_t.is_some() || r_b.is_some()) && r_t != r_b
+        } else if w_t && w_b && f_l && f_r {
+            let r_l = self.room_index_at(x - 1, y);
+            let r_r = self.room_index_at(x + 1, y);
+            (r_l.is_some() || r_r.is_some()) && r_l != r_r
+        } else {
+            false
+        }
+    }
+
+    pub fn find_random_floor_tile(&self) -> (usize, usize) {
         let mut rng = rand::thread_rng();
         for _ in 0..2000 {
             let tx = rng.gen_range(1..(self.width - 1));
             let ty = rng.gen_range(1..(self.height - 1));
-            if let Some(tile) = self.get_tile(tx, ty) {
-                if tile.tile_type == TileType::Floor {
+            if let Some(tile) = self.get_tile(tx, ty)
+                && tile.tile_type == TileType::Floor {
                     return (tx, ty);
                 }
-            }
         }
         (30, 10)
     }
@@ -335,35 +384,64 @@ impl DungeonLevel {
                 }
             }
 
+            // Only place doors at the entrance to rooms, never in corridors
             for y in 2..(self.height - 2) {
                 for x in 2..(self.width - 2) {
-                    if let Some(tile) = self.get_tile(x, y) {
-                        if tile.tile_type == TileType::Floor {
-                            let w_l = self.get_tile(x - 1, y).map(|t| t.tile_type == TileType::Wall).unwrap_or(false);
-                            let w_r = self.get_tile(x + 1, y).map(|t| t.tile_type == TileType::Wall).unwrap_or(false);
-                            let f_t = self.get_tile(x, y - 1).map(|t| t.tile_type == TileType::Floor).unwrap_or(false);
-                            let f_b = self.get_tile(x, y + 1).map(|t| t.tile_type == TileType::Floor).unwrap_or(false);
-
-                            let w_t = self.get_tile(x, y - 1).map(|t| t.tile_type == TileType::Wall).unwrap_or(false);
-                            let w_b = self.get_tile(x, y + 1).map(|t| t.tile_type == TileType::Wall).unwrap_or(false);
-                            let f_l = self.get_tile(x - 1, y).map(|t| t.tile_type == TileType::Floor).unwrap_or(false);
-                            let f_r = self.get_tile(x + 1, y).map(|t| t.tile_type == TileType::Floor).unwrap_or(false);
-
-                            if (w_l && w_r && f_t && f_b) || (w_t && w_b && f_l && f_r) {
-                                if rng.gen_bool(0.35) {
-                                    if let Some(mut_tile) = self.get_tile_mut(x, y) {
-                                        // 25% chance this door is a Secret Door!
-                                        if rng.gen_bool(0.25) {
-                                            mut_tile.tile_type = TileType::SecretDoor;
-                                        } else {
-                                            mut_tile.tile_type = TileType::DoorClosed;
-                                        }
+                    if let Some(tile) = self.get_tile(x, y)
+                        && tile.tile_type == TileType::Floor
+                        && self.is_room_entrance(x, y) {
+                            // 85% chance a room entrance has a door (15% remains an open entryway)
+                            if rng.gen_bool(0.85)
+                                && let Some(mut_tile) = self.get_tile_mut(x, y) {
+                                    let roll = rng.gen_range(0..100);
+                                    if roll < 20 {
+                                        // 20% secret door
+                                        mut_tile.tile_type = TileType::SecretDoor;
+                                    } else if roll < 35 {
+                                        // 15% open door
+                                        mut_tile.tile_type = TileType::DoorOpen;
+                                    } else {
+                                        // 65% closed door
+                                        mut_tile.tile_type = TileType::DoorClosed { spikes: 0 };
                                     }
                                 }
-                            }
                         }
-                    }
                 }
+            }
+
+            // Spawn Magma and Quartz veins
+            let num_veins = rng.gen_range(4..=8);
+            for _ in 0..num_veins {
+                let is_magma = rng.gen_bool(0.50);
+                let mut vx = rng.gen_range(1..(self.width - 2));
+                let mut vy = rng.gen_range(1..(self.height - 2));
+                let vein_len = rng.gen_range(6..=14);
+                for _ in 0..vein_len {
+                    if let Some(tile) = self.get_tile_mut(vx, vy)
+                        && tile.tile_type == TileType::Wall {
+                            let has_gold = rng.gen_bool(0.25);
+                            tile.tile_type = if is_magma {
+                                TileType::MagmaVein { gold: has_gold }
+                            } else {
+                                TileType::QuartzVein { gold: has_gold }
+                            };
+                        }
+                    let dx = rng.gen_range(-1..=1);
+                    let dy = rng.gen_range(-1..=1);
+                    vx = ((vx as isize + dx).max(1).min(self.width as isize - 2)) as usize;
+                    vy = ((vy as isize + dy).max(1).min(self.height as isize - 2)) as usize;
+                }
+            }
+
+            // Spawn Rubble (avoid blocking room entrances)
+            let num_rubble = rng.gen_range(3..=6);
+            for _ in 0..num_rubble {
+                let (rx, ry) = self.find_random_floor_tile();
+                if !self.is_room_entrance(rx, ry)
+                    && let Some(tile) = self.get_tile_mut(rx, ry)
+                    && tile.tile_type == TileType::Floor {
+                        tile.tile_type = TileType::Rubble;
+                    }
             }
 
             // --- SPAWN TRAPS ---
@@ -377,6 +455,20 @@ impl DungeonLevel {
                 };
                 if let Some(tile) = self.get_tile_mut(tx, ty) {
                     tile.tile_type = TileType::Trap { detected: false, trap_type };
+                }
+            }
+
+            // --- SPAWN CHESTS ---
+            if self.depth > 0 {
+                let num_chests = rng.gen_range(1..=2);
+                for _ in 0..num_chests {
+                    let (cx, cy) = self.find_random_floor_tile();
+                    if !self.is_room_entrance(cx, cy)
+                        && let Some(tile) = self.get_tile_mut(cx, cy) {
+                            let trapped = rng.gen_bool(0.60);
+                            let locked = rng.gen_bool(0.50);
+                            tile.tile_type = TileType::Chest { trapped, locked };
+                        }
                 }
             }
 
@@ -401,4 +493,373 @@ impl DungeonLevel {
             }
         }
     }
+
+    pub fn has_los(&self, x1: usize, y1: usize, x2: usize, y2: usize) -> bool {
+        let dx = (x2 as isize - x1 as isize).abs();
+        let dy = (y2 as isize - y1 as isize).abs();
+        let sx = if x1 < x2 { 1 } else { -1 };
+        let sy = if y1 < y2 { 1 } else { -1 };
+        let mut err = dx - dy;
+        
+        let mut cx = x1 as isize;
+        let mut cy = y1 as isize;
+        
+        loop {
+            if cx == x2 as isize && cy == y2 as isize {
+                return true;
+            }
+            if (cx != x1 as isize || cy != y1 as isize)
+                && let Some(tile) = self.get_tile(cx as usize, cy as usize)
+                    && !tile.is_passable() && tile.tile_type != TileType::SecretDoor {
+                        return false;
+                    }
+            let e2 = 2 * err;
+            if e2 > -dy {
+                err -= dy;
+                cx += sx;
+            }
+            if e2 < dx {
+                err += dx;
+                cy += sy;
+            }
+        }
+    }
+
+    pub fn update_fov(&mut self, player: &Player) {
+        for tile in self.tiles.iter_mut() {
+            tile.visible = false;
+        }
+        
+        if self.depth == 0 {
+            for tile in self.tiles.iter_mut() {
+                tile.visible = true;
+                tile.remembered = true;
+            }
+            return;
+        }
+        
+        let mut lit_rooms_to_reveal = Vec::new();
+        for room in &self.rooms {
+            if room.is_lit {
+                let player_inside = player.x >= room.x && player.x < room.x + room.w &&
+                                    player.y >= room.y && player.y < room.y + room.h;
+                if player_inside {
+                    lit_rooms_to_reveal.push(room.clone());
+                }
+            }
+        }
+        
+        let radius = player.get_light_radius();
+        let max_dist = 8;
+        
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut is_revealed_by_room = false;
+                for room in &lit_rooms_to_reveal {
+                    if x >= room.x - 1 && x <= room.x + room.w &&
+                       y >= room.y - 1 && y <= room.y + room.h {
+                        is_revealed_by_room = true;
+                        break;
+                    }
+                }
+
+                if is_revealed_by_room {
+                    if let Some(tile) = self.get_tile_mut(x, y) {
+                        tile.visible = true;
+                        tile.remembered = true;
+                    }
+                    continue;
+                }
+
+                let dx = (x as isize - player.x as isize).abs();
+                let dy = (y as isize - player.y as isize).abs();
+                let dist = dx.max(dy) as usize;
+                
+                if dist <= max_dist
+                    && self.has_los(player.x, player.y, x, y) {
+                        if dist <= radius {
+                            if let Some(tile) = self.get_tile_mut(x, y) {
+                                tile.visible = true;
+                                tile.remembered = true;
+                            }
+                        } else {
+                            if let Some(tile) = self.get_tile_mut(x, y) {
+                                tile.remembered = true;
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    pub fn generate_monsters(&self, player_has_killed_balrog: bool) -> Vec<Monster> {
+        let depth = self.depth;
+        let max_depth = self.max_depth;
+        
+        if depth == 0 {
+            let mut rng = rand::thread_rng();
+            let town_templates = &[
+                ("Filthy Street Urchin", 6, Dice::new(1, 2)),
+                ("Blubbering Idiot", 2, Dice::new(1, 1)),
+                ("Pitiful-Looking Beggar", 4, Dice::new(1, 2)),
+                ("Mangy-Looking Leper", 1, Dice::new(1, 1)),
+                ("Squint-Eyed Rogue", 10, Dice::new(1, 4)),
+                ("Singing, Happy Drunk", 4, Dice::new(1, 3)),
+                ("Mean-Looking Mercenary", 25, Dice::new(2, 4)),
+                ("Battle-Scarred Veteran", 35, Dice::new(2, 6)),
+            ];
+
+            let mut mons = Vec::new();
+            for _ in 0..3 {
+                let (tx, ty) = self.find_random_floor_tile();
+                let r_idx = rng.gen_range(0..town_templates.len());
+                let (name, hp, dmg) = town_templates[r_idx];
+                mons.push(Monster::new(name, 'p', tx, ty, hp, dmg, 0));
+            }
+            return mons;
+        }
+        
+        let mut mons = Vec::new();
+        let mut rng = rand::thread_rng();
+        
+        if depth == max_depth {
+            if !player_has_killed_balrog {
+                let (bx, by) = self.find_random_floor_tile();
+                mons.push(Monster::new("The Balrog", 'B', bx, by, 120, Dice::new(3, 8), 500));
+            }
+            for _ in 0..3 {
+                let (gx, gy) = self.find_random_floor_tile();
+                mons.push(Monster::new("Lich Guardian", 'L', gx, gy, 55, Dice::new(3, 6), 180));
+            }
+            return mons;
+        }
+        
+        let mut active_level = depth;
+        if rng.gen_bool(0.10) {
+            active_level += rng.gen_range(1..=3);
+        }
+        
+        for _ in 0..4 {
+            let suitable_templates: Vec<&MonsterTemplate> = MONSTER_DB.iter()
+                .filter(|t| t.level <= active_level)
+                .collect();
+                
+            if !suitable_templates.is_empty() {
+                let r_idx = rng.gen_range(0..suitable_templates.len());
+                let t = suitable_templates[r_idx];
+                let (mx, my) = self.find_random_floor_tile();
+                mons.push(Monster::new(t.name, t.symbol, mx, my, t.max_hp, t.damage, t.exp_reward));
+            }
+        }
+        
+        mons
+    }
+
+    pub fn trigger_chest_trap(
+        &mut self,
+        px: usize,
+        py: usize,
+        player: &mut Player,
+        rng: &mut impl rand::Rng,
+        status_msg: &mut String,
+        monsters: &mut Vec<Monster>,
+    ) {
+        match rng.gen_range(0..3) {
+            0 => {
+                let dmg = rng.gen_range(5..=40);
+                player.hp -= dmg;
+                status_msg.push_str(&format!(" The chest explodes! You take {} damage.", dmg));
+            }
+            1 => {
+                let dmg = rng.gen_range(2..=16);
+                player.hp -= dmg;
+                status_msg.push_str(&format!(" The chest sprays poison gas! You take {} poison damage.", dmg));
+            }
+            _ => {
+                status_msg.push_str(" The chest summons a monster!");
+                let adj_tiles = &[(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)];
+                let mut spawned = false;
+                for &(dx, dy) in adj_tiles {
+                    let sx = (px as isize + dx) as usize;
+                    let sy = (py as isize + dy) as usize;
+                    if let Some(t) = self.get_tile(sx, sy)
+                        && t.is_passable() && monsters.iter().all(|m| m.x != sx || m.y != sy) {
+                            let m_idx = rng.gen_range(0..MONSTER_DB.len());
+                            let template = &MONSTER_DB[m_idx];
+                            monsters.push(Monster::new(
+                                template.name,
+                                template.symbol,
+                                sx,
+                                sy,
+                                template.max_hp,
+                                template.damage,
+                                template.exp_reward,
+                            ));
+                            spawned = true;
+                            break;
+                        }
+                }
+                if !spawned {
+                    status_msg.push_str(" But there was no room to spawn.");
+                }
+            }
+        }
+    }
+
+    pub fn open_chest(
+        &mut self,
+        cx: usize,
+        cy: usize,
+        player: &mut Player,
+        rng: &mut impl rand::Rng,
+        status_msg: &mut String,
+        monsters: &mut Vec<Monster>,
+    ) {
+        let trapped = if let Some(tile) = self.get_tile(cx, cy) {
+            if let TileType::Chest { trapped, .. } = tile.tile_type {
+                trapped
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if trapped {
+            *status_msg = "The chest was trapped!".to_string();
+            self.trigger_chest_trap(cx, cy, player, rng, status_msg, monsters);
+        } else {
+            *status_msg = "You open the chest.".to_string();
+        }
+
+        let mut loot_desc = Vec::new();
+        let num_loots = rng.gen_range(1..=3);
+        for _ in 0..num_loots {
+            if rng.gen_bool(0.40) {
+                let gold_amt = rng.gen_range(20..=80);
+                player.gold += gold_amt;
+                loot_desc.push(format!("{} gp", gold_amt));
+            } else {
+                let item = generate_random_floor_item(self.depth, rng);
+                let item_name = item.name.clone();
+                player.add_item_to_inventory(item);
+                loot_desc.push(item_name);
+            }
+        }
+        
+        status_msg.push_str(&format!(" Inside you find: {}.", loot_desc.join(", ")));
+
+        if let Some(tile) = self.get_tile_mut(cx, cy) {
+            tile.tile_type = TileType::Floor;
+        }
+    }
 }
+
+pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
+    match shop {
+        ShopType::General => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
+            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
+            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
+            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
+            ("Iron Spike", 5, ItemType::Scroll { teleport: false }),
+            ("Ration of Food", 10, ItemType::Food { nutrition: 5000 }),
+            ("Shovel", 25, ItemType::Weapon { damage: Dice::new(1, 2) }),
+            ("Wooden Torch", 15, ItemType::Light { fuel: 4000 }),
+            ("Brass Lantern", 50, ItemType::Light { fuel: 7500 }),
+            ("Flask of Oil", 10, ItemType::Potion { heal_amount: 0 }),
+        ],
+        ShopType::Armory => vec![
+            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
+            ("Chain Mail", 250, ItemType::Armor { ac: 7 }),
+            ("Iron Shield", 150, ItemType::Armor { ac: 3 }),
+        ],
+        ShopType::Weaponsmith => vec![
+            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
+            ("Short Sword", 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
+            ("Broadsword", 350, ItemType::Weapon { damage: Dice::new(2, 5) }),
+            ("Pickaxe", 50, ItemType::Weapon { damage: Dice::new(1, 3) }),
+        ],
+        ShopType::Temple => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
+            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
+        ],
+        ShopType::Alchemy => vec![
+            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+        ],
+        ShopType::Magic => vec![
+            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
+            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
+        ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_doors_only_placed_at_room_entrances() {
+        let mut total_doors = 0;
+        let mut total_secret_doors = 0;
+
+        // Generate 100 random dungeon levels across different depths
+        for depth in 1..=20 {
+            for _ in 0..5 {
+                let mut level = DungeonLevel::new(80, 24, depth, 50);
+                level.generate_simple_floor();
+
+                for y in 0..level.height {
+                    for x in 0..level.width {
+                        if let Some(tile) = level.get_tile(x, y) {
+                            let is_door = matches!(
+                                tile.tile_type,
+                                TileType::DoorClosed { .. } | TileType::DoorOpen | TileType::SecretDoor
+                            );
+
+                            if is_door {
+                                total_doors += 1;
+                                if tile.tile_type == TileType::SecretDoor {
+                                    total_secret_doors += 1;
+                                }
+
+                                // 1. Door must NEVER be inside a room interior
+                                assert!(
+                                    !level.is_in_room(x, y),
+                                    "Door at ({}, {}) was placed inside a room interior!",
+                                    x, y
+                                );
+
+                                // 2. Door must be recognized as a valid room entrance
+                                assert!(
+                                    level.is_room_entrance(x, y),
+                                    "Door at ({}, {}) was NOT placed at a room entrance!",
+                                    x, y
+                                );
+
+                                // 3. Door must have at least one orthogonal neighbor inside a room
+                                let neighbors = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)];
+                                let borders_room = neighbors.iter().any(|&(nx, ny)| level.is_in_room(nx, ny));
+                                assert!(
+                                    borders_room,
+                                    "Door at ({}, {}) does not border any room!",
+                                    x, y
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Verify that doors are actively generated and not 0
+        assert!(total_doors > 50, "Expected doors to be generated, got {}", total_doors);
+        assert!(total_secret_doors > 0, "Expected secret doors to be generated, got {}", total_secret_doors);
+    }
+}
+

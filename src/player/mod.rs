@@ -2,6 +2,9 @@ use serde::{Serialize, Deserialize};
 use crate::dice::Dice;
 use rand::Rng;
 
+pub mod creation;
+pub use creation::run_character_creation;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Race {
     Human,
@@ -55,6 +58,15 @@ pub enum ItemType {
     Scroll { teleport: bool },
     Wand { charges: u32, spell_index: usize },
     Staff { charges: u32, prayer_index: usize },
+    Food { nutrition: i32 },
+    Light { fuel: i32 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InscribeState {
+    pub item_index: usize,
+    pub is_equipment: bool,
+    pub input: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,6 +75,8 @@ pub struct Item {
     pub count: u32,
     pub weight: u32,
     pub item_type: ItemType,
+    #[serde(default)]
+    pub inscription: Option<String>,
 }
 
 impl Item {
@@ -72,6 +86,39 @@ impl Item {
             count,
             weight,
             item_type,
+            inscription: None,
+        }
+    }
+
+    pub fn display_name(&self) -> String {
+        if let Some(ref ins) = self.inscription {
+            format!("{} {{{}}}", self.name, ins)
+        } else {
+            self.name.clone()
+        }
+    }
+
+    pub fn get_equipment_slot(&self) -> &'static str {
+        match &self.item_type {
+            ItemType::Weapon { .. } => "Weapon",
+            ItemType::Light { .. } => "Light Source",
+            ItemType::Armor { .. } => {
+                let name = self.name.to_lowercase();
+                if name.contains("shield") {
+                    "Shield"
+                } else if name.contains("helm") || name.contains("hat") || name.contains("crown") {
+                    "Headwear"
+                } else if name.contains("gloves") || name.contains("gauntlets") {
+                    "Gloves"
+                } else if name.contains("boots") || name.contains("shoes") {
+                    "Boots"
+                } else if name.contains("cloak") {
+                    "Cloak"
+                } else {
+                    "Body Armor"
+                }
+            }
+            _ => "Accessory",
         }
     }
 }
@@ -82,6 +129,15 @@ pub const BASE_EXP_LEVELS: &[u32] = &[
     6800, 8400, 10200, 12500, 17500, 25000, 35000, 50000, 75000, 100000,
     150000, 200000, 300000, 400000, 500000, 750000, 1500000, 2500000, 5000000, 10000000
 ];
+
+fn default_food() -> i32 {
+    7500
+}
+
+fn default_town_threshold() -> u32 {
+    use rand::Rng;
+    rand::thread_rng().gen_range(1..=5)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
@@ -99,11 +155,21 @@ pub struct Player {
     pub hp: i32,
     pub max_mana: i32,
     pub mana: i32,
+    #[serde(default = "default_food")]
+    pub food: i32,
     
     pub stats: Attributes,
     pub inventory: Vec<Item>,
     pub equipment: Vec<Item>,
     pub balrog_killed: bool,
+    #[serde(default)]
+    pub searching: bool,
+    #[serde(default)]
+    pub is_wizard: bool,
+    #[serde(default)]
+    pub killed_town_npcs: u32,
+    #[serde(default = "default_town_threshold")]
+    pub town_npc_attack_threshold: u32,
     
     pub base_hp_levels: Vec<i32>,
     pub exp_factor: u32,
@@ -340,14 +406,17 @@ impl Player {
             hp: hit_die,
             max_mana: 0,
             mana: 0,
+            food: 7500,
             stats: base_stats,
             inventory: {
                 let mut starter = vec![
                     Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
                     Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
-                    Item::new("Wooden Torch", 1, 15, ItemType::Scroll { teleport: false }),
+                    Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 }),
                     Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
                     Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+                    Item::new("Iron Spike", 5, 2, ItemType::Scroll { teleport: false }),
+                    Item::new("Ration of Food", 2, 10, ItemType::Food { nutrition: 5000 }),
                 ];
                 if matches!(class, Class::Mage | Class::Rogue | Class::Ranger) {
                     starter.push(Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false }));
@@ -358,6 +427,10 @@ impl Player {
             },
             equipment: Vec::new(),
             balrog_killed: false,
+            searching: false,
+            is_wizard: false,
+            killed_town_npcs: 0,
+            town_npc_attack_threshold: rand::thread_rng().gen_range(1..=5),
             base_hp_levels,
             exp_factor,
             history,
@@ -370,17 +443,78 @@ impl Player {
         player
     }
 
+    pub fn add_item_to_inventory(&mut self, item: Item) {
+        if let Some(existing) = self.inventory.iter_mut().find(|i| i.name == item.name && i.item_type == item.item_type) {
+            existing.count += item.count;
+        } else {
+            self.inventory.push(item);
+        }
+    }
+
     pub fn move_to(&mut self, x: usize, y: usize) {
         self.x = x;
         self.y = y;
     }
 
     pub fn get_light_radius(&self) -> usize {
-        if self.equipment.iter().any(|item| item.name.contains("Torch") || item.name.contains("Lantern")) {
-            2
+        if let Some(light_item) = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Light { .. })) {
+            match &light_item.item_type {
+                ItemType::Light { fuel }
+                    if *fuel > 0 => {
+                        if light_item.name.contains("Lantern") {
+                            3
+                        } else {
+                            2
+                        }
+                    }
+                _ => 1,
+            }
         } else {
             1
         }
+    }
+
+    pub fn tick_digestion_and_regen(&mut self, is_resting: bool) -> (Option<&'static str>, bool) {
+        // Natural HP/Mana regeneration when active (not resting, since resting has accelerated 1 HP/turn)
+        if !is_resting && self.food > 0 {
+            if self.food % 20 == 0 {
+                self.hp = (self.hp + 1).min(self.max_hp);
+            }
+            if self.food % 15 == 0 {
+                self.mana = (self.mana + 1).min(self.max_mana);
+            }
+        }
+
+        // Food consumption: 1 unit per turn
+        self.food -= 1;
+
+        if self.food < 0 {
+            // Starvation: damage ticks every 15 turns instead of every single turn
+            let starvation_tick = self.food.abs() % 15 == 0;
+            if starvation_tick {
+                let dmg = if self.food < -500 { 2 } else { 1 };
+                self.hp -= dmg;
+                if self.hp <= 0 {
+                    self.hp = 0;
+                    return (Some(" You have starved to death!"), true);
+                }
+                return (Some(" You are starving!"), false);
+            } else if self.food == -1 {
+                return (Some(" You are starving!"), false);
+            }
+        } else if self.food < 300 {
+            if self.food == 299 {
+                return (Some(" You are getting faint from hunger."), false);
+            } else if rand::thread_rng().gen_bool(0.02) {
+                return (Some(" You faint from the lack of food!"), false);
+            }
+        } else if self.food == 999 {
+            return (Some(" You are getting weak from hunger."), false);
+        } else if self.food == 1999 {
+            return (Some(" You are getting hungry."), false);
+        }
+
+        (None, false)
     }
 
     pub fn get_con_hp_bonus(&self) -> i32 {
@@ -405,10 +539,7 @@ impl Player {
         self.max_hp = calculated.max(self.level as i32 + 1);
         self.hp = self.hp.min(self.max_hp);
 
-        let is_caster = match self.class {
-            Class::Warrior => false,
-            _ => true,
-        };
+        let is_caster = !matches!(self.class, Class::Warrior);
         if is_caster {
             let min_level = match self.class {
                 Class::Mage => 1,
@@ -498,6 +629,27 @@ impl Player {
         }
     }
 
+    pub fn digging_ability(&self) -> i32 {
+        let wielded = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
+        match wielded {
+            Some(weapon) => {
+                let is_digging_tool = weapon.name.contains("Shovel") || weapon.name.contains("Pick") || weapon.name.contains("Mattock");
+                let base_ability = self.stats.strength as i32;
+                if is_digging_tool {
+                    let tool_bonus = if weapon.name.contains("Pick") { 50 } else { 25 };
+                    base_ability + tool_bonus
+                } else {
+                    let weapon_max_dmg = match &weapon.item_type {
+                        ItemType::Weapon { damage } => damage.num * damage.sides,
+                        _ => 4,
+                    } as i32;
+                    (base_ability + weapon_max_dmg) / 2
+                }
+            }
+            None => 0,
+        }
+    }
+
     pub fn calculate_ac(&self) -> i32 {
         let mut ac = 10;
         ac += (self.stats.dexterity as i32 - 10) / 2;
@@ -532,11 +684,282 @@ impl Player {
             Class::Paladin => (3, -3, 1, 0, 2, 2),
         };
 
-        self.stats.strength += r_str + c_str;
-        self.stats.intelligence += r_int + c_int;
-        self.stats.wisdom += r_wis + c_wis;
-        self.stats.dexterity += r_dex + c_dex;
-        self.stats.constitution += r_con + c_con;
-        self.stats.charisma += r_chr + c_chr;
+        self.stats.strength = (self.stats.strength + r_str + c_str).max(2);
+        self.stats.intelligence = (self.stats.intelligence + r_int + c_int).max(2);
+        self.stats.wisdom = (self.stats.wisdom + r_wis + c_wis).max(2);
+        self.stats.dexterity = (self.stats.dexterity + r_dex + c_dex).max(2);
+        self.stats.constitution = (self.stats.constitution + r_con + c_con).max(2);
+        self.stats.charisma = (self.stats.charisma + r_chr + c_chr).max(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_light_radius_and_fuel() {
+        let mut player = Player::new("TestPlayer", Race::Human, Class::Warrior, 10, 10);
+        // Default player with no light equipped has radius 1
+        assert_eq!(player.get_light_radius(), 1);
+
+        // Equip a torch with 4000 fuel -> radius should be 2
+        player.equipment.push(Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 }));
+        assert_eq!(player.get_light_radius(), 2);
+
+        // Discard the torch and equip a lantern with 7500 fuel -> radius should be 3
+        player.equipment.clear();
+        player.equipment.push(Item::new("Brass Lantern", 1, 35, ItemType::Light { fuel: 7500 }));
+        assert_eq!(player.get_light_radius(), 3);
+
+        // Drain the fuel to 0 -> radius should be 1
+        if let ItemType::Light { ref mut fuel } = player.equipment[0].item_type {
+            *fuel = 0;
+        }
+        assert_eq!(player.get_light_radius(), 1);
+    }
+
+    #[test]
+    fn test_equipment_slots() {
+        let dagger = Item::new("Iron Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) });
+        let shield = Item::new("Iron Shield", 1, 150, ItemType::Armor { ac: 3 });
+        let mail = Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 });
+        let boots = Item::new("Leather Boots", 1, 30, ItemType::Armor { ac: 1 });
+        let helm = Item::new("Iron Helm", 1, 50, ItemType::Armor { ac: 2 });
+        let torch = Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 });
+
+        assert_eq!(dagger.get_equipment_slot(), "Weapon");
+        assert_eq!(shield.get_equipment_slot(), "Shield");
+        assert_eq!(mail.get_equipment_slot(), "Body Armor");
+        assert_eq!(boots.get_equipment_slot(), "Boots");
+        assert_eq!(helm.get_equipment_slot(), "Headwear");
+        assert_eq!(torch.get_equipment_slot(), "Light Source");
+    }
+
+    #[test]
+    fn test_town_npc_pacifism() {
+        let player = Player::new("TestPlayer", Race::Human, Class::Warrior, 10, 10);
+        let mut monster = crate::entity::monster::Monster::new("Filthy Street Urchin", 'p', 11, 11, 6, crate::dice::Dice::new(1, 2), 0);
+
+        // Initially on town level (depth 0), the monster should not be hostile to player
+        let depth = 0;
+        let is_hostile = depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
+        assert!(!is_hostile, "Monster should be peaceful initially on town level");
+
+        // If the depth > 0, the monster is always hostile
+        let deep_hostile = 1 > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
+        assert!(deep_hostile, "Monster should be hostile in the dungeon");
+
+        // If the monster is attacked, it becomes hostile
+        monster.was_attacked = true;
+        let attacked_hostile = depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
+        assert!(attacked_hostile, "Monster should be hostile after being attacked");
+        
+        // Reset monster attacked flag
+        monster.was_attacked = false;
+
+        // If player has killed more than the threshold NPCs, the monster becomes hostile
+        let mut player_aggro = player.clone();
+        player_aggro.killed_town_npcs = player_aggro.town_npc_attack_threshold + 1;
+        let threshold_hostile = depth > 0 || monster.was_attacked || player_aggro.killed_town_npcs > player_aggro.town_npc_attack_threshold;
+        assert!(threshold_hostile, "Monster should be hostile if player exceeded kill threshold");
+    }
+
+    #[test]
+    fn test_minimum_stat_clamping() {
+        let stats = Attributes::new(1, 1, 1, 1, 1, 1);
+        let mut player = Player::new("TestClamping", Race::Halfling, Class::Mage, 10, 10);
+        player.stats = stats;
+        player.apply_race_and_class_modifiers();
+
+        assert!(player.stats.strength >= 2, "Strength was not clamped to minimum 2");
+        assert!(player.stats.intelligence >= 2, "Intelligence was not clamped to minimum 2");
+        assert!(player.stats.wisdom >= 2, "Wisdom was not clamped to minimum 2");
+        assert!(player.stats.dexterity >= 2, "Dexterity was not clamped to minimum 2");
+        assert!(player.stats.constitution >= 2, "Constitution was not clamped to minimum 2");
+        assert!(player.stats.charisma >= 2, "Charisma was not clamped to minimum 2");
+    }
+
+    #[test]
+    fn test_look_command_los() {
+        use crate::dungeon::{DungeonLevel, tile::TileType};
+        let mut level = DungeonLevel::new(10, 10, 1, 1);
+        for x in 1..=8 {
+            if let Some(tile) = level.get_tile_mut(x, 1) {
+                tile.tile_type = TileType::Floor;
+                tile.visible = true;
+            }
+        }
+        let mut player = Player::new("TestLook", Race::Human, Class::Warrior, 10, 10);
+        player.move_to(1, 1);
+
+        let monster = crate::entity::monster::Monster::new("TestMonster", 'm', 5, 1, 10, crate::dice::Dice::new(1, 1), 0);
+        let monsters = [monster];
+
+        let dx = 1;
+        let dy = 0;
+        let mut sx = player.x as isize;
+        let mut sy = player.y as isize;
+        let mut npc_found = None;
+        loop {
+            sx += dx;
+            sy += dy;
+            if sx < 0 || sx >= level.width as isize || sy < 0 || sy >= level.height as isize {
+                break;
+            }
+            let x_u = sx as usize;
+            let y_u = sy as usize;
+            if let Some(tile) = level.get_tile(x_u, y_u) {
+                if !tile.is_passable() || tile.tile_type == TileType::SecretDoor {
+                    break;
+                }
+                if tile.visible
+                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u) {
+                        npc_found = Some(m.name.clone());
+                        break;
+                    }
+            } else {
+                break;
+            }
+        }
+        assert_eq!(npc_found, Some("TestMonster".to_string()));
+
+        if let Some(tile) = level.get_tile_mut(3, 1) {
+            tile.tile_type = TileType::Wall;
+        }
+
+        let mut sx = player.x as isize;
+        let mut sy = player.y as isize;
+        let mut npc_found = None;
+        loop {
+            sx += dx;
+            sy += dy;
+            if sx < 0 || sx >= level.width as isize || sy < 0 || sy >= level.height as isize {
+                break;
+            }
+            let x_u = sx as usize;
+            let y_u = sy as usize;
+            if let Some(tile) = level.get_tile(x_u, y_u) {
+                if !tile.is_passable() || tile.tile_type == TileType::SecretDoor {
+                    break;
+                }
+                if tile.visible
+                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u) {
+                        npc_found = Some(m.name.clone());
+                        break;
+                    }
+            } else {
+                break;
+            }
+        }
+        assert_eq!(npc_found, None);
+    }
+
+    #[test]
+    fn test_item_inscription() {
+        let mut item = Item::new("Short Sword", 1, 10, ItemType::Weapon { damage: crate::dice::Dice::new(1, 6) });
+        assert_eq!(item.display_name(), "Short Sword");
+
+        item.inscription = Some("sharp".to_string());
+        assert_eq!(item.display_name(), "Short Sword {sharp}");
+
+        item.inscription = None;
+        assert_eq!(item.display_name(), "Short Sword");
+    }
+
+    #[test]
+    fn test_digestion_rate_and_natural_regeneration() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.food = 7500;
+        player.hp = 10;
+        player.max_hp = 30;
+        player.mana = 5;
+        player.max_mana = 20;
+
+        // Turn 1: 7500 is divisible by 20 and 15 -> natural regen ticks
+        let (_msg, starved) = player.tick_digestion_and_regen(false);
+        assert!(!starved);
+        assert_eq!(player.food, 7499, "Digestion must consume exactly 1 food per turn");
+        assert_eq!(player.hp, 11, "HP regenerates +1 on div 20 turn");
+        assert_eq!(player.mana, 6, "Mana regenerates +1 on div 15 turn");
+
+        // Next 10 turns: food decrements by 1 each turn, no HP regen until turn % 20 == 0
+        for _ in 0..10 {
+            player.tick_digestion_and_regen(false);
+        }
+        assert_eq!(player.food, 7489);
+        assert_eq!(player.hp, 11);
+    }
+
+    #[test]
+    fn test_starvation_damage_and_survival() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.food = 0;
+        player.hp = 10;
+        player.max_hp = 25;
+
+        // Turn 1 into starvation (food becomes -1)
+        let (msg, starved) = player.tick_digestion_and_regen(false);
+        assert!(!starved);
+        assert_eq!(player.food, -1);
+        assert_eq!(player.hp, 10, "Starvation must not deal damage immediately on step 1");
+        assert_eq!(msg, Some(" You are starving!"));
+
+        // Steps -2 to -14: NO damage taken
+        for _ in 2..=14 {
+            let (msg, starved) = player.tick_digestion_and_regen(false);
+            assert!(!starved);
+            assert_eq!(player.hp, 10, "No damage on non-tick turns");
+            assert_eq!(msg, None, "No message spam on non-tick turns");
+        }
+        assert_eq!(player.food, -14);
+
+        // Step -15: First starvation damage tick!
+        let (msg, starved) = player.tick_digestion_and_regen(false);
+        assert!(!starved);
+        assert_eq!(player.food, -15);
+        assert_eq!(player.hp, 9, "Starvation deals 1 damage on tick 15");
+        assert_eq!(msg, Some(" You are starving!"));
+
+        // Player with 9 HP survives next 15 * 8 = 120 turns
+        for _ in 0..120 {
+            let (_msg, starved) = player.tick_digestion_and_regen(false);
+            assert!(!starved, "Player should survive gradual starvation");
+        }
+        assert_eq!(player.hp, 1, "Player should have 1 HP remaining after 8 more damage ticks");
+
+        // Run until lethal starvation
+        let mut died = false;
+        for _ in 0..30 {
+            let (_msg, starved) = player.tick_digestion_and_regen(false);
+            if starved {
+                died = true;
+                break;
+            }
+        }
+        assert!(died, "Player must eventually starve to death at HP 0");
+        assert_eq!(player.hp, 0);
+    }
+
+    #[test]
+    fn test_hunger_state_transitions() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+
+        // Transition into hungry
+        player.food = 2000;
+        let (msg, _) = player.tick_digestion_and_regen(false);
+        assert_eq!(msg, Some(" You are getting hungry."));
+        let (msg2, _) = player.tick_digestion_and_regen(false);
+        assert_eq!(msg2, None, "No message spam on subsequent turns");
+
+        // Transition into weak
+        player.food = 1000;
+        let (msg, _) = player.tick_digestion_and_regen(false);
+        assert_eq!(msg, Some(" You are getting weak from hunger."));
+
+        // Transition into faint
+        player.food = 300;
+        let (msg, _) = player.tick_digestion_and_regen(false);
+        assert_eq!(msg, Some(" You are getting faint from hunger."));
     }
 }
