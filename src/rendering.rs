@@ -424,7 +424,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let (_, item) = potions[idx];
                 if let ItemType::Potion { heal_amount } = item.item_type {
-                    return format!("{}. {} (heals {} HP) x{}", (b'a' + idx as u8) as char, item.display_name(), heal_amount, item.count);
+                    if item.identified && heal_amount > 0 {
+                        return format!("{}. {} (heals {} HP) x{}", (b'a' + idx as u8) as char, item.display_name(), heal_amount, item.count);
+                    } else {
+                        return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                    }
                 }
             }
             if potions.is_empty() && row == 1 {
@@ -699,6 +703,26 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             if row == player.inventory.len() + 3 {
                 return "Select item letter to drop, or press ESC to cancel.".to_string();
+            }
+            if row > 0 && row <= player.inventory.len() {
+                let idx = row - 1;
+                let item = &player.inventory[idx];
+                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+            }
+            if player.inventory.is_empty() && row == 1 {
+                return "(Your inventory is empty)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::IdentifyMenu => {
+            if row == 0 {
+                return "--- IDENTIFY ITEM SELECTION ---".to_string();
+            }
+            if row == player.inventory.len() + 2 {
+                return "-------------------------------".to_string();
+            }
+            if row == player.inventory.len() + 3 {
+                return "Select item letter to identify, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
                 let idx = row - 1;

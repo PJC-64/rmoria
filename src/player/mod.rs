@@ -156,6 +156,14 @@ pub struct Item {
     pub item_type: ItemType,
     #[serde(default)]
     pub inscription: Option<String>,
+    #[serde(default = "default_identified")]
+    pub identified: bool,
+    #[serde(default)]
+    pub flavor: Option<String>,
+}
+
+fn default_identified() -> bool {
+    true
 }
 
 impl Item {
@@ -166,14 +174,44 @@ impl Item {
             weight,
             item_type,
             inscription: None,
+            identified: true,
+            flavor: None,
+        }
+    }
+
+    pub fn new_unidentified(name: &str, count: u32, weight: u32, item_type: ItemType) -> Self {
+        Self {
+            name: name.to_string(),
+            count,
+            weight,
+            item_type,
+            inscription: None,
+            identified: false,
+            flavor: None,
         }
     }
 
     pub fn display_name(&self) -> String {
-        if let Some(ref ins) = self.inscription {
-            format!("{} {{{}}}", self.name, ins)
+        let base = if !self.identified {
+            if let Some(ref flv) = self.flavor {
+                match &self.item_type {
+                    ItemType::Potion { .. } => format!("{} Potion", flv),
+                    ItemType::Scroll { .. } => format!("Scroll titled \"{}\"", flv),
+                    ItemType::Wand { .. } => format!("{} Wand", flv),
+                    ItemType::Staff { .. } => format!("{} Staff", flv),
+                    _ => format!("{} {}", flv, self.name),
+                }
+            } else {
+                self.name.clone()
+            }
         } else {
             self.name.clone()
+        };
+
+        if let Some(ref ins) = self.inscription {
+            format!("{} {{{}}}", base, ins)
+        } else {
+            base
         }
     }
 
@@ -244,6 +282,8 @@ pub struct Player {
     pub flags: PlayerFlags,
     #[serde(default)]
     pub max_depth_reached: u32,
+    #[serde(default)]
+    pub flavors: crate::flavor::FlavorRegistry,
     pub inventory: Vec<Item>,
     pub equipment: Vec<Item>,
     pub balrog_killed: bool,
@@ -496,6 +536,7 @@ impl Player {
             max_stats: base_stats,
             flags: PlayerFlags::default(),
             max_depth_reached: 0,
+            flavors: crate::flavor::FlavorRegistry::new(&mut temp_rng),
             inventory: {
                 let mut starter = vec![
                     Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
@@ -523,6 +564,9 @@ impl Player {
             exp_factor,
             history,
         };
+
+        player.flavors.identify("Potion of Cure Light Wounds");
+        player.flavors.identify("Scroll of Phase Door");
         
         player.apply_race_and_class_modifiers();
         player.max_stats = player.stats.clone();
@@ -530,6 +574,21 @@ impl Player {
         player.hp = player.max_hp;
         player.mana = player.max_mana;
         player
+    }
+
+    pub fn identify_item_kind(&mut self, item_name: &str) -> bool {
+        let newly_identified = self.flavors.identify(item_name);
+        for item in self.inventory.iter_mut() {
+            if item.name == item_name {
+                item.identified = true;
+            }
+        }
+        for item in self.equipment.iter_mut() {
+            if item.name == item_name {
+                item.identified = true;
+            }
+        }
+        newly_identified
     }
 
     pub fn add_item_to_inventory(&mut self, item: Item) {
@@ -1523,5 +1582,45 @@ mod tests {
         let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
         player.flags.free_action = true;
         assert!(player.flags.free_action);
+    }
+
+    #[test]
+    fn test_identify_item_kind_updates_inventory_and_equipment() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        let mut unidentified_potion = Item::new_unidentified(
+            "Potion of Healing",
+            1,
+            5,
+            ItemType::Potion { heal_amount: 25 },
+        );
+        let mut rng = rand::thread_rng();
+        player.flavors.assign_flavor(&mut unidentified_potion, &mut rng);
+        assert!(!unidentified_potion.identified);
+        assert!(unidentified_potion.flavor.is_some());
+        assert!(!unidentified_potion.display_name().contains("Healing"));
+
+        player.add_item_to_inventory(unidentified_potion);
+        assert!(!player.inventory.last().unwrap().identified);
+
+        // Identifying the item kind identifies it in inventory and registry
+        let res = player.identify_item_kind("Potion of Healing");
+        assert!(res);
+        assert!(player.inventory.last().unwrap().identified);
+        assert_eq!(player.inventory.last().unwrap().display_name(), "Potion of Healing");
+        assert!(player.flavors.is_identified("Potion of Healing"));
+    }
+
+    #[test]
+    fn test_unidentified_scroll_title_display() {
+        let mut scroll = Item::new_unidentified(
+            "Scroll of Identify",
+            1,
+            2,
+            ItemType::Scroll { teleport: false },
+        );
+        scroll.flavor = Some("foo bar baz".to_string());
+        assert_eq!(scroll.display_name(), "Scroll titled \"foo bar baz\"");
+        scroll.identified = true;
+        assert_eq!(scroll.display_name(), "Scroll of Identify");
     }
 }

@@ -162,6 +162,7 @@ pub fn run_character_creation(
             max_stats: rolled.clone(),
             flags: PlayerFlags::default(),
             max_depth_reached: 0,
+            flavors: crate::flavor::FlavorRegistry::new(rng),
             inventory: Vec::new(),
             equipment: Vec::new(),
             balrog_killed: false,

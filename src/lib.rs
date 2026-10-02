@@ -1,6 +1,7 @@
 mod input;
 mod dungeon;
 mod player;
+pub mod flavor;
 mod save;
 mod dice;
 mod entity;
@@ -162,6 +163,7 @@ pub enum ScreenMode {
     SelectLookDirection,
     InscribeMenu,
     Inscribing,
+    IdentifyMenu,
     GameOver,
 }
 
@@ -1042,7 +1044,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 let item_idx = level.items.iter().position(|i| i.x == player.x && i.y == player.y);
                                                 if let Some(idx) = item_idx {
                                                     let floor_item = level.items.remove(idx);
-                                                    let item = floor_item.item;
+                                                    let mut item = floor_item.item;
                                                     if item.name.contains("Gold Pile") {
                                                         let gold_amount = item.name.split('[')
                                                             .nth(1)
@@ -1052,7 +1054,14 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         player.gold += gold_amount;
                                                         status_msg = format!("You picked up {} gold pieces.", gold_amount);
                                                     } else {
-                                                        status_msg = format!("You picked up a {}.", item.name);
+                                                        if !item.identified {
+                                                            player.flavors.assign_flavor(&mut item, &mut rng);
+                                                            if player.flavors.is_identified(&item.name) {
+                                                                item.identified = true;
+                                                            }
+                                                        }
+                                                        let dname = item.display_name();
+                                                        status_msg = format!("You picked up a {}.", dname);
                                                         player.add_item_to_inventory(item);
                                                     }
                                                 }
@@ -1991,6 +2000,26 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         player_acted = true;
                                     }
                                     screen_mode = ScreenMode::Dungeon;
+                                } else if screen_mode == ScreenMode::IdentifyMenu {
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < player.inventory.len() {
+                                        let target_name = player.inventory[idx].name.clone();
+                                        player.identify_item_kind(&target_name);
+
+                                        if let Some(scroll_pos) = player.inventory.iter().position(|i| i.name.contains("Identify")) {
+                                            player.inventory[scroll_pos].count -= 1;
+                                            if player.inventory[scroll_pos].count == 0 {
+                                                player.inventory.remove(scroll_pos);
+                                            }
+                                        }
+                                        player.identify_item_kind("Scroll of Identify");
+
+                                        status_msg = format!("You identified the {}!", target_name);
+                                        player_acted = true;
+                                    } else {
+                                        status_msg = "Invalid item choice.".to_string();
+                                    }
+                                    screen_mode = ScreenMode::Dungeon;
                                 } else if screen_mode == ScreenMode::AimWandMenu {
                                     let wands: Vec<(usize, &Item)> = player.inventory.iter()
                                         .enumerate()
@@ -2624,6 +2653,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         if player.inventory[inv_idx].count == 0 {
                                             player.inventory.remove(inv_idx);
                                         }
+                                        player.identify_item_kind(&name);
 
                                         if name.contains("Cure Light Wounds") {
                                             player.hp = (player.hp + heal).min(player.max_hp);
@@ -2689,61 +2719,67 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     if idx < scroll_indices.len() {
                                         let inv_idx = scroll_indices[idx];
                                         let name = player.inventory[inv_idx].name.clone();
-                                        
-                                        player.inventory[inv_idx].count -= 1;
-                                        if player.inventory[inv_idx].count == 0 {
-                                            player.inventory.remove(inv_idx);
-                                        }
 
-                                        if name.contains("Word of Recall") {
-                                            if player.flags.word_of_recall == 0 {
-                                                player.flags.word_of_recall = rng.gen_range(25..=55);
-                                                status_msg = format!("You read the {}! The air about you becomes charged...", name);
-                                            } else {
-                                                player.flags.word_of_recall = 0;
-                                                status_msg = format!("You read the {}! A tension leaves the air around you.", name);
+                                        if name.contains("Identify") {
+                                            screen_mode = ScreenMode::IdentifyMenu;
+                                            status_msg = "Item you wish identified? Select a letter [a-z] or [ESC] to cancel...".to_string();
+                                        } else {
+                                            player.inventory[inv_idx].count -= 1;
+                                            if player.inventory[inv_idx].count == 0 {
+                                                player.inventory.remove(inv_idx);
                                             }
-                                        } else if name.contains("Phase Door") {
-                                            let mut candidates = Vec::new();
-                                            for dy in -10..=10 {
-                                                for dx in -10..=10 {
-                                                    let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                                                    if dist <= 10.0 && (dx != 0 || dy != 0) {
-                                                        let nx = player.x as isize + dx;
-                                                        let ny = player.y as isize + dy;
-                                                        if nx > 0 && nx < (level.width - 1) as isize && ny > 0 && ny < (level.height - 1) as isize {
-                                                            let (ux, uy) = (nx as usize, ny as usize);
-                                                            if let Some(tile) = level.get_tile(ux, uy)
-                                                                && tile.tile_type == TileType::Floor
-                                                                && !monsters.iter().any(|m| m.x == ux && m.y == uy) {
-                                                                    candidates.push((ux, uy));
-                                                                }
+                                            player.identify_item_kind(&name);
+
+                                            if name.contains("Word of Recall") {
+                                                if player.flags.word_of_recall == 0 {
+                                                    player.flags.word_of_recall = rng.gen_range(25..=55);
+                                                    status_msg = format!("You read the {}! The air about you becomes charged...", name);
+                                                } else {
+                                                    player.flags.word_of_recall = 0;
+                                                    status_msg = format!("You read the {}! A tension leaves the air around you.", name);
+                                                }
+                                            } else if name.contains("Phase Door") {
+                                                let mut candidates = Vec::new();
+                                                for dy in -10..=10 {
+                                                    for dx in -10..=10 {
+                                                        let dist = ((dx * dx + dy * dy) as f32).sqrt();
+                                                        if dist <= 10.0 && (dx != 0 || dy != 0) {
+                                                            let nx = player.x as isize + dx;
+                                                            let ny = player.y as isize + dy;
+                                                            if nx > 0 && nx < (level.width - 1) as isize && ny > 0 && ny < (level.height - 1) as isize {
+                                                                let (ux, uy) = (nx as usize, ny as usize);
+                                                                if let Some(tile) = level.get_tile(ux, uy)
+                                                                    && tile.tile_type == TileType::Floor
+                                                                    && !monsters.iter().any(|m| m.x == ux && m.y == uy) {
+                                                                        candidates.push((ux, uy));
+                                                                    }
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                            if !candidates.is_empty() {
-                                                let (rx, ry) = candidates[rng.gen_range(0..candidates.len())];
-                                                player.move_to(rx, ry);
-                                                status_msg = format!("You read the {}! You phase door to ({}, {}).", name, rx, ry);
+                                                if !candidates.is_empty() {
+                                                    let (rx, ry) = candidates[rng.gen_range(0..candidates.len())];
+                                                    player.move_to(rx, ry);
+                                                    status_msg = format!("You read the {}! You phase door to ({}, {}).", name, rx, ry);
+                                                } else {
+                                                    status_msg = format!("You read the {}, but nothing seems to happen.", name);
+                                                }
                                             } else {
-                                                status_msg = format!("You read the {}, but nothing seems to happen.", name);
-                                            }
-                                        } else {
-                                            let (rx, ry) = loop {
-                                                let tx = rng.gen_range(1..(level.width - 1));
-                                                let ty = rng.gen_range(1..(level.height - 1));
-                                                if let Some(tile) = level.get_tile(tx, ty)
-                                                    && tile.tile_type == TileType::Floor {
-                                                        break (tx, ty);
-                                                    }
-                                            };
-                                            player.move_to(rx, ry);
+                                                let (rx, ry) = loop {
+                                                    let tx = rng.gen_range(1..(level.width - 1));
+                                                    let ty = rng.gen_range(1..(level.height - 1));
+                                                    if let Some(tile) = level.get_tile(tx, ty)
+                                                        && tile.tile_type == TileType::Floor {
+                                                            break (tx, ty);
+                                                        }
+                                                };
+                                                player.move_to(rx, ry);
 
-                                            status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                                status_msg = format!("You read the {}! You teleport to ({}, {}).", name, rx, ry);
+                                            }
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
                                         }
-                                        screen_mode = ScreenMode::Dungeon;
-                                        player_acted = true;
                                     }
                                 }
                             }

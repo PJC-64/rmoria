@@ -49,7 +49,10 @@ pub fn handle_haggle_input(
                             return;
                         }
                         player.gold -= haggle.current_asking;
-                        player.add_item_to_inventory(haggle.item.clone());
+                        let mut bought_item = haggle.item.clone();
+                        bought_item.identified = true;
+                        player.identify_item_kind(&bought_item.name);
+                        player.add_item_to_inventory(bought_item);
                         *status_msg = format!("You buy the {} for {} gp.", haggle.item.name, haggle.current_asking);
                         *screen_mode = ScreenMode::Shop;
                         *active_haggle = None;
@@ -72,7 +75,10 @@ pub fn handle_haggle_input(
                         if bid >= haggle.current_asking {
                             let final_price = bid.min(haggle.current_asking);
                             player.gold -= final_price;
-                            player.add_item_to_inventory(haggle.item.clone());
+                            let mut bought_item = haggle.item.clone();
+                            bought_item.identified = true;
+                            player.identify_item_kind(&bought_item.name);
+                            player.add_item_to_inventory(bought_item);
                             *status_msg = format!("You buy the {} for {} gp.", haggle.item.name, final_price);
                             *screen_mode = ScreenMode::Shop;
                             *active_haggle = None;
@@ -123,7 +129,10 @@ pub fn handle_haggle_input(
                             let accept_chance = if spread == 0 { 1.0 } else { 0.40 + 0.50 * (margin as f64 / spread as f64) };
                             if rng.gen_bool(accept_chance.clamp(0.20, 0.95)) {
                                 player.gold -= bid;
-                                player.add_item_to_inventory(haggle.item.clone());
+                                let mut bought_item = haggle.item.clone();
+                                bought_item.identified = true;
+                                player.identify_item_kind(&bought_item.name);
+                                player.add_item_to_inventory(bought_item);
                                 *status_msg = format!("Accepted! You buy the {} for {} gp.", haggle.item.name, bid);
                                 *screen_mode = ScreenMode::Shop;
                                 *active_haggle = None;
@@ -166,6 +175,7 @@ pub fn handle_haggle_input(
                     // Blank input: accept shopkeeper's offer
                     if input.is_empty() {
                         player.gold += haggle.current_asking;
+                        player.identify_item_kind(&haggle.item.name);
                         let idx = haggle.item_index;
                         if idx < player.inventory.len() {
                             if player.inventory[idx].count > 1 {
@@ -190,6 +200,7 @@ pub fn handle_haggle_input(
                         // Player asks less than or equal to current offer: deal!
                         if ask <= haggle.current_asking {
                             player.gold += haggle.current_asking;
+                            player.identify_item_kind(&haggle.item.name);
                             let idx = haggle.item_index;
                             if idx < player.inventory.len() {
                                 if player.inventory[idx].count > 1 {
@@ -248,6 +259,7 @@ pub fn handle_haggle_input(
                             let accept_chance = if spread == 0 { 1.0 } else { 0.40 + 0.50 * (margin as f64 / spread as f64) };
                             if rng.gen_bool(accept_chance.clamp(0.20, 0.95)) {
                                 player.gold += ask;
+                                player.identify_item_kind(&haggle.item.name);
                                 let idx = haggle.item_index;
                                 if idx < player.inventory.len() {
                                     if player.inventory[idx].count > 1 {

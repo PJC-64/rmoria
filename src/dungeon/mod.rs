@@ -82,13 +82,13 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
     if roll < 20 {
         let potion_choice = rng.gen_range(0..10);
         match potion_choice {
-            0..=2 => Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
-            3 | 4 if depth >= 2 => Item::new("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 }),
-            5 => Item::new("Potion of Cure Poison", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            6 => Item::new("Potion of Speed", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            7 => Item::new("Potion of Heroism", 1, 5, ItemType::Potion { heal_amount: 10 }),
-            8 => Item::new("Potion of Restore Strength", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            _ => Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
+            0..=2 => Item::new_unidentified("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
+            3 | 4 if depth >= 2 => Item::new_unidentified("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 }),
+            5 => Item::new_unidentified("Potion of Cure Poison", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            6 => Item::new_unidentified("Potion of Speed", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            7 => Item::new_unidentified("Potion of Heroism", 1, 5, ItemType::Potion { heal_amount: 10 }),
+            8 => Item::new_unidentified("Potion of Restore Strength", 1, 5, ItemType::Potion { heal_amount: 0 }),
+            _ => Item::new_unidentified("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
         }
     } else if roll < 40 {
         let book_roll = rng.gen_range(0..10);
@@ -99,9 +99,10 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
         } else {
             let scroll_roll = rng.gen_range(0..10);
             match scroll_roll {
-                0..=3 => Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
-                4..=6 => Item::new("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true }),
-                _ => Item::new("Scroll of Word of Recall", 1, 2, ItemType::Scroll { teleport: false }),
+                0..=2 => Item::new_unidentified("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+                3..=4 => Item::new_unidentified("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true }),
+                5..=7 => Item::new_unidentified("Scroll of Identify", 1, 2, ItemType::Scroll { teleport: false }),
+                _ => Item::new_unidentified("Scroll of Word of Recall", 1, 2, ItemType::Scroll { teleport: false }),
             }
         }
     } else if roll < 55 {
@@ -774,6 +775,7 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
         ShopType::General => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
+            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
             ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
             ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
@@ -801,6 +803,7 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
             ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
             ("Potion of Heroism", 50, ItemType::Potion { heal_amount: 10 }),
+            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
             ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
         ],
@@ -810,9 +813,11 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
             ("Potion of Speed", 50, ItemType::Potion { heal_amount: 0 }),
             ("Potion of Restore Strength", 100, ItemType::Potion { heal_amount: 0 }),
+            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
         ],
         ShopType::Magic => vec![
+            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
