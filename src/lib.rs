@@ -164,6 +164,8 @@ pub enum ScreenMode {
     InscribeMenu,
     Inscribing,
     IdentifyMenu,
+    SelectThrowItem,
+    SelectThrowDirection,
     GameOver,
 }
 
@@ -667,6 +669,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     let mut active_shop = ShopType::General;
     let mut selected_spell_idx: usize = 0;
     let mut selected_wand_inv_idx: usize = 0;
+    let mut selected_throw_inv_idx: usize = 0;
     let mut active_haggle: Option<HaggleState> = None;
     let mut active_inscribe: Option<InscribeState> = None;
     let mut resting_turns: Option<i32> = None;
@@ -1130,6 +1133,14 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 Action::TakeOff => {
                                     screen_mode = ScreenMode::TakeOffMenu;
                                     status_msg = "Select item to unequip.".to_string();
+                                }
+                                Action::Fire | Action::Throw => {
+                                    if player.inventory.is_empty() {
+                                        status_msg = "You have nothing in your inventory to throw/fire.".to_string();
+                                    } else {
+                                        screen_mode = ScreenMode::SelectThrowItem;
+                                        status_msg = "Fire/Throw which item? Select a letter [a-z] or [ESC] to cancel...".to_string();
+                                    }
                                 }
                                 Action::Eat => {
                                      let has_food = player.inventory.iter().any(|i| matches!(i.item_type, ItemType::Food { .. }));
@@ -2020,6 +2031,172 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         status_msg = "Invalid item choice.".to_string();
                                     }
                                     screen_mode = ScreenMode::Dungeon;
+                                } else if screen_mode == ScreenMode::SelectThrowItem {
+                                    let idx = c as usize - 'a' as usize;
+                                    if idx < player.inventory.len() {
+                                        selected_throw_inv_idx = idx;
+                                        screen_mode = ScreenMode::SelectThrowDirection;
+                                        status_msg = format!("Throw {} in which direction? (q/w/e/a/d/z/x/c, ESC to cancel):", player.inventory[idx].name);
+                                    } else {
+                                        status_msg = "Invalid item choice.".to_string();
+                                        screen_mode = ScreenMode::Dungeon;
+                                    }
+                                } else if screen_mode == ScreenMode::SelectThrowDirection {
+                                    let action = mapper.map_key(c);
+                                    if let Action::Move(direction) = action {
+                                        let mut dx = match direction {
+                                            Direction::NorthWest | Direction::West | Direction::SouthWest => -1,
+                                            Direction::NorthEast | Direction::East | Direction::SouthEast => 1,
+                                            _ => 0,
+                                        };
+                                        let mut dy = match direction {
+                                            Direction::NorthWest | Direction::North | Direction::NorthEast => -1,
+                                            Direction::SouthWest | Direction::South | Direction::SouthEast => 1,
+                                            _ => 0,
+                                        };
+
+                                        if dx == 0 && dy == 0 {
+                                            status_msg = "Cannot throw at your own feet.".to_string();
+                                        } else if selected_throw_inv_idx >= player.inventory.len() {
+                                            status_msg = "Item no longer in inventory.".to_string();
+                                        } else {
+                                            let confused_shot = player.flags.confused > 0;
+                                            if confused_shot {
+                                                let random_dirs = [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)];
+                                                let rdir = random_dirs[rng.gen_range(0..random_dirs.len())];
+                                                dx = rdir.0;
+                                                dy = rdir.1;
+                                            }
+
+                                            // Extract 1 count of the item
+                                            let mut thrown_item = player.inventory[selected_throw_inv_idx].clone();
+                                            thrown_item.count = 1;
+                                            player.inventory[selected_throw_inv_idx].count -= 1;
+                                            if player.inventory[selected_throw_inv_idx].count == 0 {
+                                                player.inventory.remove(selected_throw_inv_idx);
+                                            }
+
+                                            // Determine launcher synergy, range, damage, and to-hit bonus
+                                            let launcher = player.equipment.iter().find(|i| matches!(i.item_type, ItemType::Bow { .. }));
+                                            let (range, damage, to_hit_bonus) = match &thrown_item.item_type {
+                                                ItemType::Missile { damage: missile_dice } => {
+                                                    let is_arrow = thrown_item.name.to_lowercase().contains("arrow");
+                                                    let is_bolt = thrown_item.name.to_lowercase().contains("bolt");
+                                                    let is_shot = thrown_item.name.to_lowercase().contains("shot") || thrown_item.name.to_lowercase().contains("pebble");
+
+                                                    let matches_launcher = launcher.map(|l| {
+                                                        let lname = l.name.to_lowercase();
+                                                        (is_arrow && lname.contains("bow") && !lname.contains("crossbow"))
+                                                        || (is_bolt && lname.contains("crossbow"))
+                                                        || (is_shot && lname.contains("sling"))
+                                                    }).unwrap_or(false);
+
+                                                    if matches_launcher {
+                                                        let mult = match launcher.unwrap().item_type {
+                                                            ItemType::Bow { multiplier } => multiplier,
+                                                            _ => 1,
+                                                        };
+                                                        let rng_dist = match mult {
+                                                            2 => 25,
+                                                            3 => 30,
+                                                            _ => 35,
+                                                        };
+                                                        let dmg = missile_dice.roll(&mut rng) * mult;
+                                                        let th = (player.stats.dexterity as i32 - 10) * 3;
+                                                        (rng_dist, dmg, th)
+                                                    } else {
+                                                        (10, missile_dice.roll(&mut rng), 0)
+                                                    }
+                                                }
+                                                _ => {
+                                                    let weight = thrown_item.weight.max(1);
+                                                    let max_dist = (((player.stats.strength as u32 + 20) * 10) / weight).clamp(1, 10) as usize;
+                                                    let dmg = if thrown_item.name.contains("Flask of Oil") {
+                                                        Dice::new(2, 6).roll(&mut rng)
+                                                    } else if let ItemType::Weapon { damage } = &thrown_item.item_type {
+                                                        damage.roll(&mut rng)
+                                                    } else if thrown_item.name.contains("Spike") {
+                                                        Dice::new(1, 4).roll(&mut rng)
+                                                    } else {
+                                                        1
+                                                    };
+                                                    let th = (player.stats.strength as i32 - 10) * 2;
+                                                    (max_dist, dmg, th)
+                                                }
+                                            };
+
+                                            let mut cx = player.x as isize;
+                                            let mut cy = player.y as isize;
+                                            let mut last_valid = (player.x, player.y);
+                                            let mut hit_monster_idx: Option<usize> = None;
+                                            let mut distance = 0;
+
+                                            while distance < range {
+                                                cx += dx;
+                                                cy += dy;
+                                                distance += 1;
+
+                                                if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                                                    break;
+                                                }
+                                                let (ux, uy) = (cx as usize, cy as usize);
+                                                if let Some(tile) = level.get_tile(ux, uy)
+                                                    && matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::DoorClosed { .. } | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
+                                                        break;
+                                                    }
+                                                last_valid = (ux, uy);
+
+                                                if let Some(m_idx) = monsters.iter().position(|m| m.x == ux && m.y == uy) {
+                                                    hit_monster_idx = Some(m_idx);
+                                                    break;
+                                                }
+                                            }
+
+                                            if let Some(m_idx) = hit_monster_idx {
+                                                let base_chance = 0.70 + (to_hit_bonus as f64 * 0.03) - (distance as f64 * 0.02);
+                                                let hits = rng.gen_bool(base_chance.clamp(0.20, 0.95));
+                                                if hits {
+                                                    if thrown_item.name.contains("Flask of Oil") {
+                                                        status_msg = format!("The Flask of Oil bursts into flames! {} takes {} fire damage!", monsters[m_idx].name, damage);
+                                                    } else {
+                                                        status_msg = format!("The {} strikes {} for {} damage!", thrown_item.display_name(), monsters[m_idx].name, damage);
+                                                    }
+
+                                                    monsters[m_idx].was_attacked = true;
+                                                    if monsters[m_idx].take_damage(damage as i32) {
+                                                        let exp_reward = monsters[m_idx].experience_reward;
+                                                        let monster_name = monsters[m_idx].name.clone();
+                                                        monsters.remove(m_idx);
+                                                        status_msg.push_str(&format!(" You killed {}!", monster_name));
+                                                        if player.add_experience(exp_reward) {
+                                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                                        } else if exp_reward > 0 {
+                                                            status_msg.push_str(&format!(" Gained {} EXP.", exp_reward));
+                                                        }
+                                                    }
+                                                } else {
+                                                    status_msg = format!("The {} misses the {}.", thrown_item.display_name(), monsters[m_idx].name);
+                                                }
+                                            } else {
+                                                status_msg = format!("The {} flies through the air and lands.", thrown_item.display_name());
+                                            }
+
+                                            if confused_shot {
+                                                status_msg = format!("You are confused! Your shot veers wildly! {}", status_msg);
+                                            }
+
+                                            let oil_exploded = thrown_item.name.contains("Flask of Oil") && hit_monster_idx.is_some();
+                                            let breaks = oil_exploded || rng.gen_bool(0.10);
+                                            if !breaks {
+                                                level.items.push(FloorItem { x: last_valid.0, y: last_valid.1, item: thrown_item });
+                                            } else if !oil_exploded {
+                                                status_msg.push_str(" It is destroyed upon landing.");
+                                            }
+
+                                            player_acted = true;
+                                        }
+                                    }
+                                    screen_mode = ScreenMode::Dungeon;
                                 } else if screen_mode == ScreenMode::AimWandMenu {
                                     let wands: Vec<(usize, &Item)> = player.inventory.iter()
                                         .enumerate()
@@ -2568,13 +2745,15 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         let item = &player.inventory[idx];
                                         let base_val = match item.item_type {
                                             ItemType::Weapon {..} => 25,
+                                            ItemType::Bow {..} => 25,
+                                            ItemType::Missile {..} => 3,
                                             ItemType::Armor {..} => 40,
                                             ItemType::Potion {..} => 15,
                                             ItemType::Scroll {..} => 10,
                                             ItemType::Wand {..} => 50,
                                             ItemType::Staff {..} => 60,
                                             ItemType::Food {..} => 5,
-                    ItemType::Light {..} => 15,
+                                            ItemType::Light {..} => 15,
                                         };
 
                                         active_haggle = Some(HaggleState {
@@ -2598,7 +2777,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     let equippable_indices: Vec<usize> = player.inventory.iter()
                                         .enumerate()
                                         .filter(|(_, item)| {
-                                            matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..} | ItemType::Light {..})
+                                            matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..})
                                         })
                                         .map(|(i, _)| i)
                                         .collect();

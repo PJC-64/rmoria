@@ -38,6 +38,8 @@ pub enum Action {
     Pray,               // Cleric prayers
     ReadScroll,         // Read scroll
     TakeOff,            // Unequip item
+    Fire,               // Fire missile weapon (f)
+    Throw,              // Throw an item (t)
     UseStaff,           // Activate staff
     Eat,                // Eat food (E)
     Rest,               // Rest a while (R)
@@ -103,8 +105,11 @@ impl InputMapper {
             'X' => Action::ExchangeWeapon,   // Relocated from 'x'
             'E' => Action::Eat,              // Eat food
             'R' => Action::Rest,             // Rest a while
-            'f' => Action::Bash,             // Bash
-            'T' => Action::Tunnel,           // Tunnel
+            'f' => Action::Fire,             // Fire missile
+            't' => Action::Throw,            // Throw item
+            'T' => Action::TakeOff,          // Take off equipment
+            'B' => Action::Bash,             // Bash
+            'g' => Action::Tunnel,           // Tunnel
             'F' => Action::RefillLight,      // Refill light
             '#' => Action::ToggleSearch,     // Toggle search
 
@@ -120,7 +125,6 @@ impl InputMapper {
             'o' => Action::OpenDoor,
             'p' => Action::Pray,
             'r' => Action::ReadScroll,
-            't' => Action::TakeOff,
             '{' => Action::Inscribe,
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,
@@ -149,8 +153,11 @@ impl InputMapper {
             'W' => Action::WearWield,        // Relocated from 'w'
             'E' => Action::Eat,              // Eat food
             'R' => Action::Rest,             // Rest a while
+            'f' => Action::Fire,             // Fire missile
+            't' => Action::Throw,            // Throw item
+            'T' => Action::TakeOff,          // Take off equipment
             'B' => Action::Bash,             // Bash
-            'T' => Action::Tunnel,           // Tunnel
+            'g' => Action::Tunnel,           // Tunnel
             'F' => Action::RefillLight,      // Refill light
             '#' => Action::ToggleSearch,     // Toggle search
             'h' => Action::Quaff,            // Quaff potion (same as standard)
@@ -169,7 +176,6 @@ impl InputMapper {
             'r' => Action::ReadScroll,
             'o' => Action::OpenDoor,
             'm' => Action::CastSpell,
-            't' => Action::TakeOff,
             '{' => Action::Inscribe,
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,

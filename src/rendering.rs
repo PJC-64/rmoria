@@ -161,6 +161,8 @@ fn get_item_symbol(item: &Item) -> char {
     } else {
         match &item.item_type {
             ItemType::Weapon { .. } => ')',
+            ItemType::Bow { .. } => '}',
+            ItemType::Missile { .. } => '{',
             ItemType::Armor { .. } => '[',
             ItemType::Potion { .. } => '!',
             ItemType::Scroll { .. } => '?',
@@ -313,6 +315,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let item = &player.inventory[idx];
                 let details = match &item.item_type {
                     ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
+                    ItemType::Bow { multiplier } => format!("Launcher, x{} dmg", multiplier),
+                    ItemType::Missile { damage } => format!("Missile, {}d{} dmg", damage.num, damage.sides),
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
                     ItemType::Potion { heal_amount } => format!("Potion (heals {} HP)", heal_amount),
                     ItemType::Scroll { .. } => {
@@ -359,7 +363,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             let equippable: Vec<(usize, &Item)> = player.inventory.iter()
                 .enumerate()
                 .filter(|(_, item)| {
-                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Armor {..} | ItemType::Light {..})
+                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..})
                 })
                 .collect();
 
@@ -734,6 +738,35 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             }
             "".to_string()
         }
+        ScreenMode::SelectThrowItem => {
+            if row == 0 {
+                return "--- FIRE / THROW ITEM SELECTION ---".to_string();
+            }
+            if row == player.inventory.len() + 2 {
+                return "-----------------------------------".to_string();
+            }
+            if row == player.inventory.len() + 3 {
+                return "Select item letter to throw/fire, or press ESC to cancel.".to_string();
+            }
+            if row > 0 && row <= player.inventory.len() {
+                let idx = row - 1;
+                let item = &player.inventory[idx];
+                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+            }
+            if player.inventory.is_empty() && row == 1 {
+                return "(Your inventory is empty)".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::SelectThrowDirection => {
+            if row == 0 {
+                return "--- THROW / FIRE TARGETING ---".to_string();
+            }
+            if row == 2 {
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
+            }
+            "".to_string()
+        }
         ScreenMode::HelpMenu => {
             let help_lines = &[
                 "--- MORIA COMMANDS & KEY BINDINGS ---",
@@ -748,10 +781,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 "  k : Search surrounding  D : Drop an item",
                 "  o : Open closed door    C : Close open door",
                 "  n : Disarm a trap       H : Character Sheet Stats",
-                "  r : Read scroll         t : Take off equipment",
+                "  r : Read scroll         T : Take off equipment",
+                "  f/t : Fire / Throw item B : Bash door/monster",
                 "  b : Browse spellbook    m : Cast Mage spell",
                 "  p : Recite Priest prayer < : Climb up stairs",
                 "  > : Climb down stairs   Q : Save and Quit",
+                "  g : Tunnel rock/vein    F : Refill light with oil",
                 "  ? : This Help Menu",
                 "",
                 "Press ESC or any key to return to the game."
@@ -881,6 +916,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let item = &player.inventory[idx];
                 let value = match item.item_type {
                     ItemType::Weapon {..} => 25,
+                    ItemType::Bow {..} => 25,
+                    ItemType::Missile {..} => 3,
                     ItemType::Armor {..} => 40,
                     ItemType::Potion {..} => 15,
                     ItemType::Scroll {..} => 10,

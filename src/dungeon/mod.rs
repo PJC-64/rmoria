@@ -106,12 +106,16 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
             }
         }
     } else if roll < 55 {
-        let piece = rng.gen_range(0..4);
+        let piece = rng.gen_range(0..8);
         match piece {
             0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
             1 => Item::new("Broadsword", 1, 150, ItemType::Weapon { damage: Dice::new(2, 5) }),
             2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
-            _ => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
+            3 => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
+            4 => Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 }),
+            5 => Item::new("Arrow", rng.gen_range(10..=25), 2, ItemType::Missile { damage: Dice::new(1, 4) }),
+            6 => Item::new("Light Crossbow", 1, 110, ItemType::Bow { multiplier: 3 }),
+            _ => Item::new("Bolt", rng.gen_range(10..=25), 3, ItemType::Missile { damage: Dice::new(1, 5) }),
         }
     } else if roll < 68 {
         let is_wand = rng.gen_bool(0.5);
@@ -786,6 +790,9 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Wooden Torch", 15, ItemType::Light { fuel: 4000 }),
             ("Brass Lantern", 50, ItemType::Light { fuel: 7500 }),
             ("Flask of Oil", 10, ItemType::Potion { heal_amount: 0 }),
+            ("Sling", 25, ItemType::Bow { multiplier: 2 }),
+            ("Iron Shot", 5, ItemType::Missile { damage: Dice::new(1, 3) }),
+            ("Arrow", 5, ItemType::Missile { damage: Dice::new(1, 4) }),
         ],
         ShopType::Armory => vec![
             ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
@@ -797,6 +804,14 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Short Sword", 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
             ("Broadsword", 350, ItemType::Weapon { damage: Dice::new(2, 5) }),
             ("Pickaxe", 50, ItemType::Weapon { damage: Dice::new(1, 3) }),
+            ("Sling", 25, ItemType::Bow { multiplier: 2 }),
+            ("Short Bow", 50, ItemType::Bow { multiplier: 2 }),
+            ("Long Bow", 120, ItemType::Bow { multiplier: 3 }),
+            ("Light Crossbow", 140, ItemType::Bow { multiplier: 3 }),
+            ("Heavy Crossbow", 300, ItemType::Bow { multiplier: 4 }),
+            ("Arrow", 5, ItemType::Missile { damage: Dice::new(1, 4) }),
+            ("Bolt", 8, ItemType::Missile { damage: Dice::new(1, 5) }),
+            ("Iron Shot", 5, ItemType::Missile { damage: Dice::new(1, 3) }),
         ],
         ShopType::Temple => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),

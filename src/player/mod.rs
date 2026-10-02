@@ -139,6 +139,8 @@ pub enum ItemType {
     Staff { charges: u32, prayer_index: usize },
     Food { nutrition: i32 },
     Light { fuel: i32 },
+    Bow { multiplier: u32 },
+    Missile { damage: Dice },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +220,7 @@ impl Item {
     pub fn get_equipment_slot(&self) -> &'static str {
         match &self.item_type {
             ItemType::Weapon { .. } => "Weapon",
+            ItemType::Bow { .. } => "Ranged Weapon",
             ItemType::Light { .. } => "Light Source",
             ItemType::Armor { .. } => {
                 let name = self.name.to_lowercase();
@@ -551,6 +554,10 @@ impl Player {
                     starter.push(Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false }));
                 } else if matches!(class, Class::Priest | Class::Paladin) {
                     starter.push(Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false }));
+                }
+                if matches!(class, Class::Ranger) {
+                    starter.push(Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 }));
+                    starter.push(Item::new("Arrow", 25, 2, ItemType::Missile { damage: Dice::new(1, 4) }));
                 }
                 starter
             },
@@ -1216,6 +1223,7 @@ mod tests {
         let boots = Item::new("Leather Boots", 1, 30, ItemType::Armor { ac: 1 });
         let helm = Item::new("Iron Helm", 1, 50, ItemType::Armor { ac: 2 });
         let torch = Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 });
+        let bow = Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 });
 
         assert_eq!(dagger.get_equipment_slot(), "Weapon");
         assert_eq!(shield.get_equipment_slot(), "Shield");
@@ -1223,6 +1231,7 @@ mod tests {
         assert_eq!(boots.get_equipment_slot(), "Boots");
         assert_eq!(helm.get_equipment_slot(), "Headwear");
         assert_eq!(torch.get_equipment_slot(), "Light Source");
+        assert_eq!(bow.get_equipment_slot(), "Ranged Weapon");
     }
 
     #[test]
@@ -1622,5 +1631,24 @@ mod tests {
         assert_eq!(scroll.display_name(), "Scroll titled \"foo bar baz\"");
         scroll.identified = true;
         assert_eq!(scroll.display_name(), "Scroll of Identify");
+    }
+
+    #[test]
+    fn test_ranger_starting_equipment() {
+        let ranger = Player::new("Strider", Race::Elf, Class::Ranger, 10, 10);
+        let has_bow = ranger.inventory.iter().any(|i| i.name == "Short Bow" && matches!(i.item_type, ItemType::Bow { multiplier: 2 }));
+        let has_arrows = ranger.inventory.iter().any(|i| i.name == "Arrow" && matches!(i.item_type, ItemType::Missile { .. }));
+        assert!(has_bow, "Ranger must start with a Short Bow");
+        assert!(has_arrows, "Ranger must start with Arrows");
+    }
+
+    #[test]
+    fn test_bow_and_missile_types() {
+        let bow = Item::new("Heavy Crossbow", 1, 200, ItemType::Bow { multiplier: 4 });
+        assert_eq!(bow.get_equipment_slot(), "Ranged Weapon");
+
+        let bolt = Item::new("Bolt", 20, 3, ItemType::Missile { damage: Dice::new(1, 5) });
+        assert_eq!(bolt.count, 20);
+        assert_eq!(bolt.get_equipment_slot(), "Accessory");
     }
 }
