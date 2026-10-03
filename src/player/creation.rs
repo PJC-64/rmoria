@@ -175,6 +175,11 @@ pub fn run_character_creation(
             base_hp_levels: vec![15; 40],
             exp_factor: 100,
             history: "".to_string(),
+            spells_learnt: 0,
+            spells_worked: 0,
+            spells_forgotten: 0,
+            spells_learned_order: [99; 32],
+            new_spells_to_learn: 0,
         };
         temp_player.apply_race_and_class_modifiers();
         temp_player.base_stats = temp_player.stats.clone();

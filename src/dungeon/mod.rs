@@ -93,9 +93,27 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
     } else if roll < 40 {
         let book_roll = rng.gen_range(0..10);
         if book_roll == 0 {
-            Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false })
+            let book_idx = if depth < 10 {
+                0
+            } else if depth < 20 {
+                rng.gen_range(0..=1)
+            } else if depth < 30 {
+                rng.gen_range(1..=2)
+            } else {
+                rng.gen_range(2..=3)
+            };
+            crate::magic::create_book(book_idx, false)
         } else if book_roll == 1 {
-            Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false })
+            let book_idx = if depth < 10 {
+                0
+            } else if depth < 20 {
+                rng.gen_range(0..=1)
+            } else if depth < 30 {
+                rng.gen_range(1..=2)
+            } else {
+                rng.gen_range(2..=3)
+            };
+            crate::magic::create_book(book_idx, true)
         } else {
             let scroll_roll = rng.gen_range(0..10);
             match scroll_roll {
@@ -265,6 +283,166 @@ impl DungeonLevel {
                 }
         }
         (30, 10)
+    }
+
+    pub fn find_random_floor_tile_near(&self, center_x: usize, center_y: usize, max_dist: usize) -> (usize, usize) {
+        let mut rng = rand::thread_rng();
+        for _ in 0..500 {
+            let dx = rng.gen_range(-(max_dist as isize)..=(max_dist as isize));
+            let dy = rng.gen_range(-(max_dist as isize)..=(max_dist as isize));
+            let tx = center_x as isize + dx;
+            let ty = center_y as isize + dy;
+            if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1
+                && let Some(tile) = self.get_tile(tx as usize, ty as usize)
+                && tile.tile_type == TileType::Floor {
+                return (tx as usize, ty as usize);
+            }
+        }
+        self.find_random_floor_tile()
+    }
+
+    pub fn illuminate_area(&mut self, center_x: usize, center_y: usize, radius: usize) {
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                    tile.visible = true;
+                    tile.remembered = true;
+                }
+            }
+        }
+    }
+
+    pub fn map_area(&mut self, center_x: usize, center_y: usize, radius: usize) {
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                    tile.remembered = true;
+                }
+            }
+        }
+    }
+
+    pub fn detect_traps_near(&mut self, center_x: usize, center_y: usize, radius: usize) -> usize {
+        let mut count = 0;
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                    && let TileType::Trap { ref mut detected, .. } = tile.tile_type {
+                    *detected = true;
+                    tile.remembered = true;
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    pub fn detect_doors_and_stairs_near(&mut self, center_x: usize, center_y: usize, radius: usize) -> usize {
+        let mut count = 0;
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                    match tile.tile_type {
+                        TileType::SecretDoor => {
+                            tile.tile_type = TileType::DoorClosed { spikes: 0 };
+                            tile.remembered = true;
+                            count += 1;
+                        }
+                        TileType::DoorClosed { .. } | TileType::DoorOpen | TileType::StairsUp | TileType::StairsDown => {
+                            tile.remembered = true;
+                            count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn destroy_adjacent_doors_and_traps(&mut self, center_x: usize, center_y: usize) -> usize {
+        let mut count = 0;
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                    match tile.tile_type {
+                        TileType::DoorClosed { .. } | TileType::SecretDoor => {
+                            tile.tile_type = TileType::DoorOpen;
+                            count += 1;
+                        }
+                        TileType::Trap { .. } => {
+                            tile.tile_type = TileType::Floor;
+                            count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn place_glyph_of_warding(&mut self, x: usize, y: usize) {
+        if let Some(tile) = self.get_tile_mut(x, y) {
+            tile.tile_type = TileType::GlyphOfWarding;
+        }
+    }
+
+    pub fn destroy_area(&mut self, center_x: usize, center_y: usize, radius: usize) {
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                    tile.tile_type = TileType::Floor;
+                }
+            }
+        }
+        self.items.retain(|i| {
+            let dist = (i.x as isize - center_x as isize).abs().max((i.y as isize - center_y as isize).abs());
+            dist > radius as isize
+        });
+    }
+
+    pub fn cause_earthquake<R: rand::Rng>(&mut self, center_x: usize, center_y: usize, radius: usize, rng: &mut R) {
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1 {
+                    if tx as usize == center_x && ty as usize == center_y {
+                        continue;
+                    }
+                    if rng.gen_range(0..100) < 40
+                        && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                        if tile.tile_type == TileType::Floor {
+                            tile.tile_type = TileType::Rubble;
+                        } else if matches!(tile.tile_type, TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. }) {
+                            tile.tile_type = TileType::Floor;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn generate_simple_floor(&mut self) {
@@ -809,8 +987,8 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
             ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
-            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
-            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
+            ("Mage Spellbook [Beginners-Magick]", 25, ItemType::MagicBook { spell_flags: 0x0000007F }),
+            ("Priest Prayerbook [Beginners Handbook]", 25, ItemType::PrayerBook { spell_flags: 0x000000FF }),
             ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
             ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
             ("Iron Spike", 5, ItemType::Scroll { teleport: false }),
@@ -849,7 +1027,10 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Potion of Heroism", 50, ItemType::Potion { heal_amount: 10 }),
             ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
-            ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
+            ("Priest Prayerbook [Beginners Handbook]", 25, ItemType::PrayerBook { spell_flags: 0x000000FF }),
+            ("Priest Prayerbook [Words of Wisdom]", 100, ItemType::PrayerBook { spell_flags: 0x0000FF00 }),
+            ("Priest Prayerbook [Chants and Blessings]", 400, ItemType::PrayerBook { spell_flags: 0x01FF0000 }),
+            ("Priest Prayerbook [Exorcisms and Dispellings]", 800, ItemType::PrayerBook { spell_flags: 0x7E000000 }),
             ("Amulet of Wisdom (+1)", 300, ItemType::Amulet { bonus: 1 }),
             ("Amulet of Charisma (+1)", 250, ItemType::Amulet { bonus: 1 }),
             ("Amulet of Slow Digestion", 200, ItemType::Amulet { bonus: 0 }),
@@ -869,7 +1050,10 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
-            ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
+            ("Mage Spellbook [Beginners-Magick]", 25, ItemType::MagicBook { spell_flags: 0x0000007F }),
+            ("Mage Spellbook [Magick I]", 100, ItemType::MagicBook { spell_flags: 0x0000FF80 }),
+            ("Mage Spellbook [Magick II]", 400, ItemType::MagicBook { spell_flags: 0x00FF0000 }),
+            ("Mage Spellbook [The Mages' Guide to Power]", 800, ItemType::MagicBook { spell_flags: 0x7F000000 }),
             ("Ring of Protection (+1)", 200, ItemType::Ring { bonus: 1 }),
             ("Ring of Slow Digestion", 250, ItemType::Ring { bonus: 0 }),
             ("Ring of Feather Falling", 250, ItemType::Ring { bonus: 0 }),

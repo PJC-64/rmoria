@@ -77,6 +77,12 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         "         "
     };
 
+    let study_str = if player.new_spells_to_learn > 0 {
+        "Study"
+    } else {
+        "     "
+    };
+
     let recall_str = if player.flags.word_of_recall > 0 {
         "Recall"
     } else {
@@ -90,8 +96,8 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
     };
 
     format!(
-        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<10} {:<9} {:<6} {:>7}",
-        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, movement_str, speed_str, recall_str, depth_str
+        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<10} {:<9} {:<5} {:<6} {:>7}",
+        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, movement_str, speed_str, study_str, recall_str, depth_str
     )
 }
 
@@ -139,6 +145,7 @@ pub fn render_gui_screen(
                                 }
                             }
                             TileType::Chest { .. } => map_part.push('&'),
+                            TileType::GlyphOfWarding => map_part.push(';'),
                             TileType::Empty => map_part.push(' '),
                         }
                     } else {
@@ -173,6 +180,8 @@ fn get_item_symbol(item: &Item) -> char {
             ItemType::Light { .. } => '~',
             ItemType::Ring { .. } => '=',
             ItemType::Amulet { .. } => '"',
+            ItemType::MagicBook { .. } => '?',
+            ItemType::PrayerBook { .. } => '?',
         }
     }
 }
@@ -351,6 +360,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                             "Amulet".to_string()
                         }
                     }
+                    ItemType::MagicBook { .. } => "Spell Book".to_string(),
+                    ItemType::PrayerBook { .. } => "Holy Book".to_string(),
                 };
                 return format!("{}. {} ({}) x{}", (b'a' + idx as u8) as char, item.display_name(), details, item.count);
             }
@@ -534,43 +545,41 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             "".to_string()
         }
         ScreenMode::BrowseBookMenu => {
+            let is_prayer = player.is_priest_caster();
             if row == 0 {
-                return "--- BROWSE SPELLS & PRAYERS ---".to_string();
+                return format!("--- BROWSE {} ---", if is_prayer { "HOLY PRAYERS" } else { "MAGIC SPELLS" });
             }
-            let is_mage = player.is_wizard || matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
-            if is_mage {
-                let spells = &[
-                    "a) Magic Missile       - 1 Mana, Level 1 (Fires projectile, 2d4 damage)",
-                    "b) Phase Door           - 2 Mana, Level 1 (Short range teleport)",
-                    "c) Light Area          - 3 Mana, Level 3 (Reveals radius 5 tiles)",
-                    "d) Fire Bolt            - 5 Mana, Level 5 (Fires projectile, 4d6 damage)",
-                    "e) Frost Bolt           - 8 Mana, Level 10 (Fires frost beam, 6d6 damage)",
-                    "f) Teleport Self        - 10 Mana, Level 15 (Random long range teleport)",
-                    "g) Lightning Bolt       - 15 Mana, Level 20 (Fires bolt of lightning, 8d8 damage)",
-                    "h) Fire Ball            - 20 Mana, Level 25 (Explosive flame blast, 12d8 damage)",
-                    "i) Mana Storm           - 30 Mana, Level 35 (Devastating arcane surge, 20d10 damage)",
-                ];
-                if row > 0 && row <= spells.len() {
-                    return spells[row - 1].to_string();
-                }
+            if row == 1 {
+                return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
+            }
+            let flags = if is_prayer {
+                0x7FFFFFFF
             } else {
-                let prayers = &[
-                    "a) Detect Evil         - 1 Mana, Level 1 (Reveals monster indicators)",
-                    "b) Cure Light Wounds   - 2 Mana, Level 1 (Heals player 2d8 HP)",
-                    "c) Bless               - 3 Mana, Level 3 (Heals player 3d8 HP)",
-                    "d) Portal              - 4 Mana, Level 4 (Teleports to random location)",
-                    "e) Holy Word           - 7 Mana, Level 7 (Divine blast to all adjacent, 6d8)",
-                    "f) Cure Critical Wounds- 12 Mana, Level 12 (Heals player 6d8 HP)",
-                    "g) Sanctuary           - 15 Mana, Level 18 (Full HP restoration)",
-                    "h) Holy Thunder        - 25 Mana, Level 25 (Divine blast to all visible, 12d8)",
-                    "i) Divine Wrath        - 35 Mana, Level 35 (Divine wrath to all visible, 20d10)",
-                ];
-                if row > 0 && row <= prayers.len() {
-                    return prayers[row - 1].to_string();
+                player.carried_spell_flags(false)
+            };
+            let spells = crate::magic::get_spells_in_book(flags);
+            if row >= 2 && row < 2 + spells.len() {
+                let idx = row - 2;
+                let spell_idx = spells[idx];
+                if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, is_prayer) {
+                    let stat_val = if is_prayer { player.stats.wisdom } else { player.stats.intelligence };
+                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, stat_val, player.mana, def);
+                    let status = if !player.knows_spell(spell_idx) {
+                        " unknown"
+                    } else if (player.spells_worked & (1 << spell_idx)) == 0 {
+                        " untried"
+                    } else {
+                        ""
+                    };
+                    let letter = (b'a' + idx as u8) as char;
+                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%{}", letter, def.name, def.level_required, def.mana_required, fail, status);
                 }
             }
-            if row == 11 {
-                return "Press ESC to exit book browser.".to_string();
+            if spells.is_empty() && row == 2 {
+                return "  (No books carried)".to_string();
+            }
+            if row == 2 + spells.len() + 1 || (spells.is_empty() && row == 4) {
+                return "Press ESC or Space to exit book browser.".to_string();
             }
             "".to_string()
         }
@@ -578,21 +587,23 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- CAST MAGE SPELL ---".to_string();
             }
-            let spells = &[
-                "a) Magic Missile       - 1 Mana, Level 1 (2d4 projectile)",
-                "b) Phase Door           - 2 Mana, Level 1 (Short teleport)",
-                "c) Light Area          - 3 Mana, Level 3 (Light flash)",
-                "d) Fire Bolt            - 5 Mana, Level 5 (4d6 projectile)",
-                "e) Frost Bolt           - 8 Mana, Level 10 (6d6 frost beam)",
-                "f) Teleport Self        - 10 Mana, Level 15 (Random teleport)",
-                "g) Lightning Bolt       - 15 Mana, Level 20 (8d8 lightning bolt)",
-                "h) Fire Ball            - 20 Mana, Level 25 (12d8 flame blast)",
-                "i) Mana Storm           - 30 Mana, Level 35 (20d10 arcane surge)",
-            ];
-            if row > 0 && row <= spells.len() {
-                return spells[row - 1].to_string();
+            if row == 1 {
+                return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
             }
-            if row == 11 {
+            let known = player.known_spells(false);
+            if row >= 2 && row < 2 + known.len() {
+                let idx = row - 2;
+                let spell_idx = known[idx];
+                if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, false) {
+                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.intelligence, player.mana, def);
+                    let letter = (b'a' + idx as u8) as char;
+                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                }
+            }
+            if known.is_empty() && row == 2 {
+                return "  (No spells known)".to_string();
+            }
+            if row == 2 + known.len() + 1 || (known.is_empty() && row == 4) {
                 return "Select spell letter to cast, or press ESC to cancel.".to_string();
             }
             "".to_string()
@@ -601,22 +612,51 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- RECITE CLERICAL PRAYER ---".to_string();
             }
-            let prayers = &[
-                "a) Detect Evil         - 1 Mana, Level 1 (Detect nearby monsters)",
-                "b) Cure Light Wounds   - 2 Mana, Level 1 (Heals 2d8 HP)",
-                "c) Bless               - 3 Mana, Level 3 (Heals 3d8 HP)",
-                "d) Portal              - 4 Mana, Level 4 (Random teleport)",
-                "e) Holy Word           - 7 Mana, Level 7 (Adjacent area blast, 6d8)",
-                "f) Cure Critical Wounds- 12 Mana, Level 12 (Heals 6d8 HP)",
-                "g) Sanctuary           - 15 Mana, Level 18 (Full HP restoration)",
-                "h) Holy Thunder        - 25 Mana, Level 25 (Visible area blast, 12d8)",
-                "i) Divine Wrath        - 35 Mana, Level 35 (Visible area wrath, 20d10)",
-            ];
-            if row > 0 && row <= prayers.len() {
-                return prayers[row - 1].to_string();
+            if row == 1 {
+                return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
             }
-            if row == 11 {
+            let known = player.known_spells(true);
+            if row >= 2 && row < 2 + known.len() {
+                let idx = row - 2;
+                let spell_idx = known[idx];
+                if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, true) {
+                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.wisdom, player.mana, def);
+                    let letter = (b'a' + idx as u8) as char;
+                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                }
+            }
+            if known.is_empty() && row == 2 {
+                return "  (No prayers known)".to_string();
+            }
+            if row == 2 + known.len() + 1 || (known.is_empty() && row == 4) {
                 return "Select prayer letter to recite, or press ESC to cancel.".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::StudyMenu => {
+            let is_prayer = player.is_priest_caster();
+            if row == 0 {
+                return format!("--- STUDY / GAIN {}S ({} to learn) ---", if is_prayer { "PRAYER" } else { "SPELL" }, player.new_spells_to_learn);
+            }
+            if row == 1 {
+                return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
+            }
+            let learnable = player.learnable_spells();
+            if row >= 2 && row < 2 + learnable.len() {
+                let idx = row - 2;
+                let spell_idx = learnable[idx];
+                if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, is_prayer) {
+                    let stat_val = if is_prayer { player.stats.wisdom } else { player.stats.intelligence };
+                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, stat_val, player.mana, def);
+                    let letter = (b'a' + idx as u8) as char;
+                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                }
+            }
+            if learnable.is_empty() && row == 2 {
+                return "  (No learnable spells available)".to_string();
+            }
+            if row == 2 + learnable.len() + 1 || (learnable.is_empty() && row == 4) {
+                return "Select letter to study, or press ESC to cancel.".to_string();
             }
             "".to_string()
         }
@@ -625,7 +665,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return "--- CASTING TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c) or ESC to cancel:".to_string();
             }
             "".to_string()
         }
@@ -821,10 +861,10 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 "  r : Read scroll         T : Take off equipment",
                 "  f/t : Fire / Throw item B : Bash door/monster",
                 "  b : Browse spellbook    m : Cast Mage spell",
-                "  p : Recite Priest prayer < : Climb up stairs",
-                "  > : Climb down stairs   Q : Save and Quit",
+                "  p : Recite Priest prayer G : Gain spells (study)",
+                "  < : Climb up stairs     > : Climb down stairs",
                 "  g : Tunnel rock/vein    F : Refill light with oil",
-                "  ? : This Help Menu",
+                "  Q : Save and Quit       ? : This Help Menu",
                 "",
                 "Press ESC or any key to return to the game."
             ];
@@ -964,6 +1004,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Light {..} => 15,
                     ItemType::Ring {..} => 80,
                     ItemType::Amulet {..} => 80,
+                    ItemType::MagicBook {..} => 30,
+                    ItemType::PrayerBook {..} => 30,
                 };
                 return format!("{}. {} (sells for {} gp) x{}", (b'a' + idx as u8) as char, item.display_name(), value, item.count);
             }
@@ -1096,6 +1138,7 @@ pub fn draw_map(
                                 }
                             }
                             TileType::Chest { .. } => map_part.push('&'),
+                            TileType::GlyphOfWarding => map_part.push(';'),
                             TileType::Empty => map_part.push(' '),
                         }
                     } else {

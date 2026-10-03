@@ -14,6 +14,10 @@ pub struct Monster {
     #[serde(default)]
     pub stunned: u32,
     #[serde(default)]
+    pub asleep: u32,
+    #[serde(default)]
+    pub confused: u32,
+    #[serde(default)]
     pub was_attacked: bool,
 }
 
@@ -29,6 +33,8 @@ impl Monster {
             damage,
             experience_reward,
             stunned: 0,
+            asleep: 0,
+            confused: 0,
             was_attacked: false,
         }
     }
@@ -50,14 +56,18 @@ impl Monster {
         killed_town_npcs: u32,
         threshold: u32,
     ) -> Option<(usize, usize)> {
+        if self.stunned > 0 || self.asleep > 0 {
+            return None;
+        }
+
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
         let is_hostile = depth > 0 || self.was_attacked || killed_town_npcs > threshold;
 
-        if self.symbol == 'p' {
-            // Townsfolk wander semi-randomly
-            let wander_chance = if is_hostile { 0.70 } else { 1.00 };
+        if self.confused > 0 || self.symbol == 'p' {
+            // Confused monsters or townsfolk wander semi-randomly
+            let wander_chance = if is_hostile && self.confused == 0 { 0.70 } else { 1.00 };
             if rng.gen_bool(wander_chance) {
                 let dx = rng.gen_range(-1..=1);
                 let dy = rng.gen_range(-1..=1);
