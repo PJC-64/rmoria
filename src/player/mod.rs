@@ -1526,6 +1526,84 @@ impl Player {
         ac
     }
 
+    /// Saving throw check against magical attacks and spells according to canonical Umoria rules.
+    pub fn saving_throw<R: rand::Rng>(&self, rng: &mut R) -> bool {
+        let base_save = match self.class {
+            Class::Warrior => 18,
+            Class::Mage => 36,
+            Class::Priest => 30,
+            Class::Rogue => 30,
+            Class::Ranger => 30,
+            Class::Paladin => 24,
+        };
+        let race_save = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => 3,
+            Race::Elf => 6,
+            Race::Halfling => 18,
+            Race::Gnome => 12,
+            Race::Dwarf => 9,
+            Race::HalfOrc => -3,
+            Race::HalfTroll => -8,
+        };
+        let wis_adj = crate::magic::stat_adjustment(self.stats.wisdom);
+        let save_target = (base_save + race_save + wis_adj + self.level as i32).clamp(5, 95);
+        rng.gen_range(1..=100) <= save_target
+    }
+
+    pub fn damage_fire(&mut self, damage: i32, status_msg: &mut String) {
+        let mut dmg = damage;
+        if self.flags.resistant_to_fire || self.flags.heat_resistance > 0 {
+            dmg /= 3;
+        }
+        let final_dmg = dmg.max(1);
+        self.hp -= final_dmg;
+        status_msg.push_str(&format!(" You take {} fire damage!", final_dmg));
+    }
+
+    pub fn damage_cold(&mut self, damage: i32, status_msg: &mut String) {
+        let mut dmg = damage;
+        if self.flags.resistant_to_cold || self.flags.cold_resistance > 0 {
+            dmg /= 3;
+        }
+        let final_dmg = dmg.max(1);
+        self.hp -= final_dmg;
+        status_msg.push_str(&format!(" You take {} cold damage!", final_dmg));
+    }
+
+    pub fn damage_lightning(&mut self, damage: i32, status_msg: &mut String) {
+        let mut dmg = damage;
+        if self.flags.resistant_to_light {
+            dmg /= 3;
+        }
+        let final_dmg = dmg.max(1);
+        self.hp -= final_dmg;
+        status_msg.push_str(&format!(" You take {} lightning damage!", final_dmg));
+    }
+
+    pub fn damage_acid(&mut self, damage: i32, status_msg: &mut String) {
+        let mut dmg = damage;
+        if self.flags.resistant_to_acid {
+            dmg /= 3;
+        }
+        let final_dmg = dmg.max(1);
+        self.hp -= final_dmg;
+        status_msg.push_str(&format!(" You take {} acid damage!", final_dmg));
+    }
+
+    pub fn damage_poison_gas(&mut self, damage: i32, status_msg: &mut String) {
+        let dmg = damage;
+        let final_dmg = dmg.max(1);
+        self.hp -= final_dmg;
+        self.flags.poisoned += 5;
+        status_msg.push_str(&format!(" You take {} poison gas damage!", final_dmg));
+    }
+
+    pub fn take_damage(&mut self, damage: i32) {
+        let actual_damage = if self.flags.invulnerability > 0 { 0 } else { damage.max(0) };
+        self.hp -= actual_damage;
+    }
+
     /// Total weight of items carried in inventory (in 1/10th lbs).
     pub fn total_weight(&self) -> u32 {
         self.inventory.iter().map(|item| item.weight * item.count).sum()

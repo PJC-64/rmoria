@@ -8,7 +8,7 @@ pub use tile::{Tile, TileType, TrapType};
 pub use shop::{HaggleState, handle_haggle_input};
 use crate::player::{Item, ItemType, Player};
 use crate::dice::Dice;
-use crate::entity::monster::{Monster, MonsterTemplate, MONSTER_DB};
+use crate::entity::monster::Monster;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShopType {
@@ -821,61 +821,41 @@ impl DungeonLevel {
     pub fn generate_monsters(&self, player_has_killed_balrog: bool) -> Vec<Monster> {
         let depth = self.depth;
         let max_depth = self.max_depth;
-        
-        if depth == 0 {
-            let mut rng = rand::thread_rng();
-            let town_templates = &[
-                ("Filthy Street Urchin", 6, Dice::new(1, 2)),
-                ("Blubbering Idiot", 2, Dice::new(1, 1)),
-                ("Pitiful-Looking Beggar", 4, Dice::new(1, 2)),
-                ("Mangy-Looking Leper", 1, Dice::new(1, 1)),
-                ("Squint-Eyed Rogue", 10, Dice::new(1, 4)),
-                ("Singing, Happy Drunk", 4, Dice::new(1, 3)),
-                ("Mean-Looking Mercenary", 25, Dice::new(2, 4)),
-                ("Battle-Scarred Veteran", 35, Dice::new(2, 6)),
-            ];
-
-            let mut mons = Vec::new();
-            for _ in 0..3 {
-                let (tx, ty) = self.find_random_floor_tile();
-                let r_idx = rng.gen_range(0..town_templates.len());
-                let (name, hp, dmg) = town_templates[r_idx];
-                mons.push(Monster::new(name, 'p', tx, ty, hp, dmg, 0));
-            }
-            return mons;
-        }
-        
-        let mut mons = Vec::new();
         let mut rng = rand::thread_rng();
         
-        if depth == max_depth {
-            if !player_has_killed_balrog {
-                let (bx, by) = self.find_random_floor_tile();
-                mons.push(Monster::new("The Balrog", 'B', bx, by, 120, Dice::new(3, 8), 500));
-            }
-            for _ in 0..3 {
-                let (gx, gy) = self.find_random_floor_tile();
-                mons.push(Monster::new("Lich Guardian", 'L', gx, gy, 55, Dice::new(3, 6), 180));
+        if depth == 0 {
+            let mut mons = Vec::new();
+            let count = rng.gen_range(3..=6);
+            for _ in 0..count {
+                let (tx, ty) = self.find_random_floor_tile();
+                let c_idx = rng.gen_range(0..8);
+                mons.push(Monster::from_creature_id(c_idx, tx, ty, false, &mut rng));
             }
             return mons;
         }
         
-        let mut active_level = depth;
-        if rng.gen_bool(0.10) {
-            active_level += rng.gen_range(1..=3);
+        if depth == max_depth {
+            let mut mons = Vec::new();
+            if !player_has_killed_balrog {
+                let (bx, by) = self.find_random_floor_tile();
+                mons.push(Monster::from_creature_id(278, bx, by, false, &mut rng));
+            }
+            let guard_count = rng.gen_range(3..=5);
+            for _ in 0..guard_count {
+                let (gx, gy) = self.find_random_floor_tile();
+                let c_idx = crate::entity::monster_data::get_monster_for_level(40, &mut rng);
+                mons.push(Monster::from_creature_id(c_idx, gx, gy, rng.gen_bool(0.3), &mut rng));
+            }
+            return mons;
         }
         
-        for _ in 0..4 {
-            let suitable_templates: Vec<&MonsterTemplate> = MONSTER_DB.iter()
-                .filter(|t| t.level <= active_level)
-                .collect();
-                
-            if !suitable_templates.is_empty() {
-                let r_idx = rng.gen_range(0..suitable_templates.len());
-                let t = suitable_templates[r_idx];
-                let (mx, my) = self.find_random_floor_tile();
-                mons.push(Monster::new(t.name, t.symbol, mx, my, t.max_hp, t.damage, t.exp_reward));
-            }
+        let count = rng.gen_range(14..=20);
+        let mut mons = Vec::new();
+        for _ in 0..count {
+            let (mx, my) = self.find_random_floor_tile();
+            let c_idx = crate::entity::monster_data::get_monster_for_level(depth, &mut rng);
+            let sleeping = rng.gen_bool(0.4);
+            mons.push(Monster::from_creature_id(c_idx, mx, my, sleeping, &mut rng));
         }
         
         mons
@@ -910,17 +890,8 @@ impl DungeonLevel {
                     let sy = (py as isize + dy) as usize;
                     if let Some(t) = self.get_tile(sx, sy)
                         && t.is_passable() && monsters.iter().all(|m| m.x != sx || m.y != sy) {
-                            let m_idx = rng.gen_range(0..MONSTER_DB.len());
-                            let template = &MONSTER_DB[m_idx];
-                            monsters.push(Monster::new(
-                                template.name,
-                                template.symbol,
-                                sx,
-                                sy,
-                                template.max_hp,
-                                template.damage,
-                                template.exp_reward,
-                            ));
+                            let c_idx = crate::entity::monster_data::get_monster_for_level(self.depth, rng);
+                            monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
                             spawned = true;
                             break;
                         }
