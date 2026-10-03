@@ -10,7 +10,6 @@ pub use shop::{
     calculate_buy_price, calculate_sell_price, get_item_base_value,
 };
 use crate::player::{Item, ItemType, Player};
-use crate::dice::Dice;
 use crate::entity::monster::Monster;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,107 +123,7 @@ impl Room {
 }
 
 pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
-    let roll = rng.gen_range(0..100);
-    if roll < 20 {
-        let potion_choice = rng.gen_range(0..10);
-        match potion_choice {
-            0..=2 => Item::new_unidentified("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
-            3 | 4 if depth >= 2 => Item::new_unidentified("Potion of Healing", 1, 5, ItemType::Potion { heal_amount: 25 }),
-            5 => Item::new_unidentified("Potion of Cure Poison", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            6 => Item::new_unidentified("Potion of Speed", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            7 => Item::new_unidentified("Potion of Heroism", 1, 5, ItemType::Potion { heal_amount: 10 }),
-            8 => Item::new_unidentified("Potion of Restore Strength", 1, 5, ItemType::Potion { heal_amount: 0 }),
-            _ => Item::new_unidentified("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 }),
-        }
-    } else if roll < 40 {
-        let book_roll = rng.gen_range(0..10);
-        if book_roll == 0 {
-            let book_idx = if depth < 10 {
-                0
-            } else if depth < 20 {
-                rng.gen_range(0..=1)
-            } else if depth < 30 {
-                rng.gen_range(1..=2)
-            } else {
-                rng.gen_range(2..=3)
-            };
-            crate::magic::create_book(book_idx, false)
-        } else if book_roll == 1 {
-            let book_idx = if depth < 10 {
-                0
-            } else if depth < 20 {
-                rng.gen_range(0..=1)
-            } else if depth < 30 {
-                rng.gen_range(1..=2)
-            } else {
-                rng.gen_range(2..=3)
-            };
-            crate::magic::create_book(book_idx, true)
-        } else {
-            let scroll_roll = rng.gen_range(0..10);
-            match scroll_roll {
-                0..=2 => Item::new_unidentified("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
-                3..=4 => Item::new_unidentified("Scroll of Teleportation", 1, 2, ItemType::Scroll { teleport: true }),
-                5..=7 => Item::new_unidentified("Scroll of Identify", 1, 2, ItemType::Scroll { teleport: false }),
-                _ => Item::new_unidentified("Scroll of Word of Recall", 1, 2, ItemType::Scroll { teleport: false }),
-            }
-        }
-    } else if roll < 55 {
-        let piece = rng.gen_range(0..8);
-        match piece {
-            0 => Item::new("Short Sword", 1, 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
-            1 => Item::new("Broadsword", 1, 150, ItemType::Weapon { damage: Dice::new(2, 5) }),
-            2 => Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 }),
-            3 => Item::new("Iron Shield", 1, 100, ItemType::Armor { ac: 3 }),
-            4 => Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 }),
-            5 => Item::new("Arrow", rng.gen_range(10..=25), 2, ItemType::Missile { damage: Dice::new(1, 4) }),
-            6 => Item::new("Light Crossbow", 1, 110, ItemType::Bow { multiplier: 3 }),
-            _ => Item::new("Bolt", rng.gen_range(10..=25), 3, ItemType::Missile { damage: Dice::new(1, 5) }),
-        }
-    } else if roll < 68 {
-        let is_wand = rng.gen_bool(0.5);
-        if is_wand {
-            Item::new("Wand of Magic Missile [5 charges]", 1, 10, ItemType::Wand { charges: 5, spell_index: 0 })
-        } else {
-            Item::new("Staff of Cure Light Wounds [3 charges]", 1, 12, ItemType::Staff { charges: 3, prayer_index: 1 })
-        }
-    } else if roll < 78 {
-        let is_food = rng.gen_bool(0.5);
-        if is_food {
-            Item::new("Ration of Food", 1, 10, ItemType::Food { nutrition: 5000 })
-        } else {
-            Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 })
-        }
-    } else if roll < 88 {
-        let is_ring = rng.gen_bool(0.65);
-        if is_ring {
-            let ring_choice = rng.gen_range(0..10);
-            match ring_choice {
-                0 => Item::new_unidentified("Ring of Protection", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=3) }),
-                1 => Item::new_unidentified("Ring of Strength", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
-                2 => Item::new_unidentified("Ring of Dexterity", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
-                3 => Item::new_unidentified("Ring of Constitution", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
-                4 => Item::new_unidentified("Ring of Intelligence", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
-                5 => Item::new_unidentified("Ring of Slow Digestion", 1, 2, ItemType::Ring { bonus: 0 }),
-                6 => Item::new_unidentified("Ring of Feather Falling", 1, 2, ItemType::Ring { bonus: 0 }),
-                7 => Item::new_unidentified("Ring of Resist Fire", 1, 2, ItemType::Ring { bonus: 0 }),
-                8 => Item::new_unidentified("Ring of Resist Cold", 1, 2, ItemType::Ring { bonus: 0 }),
-                _ => Item::new_unidentified("Ring of Increase Damage", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=3) }),
-            }
-        } else {
-            let amulet_choice = rng.gen_range(0..5);
-            match amulet_choice {
-                0 => Item::new_unidentified("Amulet of Wisdom", 1, 3, ItemType::Amulet { bonus: rng.gen_range(1..=2) }),
-                1 => Item::new_unidentified("Amulet of Charisma", 1, 3, ItemType::Amulet { bonus: rng.gen_range(1..=2) }),
-                2 => Item::new_unidentified("Amulet of Slow Digestion", 1, 3, ItemType::Amulet { bonus: 0 }),
-                3 => Item::new_unidentified("Amulet of Resist Acid", 1, 3, ItemType::Amulet { bonus: 0 }),
-                _ => Item::new_unidentified("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 }),
-            }
-        }
-    } else {
-        let gold_amount = rng.gen_range(15..=40) * (depth + 1);
-        Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
-    }
+    crate::entity::treasure_data::generate_canonical_floor_item(depth, rng)
 }
 
 impl DungeonLevel {
@@ -998,86 +897,8 @@ impl DungeonLevel {
     }
 }
 
-pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
-    match shop {
-        ShopType::General => vec![
-            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
-            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
-            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
-            ("Mage Spellbook [Beginners-Magick]", 25, ItemType::MagicBook { spell_flags: 0x0000007F }),
-            ("Priest Prayerbook [Beginners Handbook]", 25, ItemType::PrayerBook { spell_flags: 0x000000FF }),
-            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
-            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
-            ("Iron Spike", 5, ItemType::Scroll { teleport: false }),
-            ("Ration of Food", 10, ItemType::Food { nutrition: 5000 }),
-            ("Shovel", 25, ItemType::Weapon { damage: Dice::new(1, 2) }),
-            ("Wooden Torch", 15, ItemType::Light { fuel: 4000 }),
-            ("Brass Lantern", 50, ItemType::Light { fuel: 7500 }),
-            ("Flask of Oil", 10, ItemType::Potion { heal_amount: 0 }),
-            ("Sling", 25, ItemType::Bow { multiplier: 2 }),
-            ("Iron Shot", 5, ItemType::Missile { damage: Dice::new(1, 3) }),
-            ("Arrow", 5, ItemType::Missile { damage: Dice::new(1, 4) }),
-        ],
-        ShopType::Armory => vec![
-            ("Leather Armor", 80, ItemType::Armor { ac: 4 }),
-            ("Chain Mail", 250, ItemType::Armor { ac: 7 }),
-            ("Iron Shield", 150, ItemType::Armor { ac: 3 }),
-        ],
-        ShopType::Weaponsmith => vec![
-            ("Dagger", 50, ItemType::Weapon { damage: Dice::new(1, 4) }),
-            ("Short Sword", 120, ItemType::Weapon { damage: Dice::new(1, 6) }),
-            ("Broadsword", 350, ItemType::Weapon { damage: Dice::new(2, 5) }),
-            ("Pickaxe", 50, ItemType::Weapon { damage: Dice::new(1, 3) }),
-            ("Sling", 25, ItemType::Bow { multiplier: 2 }),
-            ("Short Bow", 50, ItemType::Bow { multiplier: 2 }),
-            ("Long Bow", 120, ItemType::Bow { multiplier: 3 }),
-            ("Light Crossbow", 140, ItemType::Bow { multiplier: 3 }),
-            ("Heavy Crossbow", 300, ItemType::Bow { multiplier: 4 }),
-            ("Arrow", 5, ItemType::Missile { damage: Dice::new(1, 4) }),
-            ("Bolt", 8, ItemType::Missile { damage: Dice::new(1, 5) }),
-            ("Iron Shot", 5, ItemType::Missile { damage: Dice::new(1, 3) }),
-        ],
-        ShopType::Temple => vec![
-            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
-            ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
-            ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
-            ("Potion of Heroism", 50, ItemType::Potion { heal_amount: 10 }),
-            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
-            ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
-            ("Priest Prayerbook [Beginners Handbook]", 25, ItemType::PrayerBook { spell_flags: 0x000000FF }),
-            ("Priest Prayerbook [Words of Wisdom]", 100, ItemType::PrayerBook { spell_flags: 0x0000FF00 }),
-            ("Priest Prayerbook [Chants and Blessings]", 400, ItemType::PrayerBook { spell_flags: 0x01FF0000 }),
-            ("Priest Prayerbook [Exorcisms and Dispellings]", 800, ItemType::PrayerBook { spell_flags: 0x7E000000 }),
-            ("Amulet of Wisdom (+1)", 300, ItemType::Amulet { bonus: 1 }),
-            ("Amulet of Charisma (+1)", 250, ItemType::Amulet { bonus: 1 }),
-            ("Amulet of Slow Digestion", 200, ItemType::Amulet { bonus: 0 }),
-            ("Amulet of Resist Acid", 250, ItemType::Amulet { bonus: 0 }),
-        ],
-        ShopType::Alchemy => vec![
-            ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
-            ("Potion of Healing", 100, ItemType::Potion { heal_amount: 25 }),
-            ("Potion of Cure Poison", 30, ItemType::Potion { heal_amount: 0 }),
-            ("Potion of Speed", 50, ItemType::Potion { heal_amount: 0 }),
-            ("Potion of Restore Strength", 100, ItemType::Potion { heal_amount: 0 }),
-            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
-            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
-        ],
-        ShopType::Magic => vec![
-            ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
-            ("Scroll of Phase Door", 20, ItemType::Scroll { teleport: true }),
-            ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
-            ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
-            ("Mage Spellbook [Beginners-Magick]", 25, ItemType::MagicBook { spell_flags: 0x0000007F }),
-            ("Mage Spellbook [Magick I]", 100, ItemType::MagicBook { spell_flags: 0x0000FF80 }),
-            ("Mage Spellbook [Magick II]", 400, ItemType::MagicBook { spell_flags: 0x00FF0000 }),
-            ("Mage Spellbook [The Mages' Guide to Power]", 800, ItemType::MagicBook { spell_flags: 0x7F000000 }),
-            ("Ring of Protection (+1)", 200, ItemType::Ring { bonus: 1 }),
-            ("Ring of Slow Digestion", 250, ItemType::Ring { bonus: 0 }),
-            ("Ring of Feather Falling", 250, ItemType::Ring { bonus: 0 }),
-            ("Ring of Resist Fire", 300, ItemType::Ring { bonus: 0 }),
-            ("Ring of Strength (+1)", 400, ItemType::Ring { bonus: 1 }),
-        ],
-    }
+pub fn get_shop_items(shop: ShopType) -> Vec<(String, u32, ItemType)> {
+    crate::entity::treasure_data::generate_canonical_shop_items(shop)
 }
 
 #[cfg(test)]

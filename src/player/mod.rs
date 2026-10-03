@@ -198,6 +198,18 @@ pub struct Item {
     pub equipped_slot: Option<String>,
     #[serde(default)]
     pub is_cursed: bool,
+    #[serde(default)]
+    pub to_hit: i16,
+    #[serde(default)]
+    pub to_damage: i16,
+    #[serde(default)]
+    pub to_ac: i16,
+    #[serde(default)]
+    pub flags: u32,
+    #[serde(default)]
+    pub cost: u32,
+    #[serde(default)]
+    pub ego_name: Option<String>,
 }
 
 fn default_identified() -> bool {
@@ -216,6 +228,12 @@ impl Item {
             flavor: None,
             equipped_slot: None,
             is_cursed: false,
+            to_hit: 0,
+            to_damage: 0,
+            to_ac: 0,
+            flags: 0,
+            cost: 0,
+            ego_name: None,
         }
     }
 
@@ -230,6 +248,12 @@ impl Item {
             flavor: None,
             equipped_slot: None,
             is_cursed: false,
+            to_hit: 0,
+            to_damage: 0,
+            to_ac: 0,
+            flags: 0,
+            cost: 0,
+            ego_name: None,
         }
     }
 
@@ -249,14 +273,24 @@ impl Item {
                 self.name.clone()
             }
         } else {
+            let mut name = self.name.clone();
+            if let Some(ref ego) = self.ego_name {
+                name = format!("{} {}", name, ego);
+            }
+            if self.to_hit != 0 || self.to_damage != 0 {
+                name = format!("{} ({:+},{:+})", name, self.to_hit, self.to_damage);
+            }
+            if self.to_ac != 0 {
+                name = format!("{} [{:+}]", name, self.to_ac);
+            }
             match &self.item_type {
-                ItemType::Ring { bonus } if *bonus != 0 && !self.name.contains('(') => {
-                    format!("{} ({:+})", self.name, bonus)
+                ItemType::Ring { bonus } if *bonus != 0 && !name.contains('(') => {
+                    format!("{} ({:+})", name, bonus)
                 }
-                ItemType::Amulet { bonus } if *bonus != 0 && !self.name.contains('(') => {
-                    format!("{} ({:+})", self.name, bonus)
+                ItemType::Amulet { bonus } if *bonus != 0 && !name.contains('(') => {
+                    format!("{} ({:+})", name, bonus)
                 }
-                _ => self.name.clone(),
+                _ => name,
             }
         };
 
@@ -1453,20 +1487,33 @@ impl Player {
     }
 
     pub fn roll_melee_damage<R: rand::Rng>(&self, rng: &mut R) -> i32 {
-        let base_dice = if let Some(weapon_item) = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. })) {
-            match &weapon_item.item_type {
+        self.roll_melee_damage_against(rng, None)
+    }
+
+    pub fn roll_melee_damage_against<R: rand::Rng>(&self, rng: &mut R, target_creature_id: Option<usize>) -> i32 {
+        let weapon_item = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
+        let (base_dice, weapon_flags, weapon_to_dam) = if let Some(weapon) = weapon_item {
+            let dice = match &weapon.item_type {
                 ItemType::Weapon { damage } => *damage,
                 _ => Dice::new(1, 4),
-            }
+            };
+            (dice, weapon.flags, weapon.to_damage as i32)
         } else {
-            match self.class {
+            let dice = match self.class {
                 Class::Warrior => Dice::new(2, 6),
                 Class::Rogue => Dice::new(1, 8),
                 _ => Dice::new(1, 6),
-            }
+            };
+            (dice, 0, 0)
         };
 
-        let mut damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
+        let mut dice_roll = base_dice.roll(rng) as i32;
+        if let Some(c_id) = target_creature_id.filter(|_| weapon_flags != 0) {
+            let multiplier = crate::entity::treasure_data::calculate_slaying_multiplier(weapon_flags, c_id);
+            dice_roll *= multiplier as i32;
+        }
+
+        let mut damage = dice_roll + (self.stats.strength as i32 - 10) / 2 + weapon_to_dam;
         for item in &self.equipment {
             if let ItemType::Ring { bonus } = &item.item_type {
                 let lname = item.name.to_lowercase();
@@ -1515,10 +1562,15 @@ impl Player {
         
         for item in &self.equipment {
             match &item.item_type {
-                ItemType::Armor { ac: item_ac } => ac += item_ac,
+                ItemType::Armor { ac: item_ac } => {
+                    ac += item_ac;
+                    ac += item.to_ac as i32;
+                }
                 ItemType::Ring { bonus } if item.name.to_lowercase().contains("protection") => ac += bonus,
                 ItemType::Amulet { bonus } if item.name.to_lowercase().contains("the magi") => ac += bonus,
-                _ => {}
+                _ => {
+                    ac += item.to_ac as i32;
+                }
             }
         }
 
@@ -1661,16 +1713,20 @@ impl Player {
         speed += self.encumbrance_penalty() as i16;
 
         for item in &self.equipment {
-            let name_lower = item.name.to_lowercase();
-            if name_lower.contains("speed") {
-                match &item.item_type {
-                    ItemType::Ring { bonus } => {
-                        speed -= *bonus as i16;
+            if (item.flags & crate::entity::treasure_data::TR_SPEED) != 0 {
+                speed -= 1;
+            } else {
+                let name_lower = item.name.to_lowercase();
+                if name_lower.contains("speed") {
+                    match &item.item_type {
+                        ItemType::Ring { bonus } => {
+                            speed -= *bonus as i16;
+                        }
+                        ItemType::Armor { .. } => {
+                            speed -= 1;
+                        }
+                        _ => {}
                     }
-                    ItemType::Armor { .. } => {
-                        speed -= 1;
-                    }
-                    _ => {}
                 }
             }
         }
