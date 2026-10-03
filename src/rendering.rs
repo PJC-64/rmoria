@@ -699,15 +699,17 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         }
         ScreenMode::BarterBuyMenu => {
             if let Some(haggle) = active_haggle {
+                let owner = &crate::dungeon::STORE_OWNERS[haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
+                let owner_title = owner.name.split('(').next().unwrap_or("Shopkeeper").trim();
                 match row {
                     0 => format!("--- BARTERING (BUY): {} ---", haggle.item.name),
-                    2 => format!("Shopkeeper: \"{}\"", haggle.comment),
+                    2 => format!("{}: \"{}\"", owner_title, haggle.comment),
                     3 => format!("Current Ask Price:  {} gp", haggle.current_asking),
                     5 => match haggle.last_bid {
                         Some(bid) => format!("Your last offer:    {} gp", bid),
                         None => "Your last offer:    None".to_string(),
                     },
-                    6 => format!("Patience left:      {}", 3 - haggle.insults),
+                    6 => format!("Patience left:      {}", owner.max_insults.saturating_sub(haggle.insults)),
                     8 => format!("Enter your offer:   {}", haggle.player_input),
                     10 => "--------------------------------------------".to_string(),
                     11 => "Type your bid (digits) and press ENTER to submit.".to_string(),
@@ -721,15 +723,17 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         }
         ScreenMode::BarterSellMenu => {
             if let Some(haggle) = active_haggle {
+                let owner = &crate::dungeon::STORE_OWNERS[haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
+                let owner_title = owner.name.split('(').next().unwrap_or("Shopkeeper").trim();
                 match row {
                     0 => format!("--- BARTERING (SELL): {} ---", haggle.item.name),
-                    2 => format!("Shopkeeper: \"{}\"", haggle.comment),
+                    2 => format!("{}: \"{}\"", owner_title, haggle.comment),
                     3 => format!("Current Offer:      {} gp", haggle.current_asking),
                     5 => match haggle.last_bid {
                         Some(ask) => format!("Your last ask:      {} gp", ask),
                         None => "Your last ask:      None".to_string(),
                     },
-                    6 => format!("Patience left:      {}", 3 - haggle.insults),
+                    6 => format!("Patience left:      {}", owner.max_insults.saturating_sub(haggle.insults)),
                     8 => format!("Enter your price:   {}", haggle.player_input),
                     10 => "--------------------------------------------".to_string(),
                     11 => "Type your price (digits) and press ENTER to submit.".to_string(),
@@ -940,25 +944,24 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             "".to_string()
         }
         ScreenMode::Shop => {
-            let shop_name = match shop {
-                ShopType::General => "GENERAL STORE",
-                ShopType::Armory => "TOWN ARMORY",
-                ShopType::Weaponsmith => "WEAPONSMITH FORGE",
-                ShopType::Temple => "TOWN TEMPLE",
-                ShopType::Alchemy => "ALCHEMY LAB",
-                ShopType::Magic => "MAGIC-USER CONCLAVE",
+            let owner_idx = if let Some(haggle) = active_haggle {
+                haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)
+            } else {
+                (shop as usize).min(crate::dungeon::MAX_OWNERS - 1)
             };
+            let owner = &crate::dungeon::STORE_OWNERS[owner_idx];
             if row == 0 {
-                return format!("--- {} (BUY) ---", shop_name);
+                return format!("--- {} (BUY) ---", owner.name.trim());
             }
             if row == 1 {
-                return format!("Your Gold: {} gp", player.gold);
+                return format!("Your Gold: {} gp    (Purse: {} gp)", player.gold, owner.max_cost);
             }
             let items = get_shop_items(shop);
             if row >= 3 && row < items.len() + 3 {
                 let idx = row - 3;
-                let (name, price, _) = &items[idx];
-                return format!("{}. {:<32}  -  {} gp", (b'a' + idx as u8) as char, name, price);
+                let (name, base_price, _) = &items[idx];
+                let (_, ask_price) = crate::dungeon::calculate_buy_price(*base_price, owner, player.race, player.stats.charisma);
+                return format!("{}. {:<32}  -  {} gp", (b'a' + idx as u8) as char, name, ask_price);
             }
             if row == items.len() + 4 {
                 return "--------------------------------".to_string();
@@ -969,11 +972,17 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             "".to_string()
         }
         ScreenMode::ShopSellMenu => {
+            let owner_idx = if let Some(haggle) = active_haggle {
+                haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)
+            } else {
+                (shop as usize).min(crate::dungeon::MAX_OWNERS - 1)
+            };
+            let owner = &crate::dungeon::STORE_OWNERS[owner_idx];
             if row == 0 {
-                return "--- TOWN GENERAL STORE (SELL) ---".to_string();
+                return format!("--- {} (SELL) ---", owner.name.trim());
             }
             if row == 1 {
-                return format!("Your Gold: {} gp", player.gold);
+                return format!("Your Gold: {} gp    (Max Offer: {} gp)", player.gold, owner.max_cost);
             }
             if row == player.inventory.len() + 3 {
                 return "---------------------------------".to_string();
@@ -984,23 +993,9 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 1 && row <= player.inventory.len() + 1 {
                 let idx = row - 2;
                 let item = &player.inventory[idx];
-                let value = match item.item_type {
-                    ItemType::Weapon {..} => 25,
-                    ItemType::Bow {..} => 25,
-                    ItemType::Missile {..} => 3,
-                    ItemType::Armor {..} => 40,
-                    ItemType::Potion {..} => 15,
-                    ItemType::Scroll {..} => 10,
-                    ItemType::Wand {..} => 50,
-                    ItemType::Staff {..} => 60,
-                    ItemType::Food {..} => 5,
-                    ItemType::Light {..} => 15,
-                    ItemType::Ring {..} => 80,
-                    ItemType::Amulet {..} => 80,
-                    ItemType::MagicBook {..} => 30,
-                    ItemType::PrayerBook {..} => 30,
-                };
-                return format!("{}. {} (sells for {} gp) x{}", (b'a' + idx as u8) as char, item.display_name(), value, item.count);
+                let base_val = crate::dungeon::get_item_base_value(item);
+                let (_, offer) = crate::dungeon::calculate_sell_price(base_val, owner, player.race, player.stats.charisma);
+                return format!("{}. {} (offers ~{} gp) x{}", (b'a' + idx as u8) as char, item.display_name(), offer, item.count);
             }
             if player.inventory.is_empty() && row == 2 {
                 return "(Your inventory is completely empty)".to_string();
