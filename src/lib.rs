@@ -253,143 +253,161 @@ fn process_end_of_turn(
     // Track max depth visited
     player.max_depth_reached = player.max_depth_reached.max(level.depth);
 
-    let mut new_monsters = Vec::new();
-    let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
+    let player_speed_mod = player.speed_modifier();
+    let mut new_monsters: Vec<Monster> = Vec::new();
 
-    for monster in monsters.iter_mut() {
-        if monster.hp <= 0 {
+    for m_idx in 0..monsters.len() {
+        if monsters[m_idx].hp <= 0 {
             continue;
         }
 
         // 1. Wake up check
-        if monster.asleep > 0 {
-            let dist = (monster.x as isize - player.x as isize).abs().max((monster.y as isize - player.y as isize).abs());
-            let aoe = monster.creature_def().area_affect_radius as isize;
-            if dist <= aoe || monster.was_attacked {
-                monster.asleep = monster.asleep.saturating_sub(1);
+        if monsters[m_idx].asleep > 0 {
+            let dist = (monsters[m_idx].x as isize - player.x as isize).abs().max((monsters[m_idx].y as isize - player.y as isize).abs());
+            let aoe = monsters[m_idx].creature_def().area_affect_radius as isize;
+            if dist <= aoe || monsters[m_idx].was_attacked {
+                monsters[m_idx].asleep = monsters[m_idx].asleep.saturating_sub(1);
             }
-            if monster.asleep > 0 {
+            if monsters[m_idx].asleep > 0 {
                 continue;
             }
         }
 
         // 2. Stunned check
-        if monster.stunned > 0 {
-            monster.stunned -= 1;
+        if monsters[m_idx].stunned > 0 {
+            monsters[m_idx].stunned -= 1;
             continue;
         }
 
-        let dx = (player.x as isize - monster.x as isize).abs();
-        let dy = (player.y as isize - monster.y as isize).abs();
-        let is_hostile = level.depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
-        let mut did_attack = false;
+        let moves = monsters[m_idx].movement_rate(player_speed_mod, turn, is_resting);
+        for _ in 0..moves {
+            if monsters[m_idx].hp <= 0 || player.hp <= 0 {
+                break;
+            }
 
-        // 3. Try casting spell or breath weapon
-        if is_hostile {
-            did_attack = crate::entity::monster::try_monster_cast_spell(
-                monster,
-                player,
+            let dx = (player.x as isize - monsters[m_idx].x as isize).abs();
+            let dy = (player.y as isize - monsters[m_idx].y as isize).abs();
+            let is_hostile = level.depth > 0 || monsters[m_idx].was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
+            let mut did_attack = false;
+
+            // Collect occupied positions dynamically so multi-step moves collide accurately
+            let occupied_positions: Vec<(usize, usize)> = monsters.iter().enumerate()
+                .filter(|(idx, m)| *idx != m_idx && m.hp > 0)
+                .map(|(_, m)| (m.x, m.y))
+                .chain(new_monsters.iter().map(|m| (m.x, m.y)))
+                .collect();
+
+            // 3. Try casting spell or breath weapon
+            if is_hostile {
+                did_attack = crate::entity::monster::try_monster_cast_spell(
+                    &mut monsters[m_idx],
+                    player,
+                    level,
+                    &mut new_monsters,
+                    &occupied_positions,
+                    status_msg,
+                    &mut rng,
+                );
+                if player.hp <= 0 {
+                    player.hp = 0;
+                    if save_path.exists() {
+                        let _ = std::fs::remove_file(save_path);
+                    }
+                    *screen_mode = ScreenMode::GameOver;
+                    status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
+                    break;
+                }
+            }
+
+            // 4. Melee attack if adjacent and hasn't cast spell
+            if !did_attack && dx <= 1 && dy <= 1 && is_hostile {
+                crate::entity::monster::execute_monster_melee_attacks(
+                    &monsters[m_idx],
+                    player,
+                    status_msg,
+                    &mut rng,
+                );
+                player.searching = false;
+                did_attack = true;
+
+                if player.hp <= 0 {
+                    player.hp = 0;
+                    if save_path.exists() {
+                        let _ = std::fs::remove_file(save_path);
+                    }
+                    *screen_mode = ScreenMode::GameOver;
+                    status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
+                    break;
+                }
+            }
+
+            // 5. Monster reproduction check (e.g. lice, worms multiplying)
+            if !did_attack && let Some(child) = crate::entity::monster::try_monster_multiply(
+                &monsters[m_idx],
                 level,
-                &mut new_monsters,
                 &occupied_positions,
-                status_msg,
+                player.x,
+                player.y,
                 &mut rng,
-            );
-            if player.hp <= 0 {
-                player.hp = 0;
-                if save_path.exists() {
-                    let _ = std::fs::remove_file(save_path);
-                }
-                *screen_mode = ScreenMode::GameOver;
-                status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
-                break;
+            ) {
+                new_monsters.push(child);
             }
-        }
 
-        // 4. Melee attack if adjacent and hasn't cast spell
-        if !did_attack && dx <= 1 && dy <= 1 && is_hostile {
-            crate::entity::monster::execute_monster_melee_attacks(
-                monster,
-                player,
-                status_msg,
-                &mut rng,
-            );
-            player.searching = false;
-            did_attack = true;
+            // 6. Movement AI
+            if !did_attack
+                && let Some((mx, my)) = monsters[m_idx].update_ai(player.x, player.y, level, level.depth, player.killed_town_npcs, player.town_npc_attack_threshold) {
+                    let occupied_by_player = mx == player.x && my == player.y;
+                    let occupied_by_monster = occupied_positions.iter().any(|&(ox, oy)| ox == mx && oy == my);
+                    
+                    if !occupied_by_player && !occupied_by_monster {
+                        let is_door = if let Some(t) = level.get_tile(mx, my) {
+                            matches!(t.tile_type, TileType::DoorClosed { .. })
+                        } else {
+                            false
+                        };
 
-            if player.hp <= 0 {
-                player.hp = 0;
-                if save_path.exists() {
-                    let _ = std::fs::remove_file(save_path);
-                }
-                *screen_mode = ScreenMode::GameOver;
-                status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
-                break;
-            }
-        }
-
-        // 5. Monster reproduction check (e.g. lice, worms multiplying)
-        if !did_attack && let Some(child) = crate::entity::monster::try_monster_multiply(
-            monster,
-            level,
-            &occupied_positions,
-            player.x,
-            player.y,
-            &mut rng,
-        ) {
-            new_monsters.push(child);
-        }
-
-        // 6. Movement AI
-        if !did_attack
-            && let Some((mx, my)) = monster.update_ai(player.x, player.y, level, level.depth, player.killed_town_npcs, player.town_npc_attack_threshold) {
-                let occupied_by_player = mx == player.x && my == player.y;
-                let occupied_by_monster = occupied_positions.iter().any(|&(ox, oy)| ox == mx && oy == my);
-                
-                if !occupied_by_player && !occupied_by_monster {
-                    let is_door = if let Some(t) = level.get_tile(mx, my) {
-                        matches!(t.tile_type, TileType::DoorClosed { .. })
-                    } else {
-                        false
-                    };
-
-                    if is_door {
-                        let mut broke_spike = false;
-                        let mut opened = false;
-                        if let Some(t) = level.get_tile_mut(mx, my)
-                            && let TileType::DoorClosed { ref mut spikes } = t.tile_type {
-                                if *spikes > 0 {
-                                    if rng.gen_bool(0.30) {
-                                        *spikes -= 1;
-                                        broke_spike = true;
+                        if is_door {
+                            let mut broke_spike = false;
+                            let mut opened = false;
+                            if let Some(t) = level.get_tile_mut(mx, my)
+                                && let TileType::DoorClosed { ref mut spikes } = t.tile_type {
+                                    if *spikes > 0 {
+                                        if rng.gen_bool(0.30) {
+                                            *spikes -= 1;
+                                            broke_spike = true;
+                                        }
+                                    } else {
+                                        t.tile_type = TileType::DoorOpen;
+                                        opened = true;
                                     }
+                                }
+
+                            let dist = (((monsters[m_idx].x as isize - player.x as isize).pow(2) + (monsters[m_idx].y as isize - player.y as isize).pow(2)) as f64).sqrt();
+                            if dist <= 10.0 {
+                                if broke_spike {
+                                    status_msg.push_str(" You hear a door spike snap!");
+                                } else if opened {
+                                    status_msg.push_str(&format!(" The {} opens a door.", monsters[m_idx].name));
                                 } else {
-                                    t.tile_type = TileType::DoorOpen;
-                                    opened = true;
+                                    status_msg.push_str(" You hear a door being bashed!");
                                 }
                             }
 
-                        let dist = (((monster.x as isize - player.x as isize).pow(2) + (monster.y as isize - player.y as isize).pow(2)) as f64).sqrt();
-                        if dist <= 10.0 {
-                            if broke_spike {
-                                status_msg.push_str(" You hear a door spike snap!");
-                            } else if opened {
-                                status_msg.push_str(&format!(" The {} opens a door.", monster.name));
-                            } else {
-                                status_msg.push_str(" You hear a door being bashed!");
+                            if opened {
+                                monsters[m_idx].x = mx;
+                                monsters[m_idx].y = my;
                             }
+                        } else {
+                            monsters[m_idx].x = mx;
+                            monsters[m_idx].y = my;
                         }
-
-                        if opened {
-                            monster.x = mx;
-                            monster.y = my;
-                        }
-                    } else {
-                        monster.x = mx;
-                        monster.y = my;
                     }
                 }
-            }
+        }
+
+        if player.hp <= 0 {
+            break;
+        }
     }
 
     if !new_monsters.is_empty() {

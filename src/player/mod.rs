@@ -752,6 +752,12 @@ impl Player {
             self.food -= 1;
         }
 
+        // Canonical Umoria: accelerated food burn when sped up (speed < 0)
+        let speed_mod = self.speed_modifier();
+        if speed_mod < 0 {
+            self.food -= (speed_mod as i32) * (speed_mod as i32);
+        }
+
         if self.food < 0 {
             // Starvation: damage ticks every 15 turns instead of every single turn
             let starvation_tick = self.food.abs() % 15 == 0;
@@ -1633,6 +1639,61 @@ impl Player {
         }
     }
 
+    /// Returns the relative speed modifier of the player (0 = normal, <0 = faster, >0 = slower).
+    /// Matches canonical Umoria:
+    /// - Haste (flags.fast > 0): -1
+    /// - Slow (flags.slow > 0): +1
+    /// - Searching: +1
+    /// - Encumbrance: +encumbrance_penalty()
+    /// - Speed equipment (e.g. Ring of Speed, Boots of Speed): -bonus
+    pub fn speed_modifier(&self) -> i16 {
+        let mut speed: i16 = 0;
+
+        if self.flags.fast > 0 {
+            speed -= 1;
+        }
+        if self.flags.slow > 0 {
+            speed += 1;
+        }
+        if self.searching {
+            speed += 1;
+        }
+        speed += self.encumbrance_penalty() as i16;
+
+        for item in &self.equipment {
+            let name_lower = item.name.to_lowercase();
+            if name_lower.contains("speed") {
+                match &item.item_type {
+                    ItemType::Ring { bonus } => {
+                        speed -= *bonus as i16;
+                    }
+                    ItemType::Armor { .. } => {
+                        speed -= 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        speed
+    }
+
+    /// Returns the canonical status string for speed (Very Fast, Fast, Slow, Very Slow, or empty).
+    pub fn speed_status_string(&self) -> &'static str {
+        let speed = self.speed_modifier();
+        if speed > 1 {
+            "Very Slow"
+        } else if speed == 1 {
+            "Slow     "
+        } else if speed == -1 {
+            "Fast     "
+        } else if speed < -1 {
+            "Very Fast"
+        } else {
+            "         "
+        }
+    }
+
     pub fn apply_race_and_class_modifiers(&mut self) {
         let (r_str, r_int, r_wis, r_dex, r_con, r_chr) = match self.race {
             Race::Human => (0, 0, 0, 0, 0, 0),
@@ -2245,5 +2306,68 @@ mod tests {
         assert_eq!(player.total_weight(), 1500);
         assert!(player.is_encumbered());
         assert_eq!(player.encumbrance_penalty(), 1500 / 1481); // 1
+    }
+
+    #[test]
+    fn test_player_speed_modifier_and_conditions() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.equipment.clear();
+        player.inventory.clear();
+
+        // 1. Base speed is 0
+        assert_eq!(player.speed_modifier(), 0);
+        assert_eq!(player.speed_status_string(), "         ");
+
+        // 2. Fast (Haste)
+        player.flags.fast = 10;
+        assert_eq!(player.speed_modifier(), -1);
+        assert_eq!(player.speed_status_string(), "Fast     ");
+
+        // 3. Fast + Slow cancel out
+        player.flags.slow = 10;
+        assert_eq!(player.speed_modifier(), 0);
+        assert_eq!(player.speed_status_string(), "         ");
+
+        // 4. Slow only
+        player.flags.fast = 0;
+        assert_eq!(player.speed_modifier(), 1);
+        assert_eq!(player.speed_status_string(), "Slow     ");
+
+        // 5. Searching mode adds +1
+        player.searching = true;
+        assert_eq!(player.speed_modifier(), 2);
+        assert_eq!(player.speed_status_string(), "Very Slow");
+
+        // Reset
+        player.flags.slow = 0;
+        player.searching = false;
+        assert_eq!(player.speed_modifier(), 0);
+
+        // 6. Ring of Speed (+2)
+        player.equipment.push(Item::new("Ring of Speed", 1, 2, ItemType::Ring { bonus: 2 }));
+        assert_eq!(player.speed_modifier(), -2);
+        assert_eq!(player.speed_status_string(), "Very Fast");
+    }
+
+    #[test]
+    fn test_speed_accelerated_food_consumption() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.food = 1000;
+        player.equipment.clear();
+
+        // Normal speed: 1 food consumed
+        player.tick_digestion_and_regen(false);
+        assert_eq!(player.food, 999);
+
+        // Sped up (-1 speed): 1 base + (-1)^2 = 2 food consumed
+        player.flags.fast = 10;
+        player.tick_digestion_and_regen(false);
+        assert_eq!(player.food, 997);
+
+        // Sped up (-2 speed): 1 base + (-2)^2 = 5 food consumed
+        player.equipment.push(Item::new("Ring of Speed", 1, 2, ItemType::Ring { bonus: 1 }));
+        assert_eq!(player.speed_modifier(), -2);
+        player.tick_digestion_and_regen(false);
+        assert_eq!(player.food, 992);
     }
 }

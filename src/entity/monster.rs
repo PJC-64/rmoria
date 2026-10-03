@@ -213,6 +213,39 @@ impl Monster {
 
         None
     }
+
+    /// Returns the relative speed of the monster compared to the player.
+    /// In Umoria: monster.speed is defined with base 10 as normal.
+    /// `player_speed_mod`: 0 is normal, negative is faster player, positive is slower player.
+    /// relative_speed = (monster.speed as i16 - 10) + player_speed_mod.
+    pub fn relative_speed(&self, player_speed_mod: i16) -> i16 {
+        (self.speed as i16 - 10) + player_speed_mod
+    }
+
+    /// Calculates the number of moves/actions this monster receives this turn.
+    /// Matches Umoria's canonical `monsterMovementRate`:
+    /// - speed > 0: `if is_resting { 1 } else { speed }`
+    /// - speed == 0: `1`
+    /// - speed < 0: `1` every `(2 - speed)` turns, otherwise `0`.
+    pub fn movement_rate(&self, player_speed_mod: i16, turn: u64, is_resting: bool) -> usize {
+        let rel = self.relative_speed(player_speed_mod);
+        if rel > 0 {
+            if is_resting {
+                1
+            } else {
+                rel as usize
+            }
+        } else if rel == 0 {
+            1
+        } else {
+            let interval = (2 - rel) as u64;
+            if interval > 0 && turn.is_multiple_of(interval) {
+                1
+            } else {
+                0
+            }
+        }
+    }
 }
 
 /// Hit chance check based on canonical Umoria formula.
@@ -974,5 +1007,55 @@ mod tests {
         assert!(spawned.is_some(), "Multiplying monster should be able to produce offspring");
         let child = spawned.unwrap();
         assert_eq!(child.name, worm.name);
+    }
+
+    #[test]
+    fn test_monster_relative_speed_and_movement_rate() {
+        let mut rng = rand::thread_rng();
+
+        // 1. Normal speed monster (speed = 10)
+        let speed_10_idx = CREATURES_LIST.iter().position(|c| c.speed == 10).unwrap();
+        let normal_monster = Monster::from_creature_id(speed_10_idx, 5, 5, false, &mut rng);
+        assert_eq!(normal_monster.speed, 10);
+        assert_eq!(normal_monster.relative_speed(0), 0);
+        assert_eq!(normal_monster.movement_rate(0, 1, false), 1);
+        assert_eq!(normal_monster.movement_rate(0, 2, false), 1);
+
+        // Against fast player (player_speed_mod = -1): relative speed -1 -> moves once every 3 turns
+        assert_eq!(normal_monster.relative_speed(-1), -1);
+        assert_eq!(normal_monster.movement_rate(-1, 1, false), 0);
+        assert_eq!(normal_monster.movement_rate(-1, 2, false), 0);
+        assert_eq!(normal_monster.movement_rate(-1, 3, false), 1);
+
+        // Against slow player (player_speed_mod = +1): relative speed +1 -> moves 1 time per turn
+        assert_eq!(normal_monster.relative_speed(1), 1);
+        assert_eq!(normal_monster.movement_rate(1, 1, false), 1);
+
+        // 2. Fast monster: The Balrog (creature 278, speed = 13)
+        let balrog = Monster::from_creature_id(278, 5, 5, false, &mut rng);
+        assert_eq!(balrog.speed, 13);
+        assert_eq!(balrog.relative_speed(0), 3);
+        assert_eq!(balrog.movement_rate(0, 1, false), 3, "Balrog gets 3 moves per turn against normal player");
+
+        // Fast player: Balrog gets 2 moves
+        assert_eq!(balrog.relative_speed(-1), 2);
+        assert_eq!(balrog.movement_rate(-1, 1, false), 2);
+
+        // Slow player: Balrog gets 4 moves!
+        assert_eq!(balrog.relative_speed(1), 4);
+        assert_eq!(balrog.movement_rate(1, 1, false), 4);
+
+        // Resting player clamps fast monsters to 1 move per tick!
+        assert_eq!(balrog.movement_rate(0, 1, true), 1, "Resting clamps monster moves to 1");
+
+        // 3. Slow monster: Iron Golem / Black Ooze (speed = 9)
+        let slow_idx = CREATURES_LIST.iter().position(|c| c.speed == 9).unwrap();
+        let slow_monster = Monster::from_creature_id(slow_idx, 5, 5, false, &mut rng);
+        assert_eq!(slow_monster.speed, 9);
+        assert_eq!(slow_monster.relative_speed(0), -1);
+        // Interval: 2 - (-1) = 3 -> moves only on turns divisible by 3
+        assert_eq!(slow_monster.movement_rate(0, 1, false), 0);
+        assert_eq!(slow_monster.movement_rate(0, 2, false), 0);
+        assert_eq!(slow_monster.movement_rate(0, 3, false), 1);
     }
 }
