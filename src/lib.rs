@@ -253,63 +253,69 @@ fn process_end_of_turn(
     // Track max depth visited
     player.max_depth_reached = player.max_depth_reached.max(level.depth);
 
+    let mut new_monsters = Vec::new();
     let occupied_positions: Vec<(usize, usize)> = monsters.iter().map(|m| (m.x, m.y)).collect();
 
     for monster in monsters.iter_mut() {
+        if monster.hp <= 0 {
+            continue;
+        }
+
+        // 1. Wake up check
+        if monster.asleep > 0 {
+            let dist = (monster.x as isize - player.x as isize).abs().max((monster.y as isize - player.y as isize).abs());
+            let aoe = monster.creature_def().area_affect_radius as isize;
+            if dist <= aoe || monster.was_attacked {
+                monster.asleep = monster.asleep.saturating_sub(1);
+            }
+            if monster.asleep > 0 {
+                continue;
+            }
+        }
+
+        // 2. Stunned check
         if monster.stunned > 0 {
             monster.stunned -= 1;
             continue;
         }
+
         let dx = (player.x as isize - monster.x as isize).abs();
         let dy = (player.y as isize - monster.y as isize).abs();
-        
         let is_hostile = level.depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
         let mut did_attack = false;
-        if dx <= 1 && dy <= 1 && is_hostile {
-            let m_damage = monster.damage.roll(&mut rng) as i32;
-            player.hp -= m_damage;
-            player.searching = false;
-            status_msg.push_str(&format!(" {} hits you for {}!", monster.name, m_damage));
 
-            // Special monster status afflictions:
-            let m_name = monster.name.to_lowercase();
-            if (m_name.contains("spider") || m_name.contains("snake") || m_name.contains("viper") || m_name.contains("scorpion")) && rng.gen_bool(0.35) {
-                player.flags.poisoned += rng.gen_range(10..=25);
-                status_msg.push_str(" You have been poisoned!");
-            } else if (m_name.contains("ghost") || m_name.contains("phantom") || m_name.contains("wraith") || m_name.contains("banshee")) && rng.gen_bool(0.35) {
-                if player.flags.heroism == 0 && player.flags.super_heroism == 0 {
-                    player.flags.afraid += rng.gen_range(5..=15);
-                    status_msg.push_str(" You are terrified!");
+        // 3. Try casting spell or breath weapon
+        if is_hostile {
+            did_attack = crate::entity::monster::try_monster_cast_spell(
+                monster,
+                player,
+                level,
+                &mut new_monsters,
+                &occupied_positions,
+                status_msg,
+                &mut rng,
+            );
+            if player.hp <= 0 {
+                player.hp = 0;
+                if save_path.exists() {
+                    let _ = std::fs::remove_file(save_path);
                 }
-            } else if (m_name.contains("ghoul") || m_name.contains("crawler") || m_name.contains("lich")) && rng.gen_bool(0.25) {
-                if player.flags.free_action {
-                    status_msg.push_str(" You resist the paralysis!");
-                } else {
-                    player.flags.paralysis += rng.gen_range(2..=5);
-                    status_msg.push_str(" You are paralyzed!");
-                }
-            } else if (m_name.contains("gazer") || m_name.contains("umber")) && rng.gen_bool(0.30) {
-                player.flags.confused += rng.gen_range(5..=15);
-                status_msg.push_str(" You feel confused!");
-            } else if m_name.contains("eye") && rng.gen_bool(0.25) {
-                player.flags.blind += rng.gen_range(10..=20);
-                status_msg.push_str(" You are blinded!");
-            } else if (m_name.contains("shadow") || m_name.contains("vampire") || m_name.contains("spectre")) && rng.gen_bool(0.25) {
-                let stat_to_drain = rng.gen_range(0..6);
-                if player.drain_stat(stat_to_drain, &mut rng) {
-                    let stat_name = match stat_to_drain {
-                        0 => "strength",
-                        1 => "intelligence",
-                        2 => "wisdom",
-                        3 => "dexterity",
-                        4 => "constitution",
-                        _ => "charisma",
-                    };
-                    status_msg.push_str(&format!(" Your {} was drained!", stat_name));
-                } else if player.is_stat_sustained(stat_to_drain) {
-                    status_msg.push_str(" Your stats were sustained!");
-                }
+                *screen_mode = ScreenMode::GameOver;
+                status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
+                break;
             }
+        }
+
+        // 4. Melee attack if adjacent and hasn't cast spell
+        if !did_attack && dx <= 1 && dy <= 1 && is_hostile {
+            crate::entity::monster::execute_monster_melee_attacks(
+                monster,
+                player,
+                status_msg,
+                &mut rng,
+            );
+            player.searching = false;
+            did_attack = true;
 
             if player.hp <= 0 {
                 player.hp = 0;
@@ -320,8 +326,21 @@ fn process_end_of_turn(
                 status_msg.push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
                 break;
             }
-            did_attack = true;
         }
+
+        // 5. Monster reproduction check (e.g. lice, worms multiplying)
+        if !did_attack && let Some(child) = crate::entity::monster::try_monster_multiply(
+            monster,
+            level,
+            &occupied_positions,
+            player.x,
+            player.y,
+            &mut rng,
+        ) {
+            new_monsters.push(child);
+        }
+
+        // 6. Movement AI
         if !did_attack
             && let Some((mx, my)) = monster.update_ai(player.x, player.y, level, level.depth, player.killed_town_npcs, player.town_npc_attack_threshold) {
                 let occupied_by_player = mx == player.x && my == player.y;
@@ -371,6 +390,10 @@ fn process_end_of_turn(
                     }
                 }
             }
+    }
+
+    if !new_monsters.is_empty() {
+        monsters.append(&mut new_monsters);
     }
     
     Ok(())
