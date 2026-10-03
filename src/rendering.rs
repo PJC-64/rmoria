@@ -68,14 +68,7 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         "          "
     };
 
-    let is_slow = player.flags.slow > 0 || player.is_encumbered();
-    let speed_str = if player.flags.fast > 0 && !is_slow {
-        "Fast     "
-    } else if is_slow && player.flags.fast == 0 {
-        "Slow     "
-    } else {
-        "         "
-    };
+    let speed_str = player.speed_status_string();
 
     let study_str = if player.new_spells_to_learn > 0 {
         "Study"
