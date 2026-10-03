@@ -968,7 +968,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 status_msg = "You are too afraid!".to_string();
                                                 player_acted = true;
                                             } else {
-                                                let damage = player.roll_melee_damage(&mut rng);
+                                                let damage = player.roll_melee_damage_against(&mut rng, Some(monsters[m_idx].creature_id));
                                                 status_msg = format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
                                             
                                             monsters[m_idx].was_attacked = true;
@@ -2527,21 +2527,23 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             let idx = letter as usize - 'a' as usize;
                                             let items = get_shop_items(active_shop);
                                             if idx < items.len() {
-                                                let (name, price, ref item_type) = items[idx];
+                                                let (ref name, price, ref item_type) = items[idx];
                                                 let shop_info = level.shops.iter().find(|s| s.shop_type == active_shop);
                                                 let owner_idx = shop_info.map(|s| s.owner_index).unwrap_or(active_shop as usize);
                                                 let owner = &dungeon::STORE_OWNERS[owner_idx.min(dungeon::MAX_OWNERS - 1)];
                                                 let (min_p, max_p) = dungeon::calculate_buy_price(price, owner, player.race, player.stats.charisma);
                                                 if player.gold >= min_p {
-                                                    let h_item = Item::new(name, 1, match item_type {
-                                                         ItemType::Weapon {..} => 10,
-                                                         ItemType::Armor {..} => 80,
-                                                         ItemType::Potion {..} => 5,
-                                                         ItemType::Light {..} => 15,
-                                                         ItemType::Ring {..} => 2,
-                                                         ItemType::Amulet {..} => 3,
-                                                         _ => 2,
-                                                     }, item_type.clone());
+                                                    let h_item = crate::entity::treasure_data::get_canonical_shop_item(active_shop, idx).unwrap_or_else(|| {
+                                                        Item::new(name, 1, match item_type {
+                                                             ItemType::Weapon {..} => 10,
+                                                             ItemType::Armor {..} => 80,
+                                                             ItemType::Potion {..} => 5,
+                                                             ItemType::Light {..} => 15,
+                                                             ItemType::Ring {..} => 2,
+                                                             ItemType::Amulet {..} => 3,
+                                                             _ => 2,
+                                                        }, item_type.clone())
+                                                    });
                                                     
                                                     active_haggle = Some(HaggleState {
                                                         item: h_item,
