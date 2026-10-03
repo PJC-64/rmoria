@@ -2,6 +2,7 @@ mod input;
 mod dungeon;
 mod player;
 pub mod flavor;
+pub mod magic;
 mod save;
 mod dice;
 mod entity;
@@ -143,6 +144,7 @@ pub enum ScreenMode {
     BrowseBookMenu,
     CastSpellMenu,
     PrayMenu,
+    StudyMenu,
     SelectSpellDirection,
     CharacterStatsMenu,
     SelectDisarmDirection,
@@ -668,6 +670,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     let mut screen_mode = ScreenMode::Dungeon;
     let mut active_shop = ShopType::General;
     let mut selected_spell_idx: usize = 0;
+    let mut selected_spell_is_prayer: bool = false;
     let mut selected_wand_inv_idx: usize = 0;
     let mut selected_throw_inv_idx: usize = 0;
     let mut active_haggle: Option<HaggleState> = None;
@@ -698,20 +701,23 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
             player.stats.charisma = 99;
 
             let books = vec![
-                Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Mage Spellbook [Magic II - Incantations]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Mage Spellbook [Magic III - Sorcery]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Mage Spellbook [Master's Arcana]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Priest Prayerbook [Words of Wisdom]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Priest Prayerbook [Chants and Prayers]", 1, 20, ItemType::Scroll { teleport: false }),
-                Item::new("Priest Prayerbook [Holy Teachings]", 1, 20, ItemType::Scroll { teleport: false }),
+                crate::magic::create_book(0, false),
+                crate::magic::create_book(1, false),
+                crate::magic::create_book(2, false),
+                crate::magic::create_book(3, false),
+                crate::magic::create_book(0, true),
+                crate::magic::create_book(1, true),
+                crate::magic::create_book(2, true),
+                crate::magic::create_book(3, true),
             ];
             for book in books {
                 if !player.inventory.iter().any(|i| i.name == book.name) {
                     player.inventory.push(book);
                 }
             }
+            player.spells_learnt = 0x7FFFFFFF;
+            player.update_max_hp_and_mana();
+            player.mana = player.max_mana;
 
             status_msg = "TEST MODE ENABLED: ALL SPELLBOOKS & IMMORTALITY GRANTED!".to_string();
             let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
@@ -1231,13 +1237,16 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 Action::BrowseBook => {
                                     if player.flags.blind > 0 {
                                         status_msg = "You can't see to read your book!".to_string();
+                                    } else if player.flags.confused > 0 {
+                                        status_msg = "You are too confused.".to_string();
                                     } else {
-                                        let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Spellbook") || i.name.contains("Prayerbook"));
+                                        let is_prayer = player.is_priest_caster();
+                                        let has_book = !player.carried_books(is_prayer).is_empty() || player.is_wizard;
                                         if has_book {
                                             screen_mode = ScreenMode::BrowseBookMenu;
-                                            status_msg = "Browsing spells/prayers.".to_string();
+                                            status_msg = "Browsing spells/prayers (press any key to exit).".to_string();
                                         } else {
-                                            status_msg = "You do not carry a spellbook or prayerbook!".to_string();
+                                            status_msg = "You do not have any books to read.".to_string();
                                         }
                                     }
                                 }
@@ -1246,18 +1255,17 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         status_msg = "You can't see to read your spell book!".to_string();
                                     } else if player.flags.confused > 0 {
                                         status_msg = "You are too confused.".to_string();
+                                    } else if !player.is_mage_caster() {
+                                        status_msg = "You can't cast spells!".to_string();
+                                    } else if player.carried_books(false).is_empty() && !player.is_wizard {
+                                        status_msg = "But you are not carrying any spell-books!".to_string();
                                     } else {
-                                        let is_mage_caster = player.is_wizard || matches!(player.class, Class::Mage | Class::Rogue | Class::Ranger);
-                                        if !is_mage_caster {
-                                            status_msg = "Your class cannot cast mage spells!".to_string();
+                                        let known = player.known_spells(false);
+                                        if known.is_empty() {
+                                            status_msg = "You don't know any spells in your books.".to_string();
                                         } else {
-                                            let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Mage Spellbook"));
-                                            if has_book {
-                                                screen_mode = ScreenMode::CastSpellMenu;
-                                                status_msg = "Cast Mage Spell: select a letter.".to_string();
-                                            } else {
-                                                status_msg = "You need a Mage Spellbook to cast spells!".to_string();
-                                            }
+                                            screen_mode = ScreenMode::CastSpellMenu;
+                                            status_msg = "Cast which spell? (ESC to cancel)".to_string();
                                         }
                                     }
                                 }
@@ -1266,19 +1274,55 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         status_msg = "You can't see to read your prayer!".to_string();
                                     } else if player.flags.confused > 0 {
                                         status_msg = "You are too confused.".to_string();
+                                    } else if !player.is_priest_caster() {
+                                        status_msg = "Pray hard enough and your prayers may be answered.".to_string();
+                                    } else if player.carried_books(true).is_empty() && !player.is_wizard {
+                                        status_msg = "You are not carrying any Holy Books!".to_string();
                                     } else {
-                                        let is_priest_caster = player.is_wizard || matches!(player.class, Class::Priest | Class::Paladin);
-                                        if !is_priest_caster {
-                                            status_msg = "Your class cannot recite priestly prayers!".to_string();
+                                        let known = player.known_spells(true);
+                                        if known.is_empty() {
+                                            status_msg = "You don't know any prayers in your books.".to_string();
                                         } else {
-                                            let has_book = player.is_wizard || player.inventory.iter().any(|i| i.name.contains("Priest Prayerbook"));
-                                            if has_book {
-                                                screen_mode = ScreenMode::PrayMenu;
-                                                status_msg = "Recite Clerical Prayer: select a letter.".to_string();
+                                            screen_mode = ScreenMode::PrayMenu;
+                                            status_msg = "Recite which prayer? (ESC to cancel)".to_string();
+                                        }
+                                    }
+                                }
+                                Action::GainSpells => {
+                                    if player.flags.confused > 0 {
+                                        status_msg = "You are too confused.".to_string();
+                                    } else if player.is_priest_caster() {
+                                        if player.new_spells_to_learn == 0 {
+                                            status_msg = "You can't learn any new prayers!".to_string();
+                                        } else {
+                                            let learnable = player.learnable_spells();
+                                            if learnable.is_empty() {
+                                                status_msg = "You cannot learn any new prayers at your current level.".to_string();
                                             } else {
-                                                status_msg = "You need a Priest Prayerbook to pray!".to_string();
+                                                let choice = learnable[rng.gen_range(0..learnable.len())];
+                                                player.learn_spell(choice);
+                                                if let Some(def) = crate::magic::get_spell_def(player.class, choice, true) {
+                                                    status_msg = format!("You have learned the prayer of {}.", def.name);
+                                                }
+                                                player_acted = true;
                                             }
                                         }
+                                    } else if player.is_mage_caster() {
+                                        if player.flags.blind > 0 {
+                                            status_msg = "You can't see to read your spell book!".to_string();
+                                        } else if player.new_spells_to_learn == 0 {
+                                            status_msg = "You can't learn any new spells!".to_string();
+                                        } else {
+                                            let learnable = player.learnable_spells();
+                                            if learnable.is_empty() {
+                                                status_msg = "You seem to be missing a book.".to_string();
+                                            } else {
+                                                screen_mode = ScreenMode::StudyMenu;
+                                                status_msg = "Learn which spell? (ESC to cancel)".to_string();
+                                            }
+                                        }
+                                    } else {
+                                        status_msg = "You cannot learn spells or prayers.".to_string();
                                     }
                                 }
                                 Action::CharacterStats => {
@@ -1421,11 +1465,10 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 if (screen_mode == ScreenMode::InventoryList && c == 'i')
                                     || (screen_mode == ScreenMode::EquipmentList && c == 'I')
                                     || screen_mode == ScreenMode::HelpMenu
+                                    || screen_mode == ScreenMode::BrowseBookMenu
                                 {
                                     screen_mode = ScreenMode::Dungeon;
                                     status_msg = "Returned to dungeon.".to_string();
-                                } else if screen_mode == ScreenMode::BrowseBookMenu {
-                                    // Exit browse via ESC
                                 } else if screen_mode == ScreenMode::CharacterStatsMenu {
                                     // Exit sheet via ESC
                                 } else if screen_mode == ScreenMode::SelectDisarmDirection {
@@ -2308,332 +2351,79 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                     }
                                     screen_mode = ScreenMode::Dungeon;
+                                } else if screen_mode == ScreenMode::StudyMenu {
+                                    let idx = (c as u8).saturating_sub(b'a') as usize;
+                                    let learnable = player.learnable_spells();
+                                    if idx < learnable.len() {
+                                        let spell_idx = learnable[idx];
+                                        player.learn_spell(spell_idx);
+                                        if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, player.is_priest_caster()) {
+                                            status_msg = format!("You have learned the spell of {}.", def.name);
+                                        }
+                                        if player.new_spells_to_learn == 0 || player.learnable_spells().is_empty() {
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                        player_acted = true;
+                                    }
                                 } else if screen_mode == ScreenMode::CastSpellMenu {
-                                    match c {
-                                        'a' => {
-                                            if player.mana >= 1 {
-                                                selected_spell_idx = 0;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Magic Missile: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'b' => {
-                                            if player.mana >= 2 {
-                                                player.mana -= 2;
-                                                let dest = level.find_random_floor_tile();
-                                                player.move_to(dest.0, dest.1);
-                                                status_msg = "You cast Phase Door and warp!".to_string();
+                                    let idx = (c as u8).saturating_sub(b'a') as usize;
+                                    let known = player.known_spells(false);
+                                    if idx < known.len() {
+                                        let spell_idx = known[idx];
+                                        if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, false) {
+                                            let fail_chance = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.intelligence, player.mana, def);
+                                            let failed = rng.gen_range(1..=100) <= fail_chance;
+                                            if failed {
+                                                status_msg = "You failed to get the spell off!".to_string();
+                                                crate::magic::apply_spell_mana_and_fatigue(&mut player, def.mana_required, false, &mut rng, &mut status_msg);
                                                 screen_mode = ScreenMode::Dungeon;
                                                 player_acted = true;
+                                            } else if crate::magic::is_directional_spell(spell_idx, false) {
+                                                selected_spell_idx = spell_idx;
+                                                selected_spell_is_prayer = false;
+                                                screen_mode = ScreenMode::SelectSpellDirection;
+                                                status_msg = format!("Aim {}: choose direction (ESC to cancel)...", def.name);
                                             } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'c' => {
-                                            if player.level < 3 {
-                                                status_msg = "Too low level (requires Level 3)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 3 {
-                                                player.mana -= 3;
-                                                for y in (player.y as isize - 5)..=(player.y as isize + 5) {
-                                                    for x in (player.x as isize - 5)..=(player.x as isize + 5) {
-                                                        if let Some(tile) = level.get_tile_mut(x as usize, y as usize) {
-                                                            tile.visible = true;
-                                                            tile.remembered = true;
-                                                        }
-                                                    }
+                                                crate::magic::execute_non_directional_spell(spell_idx, false, &mut player, &mut level, &mut monsters, &mut rng, &mut status_msg);
+                                                if (player.spells_worked & (1 << spell_idx)) == 0 {
+                                                    player.add_experience(def.exp_gain * 4);
+                                                    player.spells_worked |= 1 << spell_idx;
                                                 }
-                                                status_msg = "Brilliant light flashes and illuminates the area!".to_string();
+                                                crate::magic::apply_spell_mana_and_fatigue(&mut player, def.mana_required, false, &mut rng, &mut status_msg);
                                                 screen_mode = ScreenMode::Dungeon;
                                                 player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
                                             }
                                         }
-                                        'd' => {
-                                            if player.level < 5 {
-                                                status_msg = "Too low level (requires Level 5)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 5 {
-                                                selected_spell_idx = 1;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Fire Bolt: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'e' => {
-                                            if player.level < 10 {
-                                                status_msg = "Too low level (requires Level 10)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 8 {
-                                                selected_spell_idx = 2;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Frost Bolt: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'f' => {
-                                            if player.level < 15 {
-                                                status_msg = "Too low level (requires Level 15)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 10 {
-                                                player.mana -= 10;
-                                                let dest = level.find_random_floor_tile();
-                                                player.move_to(dest.0, dest.1);
-                                                status_msg = "You teleport yourself across space!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'g' => {
-                                            if player.level < 20 {
-                                                status_msg = "Too low level (requires Level 20)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 15 {
-                                                selected_spell_idx = 3;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Lightning Bolt: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'h' => {
-                                            if player.level < 25 {
-                                                status_msg = "Too low level (requires Level 25)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 20 {
-                                                selected_spell_idx = 4;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Fire Ball: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'i' => {
-                                            if player.level < 35 {
-                                                status_msg = "Too low level (requires Level 35)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 30 {
-                                                selected_spell_idx = 5;
-                                                screen_mode = ScreenMode::SelectSpellDirection;
-                                                status_msg = "Aim Mana Storm: choose direction...".to_string();
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        _ => {}
                                     }
                                 } else if screen_mode == ScreenMode::PrayMenu {
-                                    match c {
-                                        'a' => {
-                                            if player.mana >= 1 {
-                                                player.mana -= 1;
-                                                for m in &monsters {
-                                                    if let Some(tile) = level.get_tile_mut(m.x, m.y) {
-                                                        tile.remembered = true;
-                                                    }
+                                    let idx = (c as u8).saturating_sub(b'a') as usize;
+                                    let known = player.known_spells(true);
+                                    if idx < known.len() {
+                                        let spell_idx = known[idx];
+                                        if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, true) {
+                                            let fail_chance = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.wisdom, player.mana, def);
+                                            let failed = rng.gen_range(1..=100) <= fail_chance;
+                                            if failed {
+                                                status_msg = "You lost your concentration!".to_string();
+                                                crate::magic::apply_spell_mana_and_fatigue(&mut player, def.mana_required, true, &mut rng, &mut status_msg);
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            } else if crate::magic::is_directional_spell(spell_idx, true) {
+                                                selected_spell_idx = spell_idx;
+                                                selected_spell_is_prayer = true;
+                                                screen_mode = ScreenMode::SelectSpellDirection;
+                                                status_msg = format!("Aim {}: choose direction (ESC to cancel)...", def.name);
+                                            } else {
+                                                crate::magic::execute_non_directional_spell(spell_idx, true, &mut player, &mut level, &mut monsters, &mut rng, &mut status_msg);
+                                                if (player.spells_worked & (1 << spell_idx)) == 0 {
+                                                    player.add_experience(def.exp_gain * 4);
+                                                    player.spells_worked |= 1 << spell_idx;
                                                 }
-                                                status_msg = format!("You sense the presence of {} dark entities!", monsters.len());
+                                                crate::magic::apply_spell_mana_and_fatigue(&mut player, def.mana_required, true, &mut rng, &mut status_msg);
                                                 screen_mode = ScreenMode::Dungeon;
                                                 player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
                                             }
                                         }
-                                        'b' => {
-                                            if player.mana >= 2 {
-                                                player.mana -= 2;
-                                                let heal = rng.gen_range(2..=16);
-                                                player.hp = (player.hp + heal).min(player.max_hp);
-                                                status_msg = format!("You pray for healing. Restored {} HP.", heal);
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'c' => {
-                                            if player.level < 3 {
-                                                status_msg = "Too low level (requires Level 3)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 3 {
-                                                player.mana -= 3;
-                                                let heal = rng.gen_range(3..=24);
-                                                player.hp = (player.hp + heal).min(player.max_hp);
-                                                status_msg = format!("Divine blessing heals you for {} HP.", heal);
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'd' => {
-                                            if player.level < 4 {
-                                                status_msg = "Too low level (requires Level 4)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 4 {
-                                                player.mana -= 4;
-                                                let dest = level.find_random_floor_tile();
-                                                player.move_to(dest.0, dest.1);
-                                                status_msg = "You are pulled through a space portal!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'e' => {
-                                            if player.level < 7 {
-                                                status_msg = "Too low level (requires Level 7)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 7 {
-                                                player.mana -= 7;
-                                                let mut hit = false;
-                                                let mut killed = Vec::new();
-                                                for (m_idx, m) in monsters.iter_mut().enumerate() {
-                                                    let dx = (player.x as isize - m.x as isize).abs();
-                                                    let dy = (player.y as isize - m.y as isize).abs();
-                                                    if dx <= 1 && dy <= 1 {
-                                                        let dmg = rng.gen_range(6..=48);
-                                                        m.was_attacked = true;
-                                                        m.take_damage(dmg);
-                                                        hit = true;
-                                                        if m.hp <= 0 {
-                                                            killed.push(m_idx);
-                                                        }
-                                                    }
-                                                }
-                                                for &idx in killed.iter().rev() {
-                                                    let exp = monsters[idx].experience_reward;
-                                                    player.add_experience(exp);
-                                                    if level.depth == 0 {
-                                                        player.killed_town_npcs += 1;
-                                                    }
-                                                    monsters.remove(idx);
-                                                }
-                                                status_msg = if hit {
-                                                    "You chant a Holy Word! Nearby enemies are scorched!".to_string()
-                                                } else {
-                                                    "You chant a Holy Word, but hear only whispers.".to_string()
-                                                };
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'f' => {
-                                            if player.level < 12 {
-                                                status_msg = "Too low level (requires Level 12)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 12 {
-                                                player.mana -= 12;
-                                                let heal = rng.gen_range(6..=48);
-                                                player.hp = (player.hp + heal).min(player.max_hp);
-                                                status_msg = format!("Critical wounds heal! Restored {} HP.", heal);
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'g' => {
-                                            if player.level < 18 {
-                                                status_msg = "Too low level (requires Level 18)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 15 {
-                                                player.mana -= 15;
-                                                player.hp = player.max_hp;
-                                                status_msg = "Sanctuary! Divine protection restores your vitality to maximum!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'h' => {
-                                            if player.level < 25 {
-                                                status_msg = "Too low level (requires Level 25)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 25 {
-                                                player.mana -= 25;
-                                                let mut killed = Vec::new();
-                                                for (m_idx, m) in monsters.iter_mut().enumerate() {
-                                                    let dmg = rng.gen_range(12..=96);
-                                                    m.take_damage(dmg);
-                                                    if m.hp <= 0 {
-                                                        killed.push(m_idx);
-                                                    }
-                                                }
-                                                for &idx in killed.iter().rev() {
-                                                    let exp = monsters[idx].experience_reward;
-                                                    player.add_experience(exp);
-                                                    if level.depth == 0 {
-                                                        player.killed_town_npcs += 1;
-                                                    }
-                                                    monsters.remove(idx);
-                                                }
-                                                status_msg = "Holy Thunder strikes all visible foes!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        'i' => {
-                                            if player.level < 35 {
-                                                status_msg = "Too low level (requires Level 35)!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            } else if player.mana >= 35 {
-                                                player.mana -= 35;
-                                                let mut killed = Vec::new();
-                                                for (m_idx, m) in monsters.iter_mut().enumerate() {
-                                                    let dmg = rng.gen_range(20..=200);
-                                                    m.take_damage(dmg);
-                                                    if m.hp <= 0 {
-                                                        killed.push(m_idx);
-                                                    }
-                                                }
-                                                for &idx in killed.iter().rev() {
-                                                    let exp = monsters[idx].experience_reward;
-                                                    player.add_experience(exp);
-                                                    if level.depth == 0 {
-                                                        player.killed_town_npcs += 1;
-                                                    }
-                                                    monsters.remove(idx);
-                                                }
-                                                status_msg = "Divine Wrath obliterates your enemies!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                                player_acted = true;
-                                            } else {
-                                                status_msg = "Insufficient mana!".to_string();
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                        }
-                                        _ => {}
                                     }
                                 } else if screen_mode == ScreenMode::SelectSpellDirection {
                                     let action = mapper.map_key(c);
@@ -2649,51 +2439,34 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             Direction::South => (0, 1),
                                             Direction::SouthEast => (1, 1),
                                         };
-
-                                        let (cost, spell_name, min_d, max_d) = match selected_spell_idx {
-                                            0 => (1, "Magic Missile", 2, 8),
-                                            1 => (5, "Fire Bolt", 4, 24),
-                                            2 => (8, "Frost Bolt", 6, 36),
-                                            3 => (15, "Lightning Bolt", 8, 64),
-                                            4 => (20, "Fire Ball", 12, 96),
-                                            _ => (30, "Mana Storm", 20, 200),
-                                        };
-
-                                        if player.mana >= cost {
-                                            player.mana -= cost;
-                                            let mut cx = player.x as isize + dx;
-                                            let mut cy = player.y as isize + dy;
-                                            status_msg = format!("Your {} streaks out into the dark!", spell_name);
-                                            while let Some(tile) = level.get_tile(cx as usize, cy as usize) {
-                                                if tile.tile_type == TileType::Wall || tile.tile_type == TileType::SecretDoor || matches!(tile.tile_type, TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
-                                                    status_msg = format!("Your {} strikes a wall!", spell_name);
-                                                    break;
-                                                }
-                                                if let Some(m_idx) = monsters.iter().position(|m| m.x == cx as usize && m.y == cy as usize) {
-                                                    let dmg = rng.gen_range(min_d..=max_d);
-                                                    let m_name = monsters[m_idx].name.clone();
-                                                    let exp = monsters[m_idx].experience_reward;
-                                                    status_msg = format!("{} hits {} for {} damage!", spell_name, m_name, dmg);
-                                                    monsters[m_idx].was_attacked = true;
-                                                    if monsters[m_idx].take_damage(dmg) {
-                                                        status_msg.push_str(" You destroyed it!");
-                                                        player.add_experience(exp);
-                                                        if level.depth == 0 {
-                                                            player.killed_town_npcs += 1;
-                                                        }
-                                                        monsters.remove(m_idx);
-                                                    }
-                                                    break;
-                                                }
-                                                cx += dx;
-                                                cy += dy;
+                                        if (dx != 0 || dy != 0)
+                                            && let Some(def) = crate::magic::get_spell_def(player.class, selected_spell_idx, selected_spell_is_prayer)
+                                        {
+                                            crate::magic::execute_directional_spell(
+                                                selected_spell_idx,
+                                                selected_spell_is_prayer,
+                                                dx,
+                                                dy,
+                                                &mut player,
+                                                &mut level,
+                                                &mut monsters,
+                                                &mut rng,
+                                                &mut status_msg,
+                                            );
+                                            if (player.spells_worked & (1 << selected_spell_idx)) == 0 {
+                                                player.add_experience(def.exp_gain * 4);
+                                                player.spells_worked |= 1 << selected_spell_idx;
                                             }
-                                        } else {
-                                            status_msg = "Insufficient mana!".to_string();
+                                            crate::magic::apply_spell_mana_and_fatigue(
+                                                &mut player,
+                                                def.mana_required,
+                                                selected_spell_is_prayer,
+                                                &mut rng,
+                                                &mut status_msg,
+                                            );
+                                            screen_mode = ScreenMode::Dungeon;
+                                            player_acted = true;
                                         }
-
-                                        screen_mode = ScreenMode::Dungeon;
-                                        player_acted = true;
                                     }
                                 } else if screen_mode == ScreenMode::Shop {
                                     match c {
@@ -2758,6 +2531,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             ItemType::Light {..} => 15,
                                             ItemType::Ring {..} => 80,
                                             ItemType::Amulet {..} => 80,
+                                            ItemType::MagicBook {..} => 30,
+                                            ItemType::PrayerBook {..} => 30,
                                         };
 
                                         active_haggle = Some(HaggleState {

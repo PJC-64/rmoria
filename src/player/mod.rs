@@ -171,6 +171,8 @@ pub enum ItemType {
     Missile { damage: Dice },
     Ring { bonus: i32 },
     Amulet { bonus: i32 },
+    MagicBook { spell_flags: u32 },
+    PrayerBook { spell_flags: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +196,8 @@ pub struct Item {
     pub flavor: Option<String>,
     #[serde(default)]
     pub equipped_slot: Option<String>,
+    #[serde(default)]
+    pub is_cursed: bool,
 }
 
 fn default_identified() -> bool {
@@ -211,6 +215,7 @@ impl Item {
             identified: true,
             flavor: None,
             equipped_slot: None,
+            is_cursed: false,
         }
     }
 
@@ -224,6 +229,7 @@ impl Item {
             identified: false,
             flavor: None,
             equipped_slot: None,
+            is_cursed: false,
         }
     }
 
@@ -312,6 +318,10 @@ fn default_town_threshold() -> u32 {
     rand::thread_rng().gen_range(1..=5)
 }
 
+fn default_spells_learned_order() -> [u8; 32] {
+    [99; 32]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,
@@ -355,6 +365,16 @@ pub struct Player {
     pub killed_town_npcs: u32,
     #[serde(default = "default_town_threshold")]
     pub town_npc_attack_threshold: u32,
+    #[serde(default)]
+    pub spells_learnt: u32,
+    #[serde(default)]
+    pub spells_worked: u32,
+    #[serde(default)]
+    pub spells_forgotten: u32,
+    #[serde(default = "default_spells_learned_order")]
+    pub spells_learned_order: [u8; 32],
+    #[serde(default)]
+    pub new_spells_to_learn: u32,
     
     pub base_hp_levels: Vec<i32>,
     pub exp_factor: u32,
@@ -620,9 +640,9 @@ impl Player {
                     Item::new("Ration of Food", 2, 10, ItemType::Food { nutrition: 5000 }),
                 ];
                 if matches!(class, Class::Mage | Class::Rogue | Class::Ranger) {
-                    starter.push(Item::new("Mage Spellbook [Beginner's Magick]", 1, 20, ItemType::Scroll { teleport: false }));
+                    starter.push(crate::magic::create_book(0, false));
                 } else if matches!(class, Class::Priest | Class::Paladin) {
-                    starter.push(Item::new("Priest Prayerbook [Beginner's Handbook]", 1, 20, ItemType::Scroll { teleport: false }));
+                    starter.push(crate::magic::create_book(0, true));
                 }
                 if matches!(class, Class::Ranger) {
                     starter.push(Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 }));
@@ -636,6 +656,11 @@ impl Player {
             is_wizard: false,
             killed_town_npcs: 0,
             town_npc_attack_threshold: rand::thread_rng().gen_range(1..=5),
+            spells_learnt: 0,
+            spells_worked: 0,
+            spells_forgotten: 0,
+            spells_learned_order: [99; 32],
+            new_spells_to_learn: 0,
             base_hp_levels,
             exp_factor,
             history,
@@ -649,6 +674,7 @@ impl Player {
         player.max_stats = player.stats.clone();
         player.update_equipment_bonuses();
         player.update_max_hp_and_mana();
+        player.update_spells_to_learn();
         player.hp = player.max_hp;
         player.mana = player.max_mana;
         player
@@ -1256,40 +1282,138 @@ impl Player {
 
         let is_caster = !matches!(self.class, Class::Warrior);
         if is_caster {
-            let min_level = match self.class {
-                Class::Mage => 1,
-                Class::Priest => 1,
-                Class::Rogue => 5,
-                Class::Ranger => 3,
-                Class::Paladin => 1,
-                Class::Warrior => 99,
+            let stat_val = match self.class {
+                Class::Mage | Class::Rogue | Class::Ranger => self.stats.intelligence,
+                _ => self.stats.wisdom,
             };
-            if self.level >= min_level {
-                let stat_val = match self.class {
-                    Class::Mage | Class::Rogue | Class::Ranger => self.stats.intelligence,
-                    _ => self.stats.wisdom,
-                };
-                let mana_per_level = if stat_val < 10 {
-                    0
-                } else if stat_val <= 14 {
-                    1
-                } else if stat_val <= 16 {
-                    2
-                } else if stat_val == 17 {
-                    3
-                } else if stat_val == 18 {
-                    4
-                } else {
-                    5
-                };
-                self.max_mana = ((self.level - min_level + 1) as i32 * mana_per_level).max(0);
+            let effective_learnt = if self.is_wizard {
+                self.spells_learnt.max(1)
             } else {
-                self.max_mana = 0;
-            }
+                self.spells_learnt
+            };
+            self.max_mana = crate::magic::calculate_max_mana(self.level, self.class, stat_val, effective_learnt);
         } else {
             self.max_mana = 0;
         }
         self.mana = self.mana.min(self.max_mana);
+        self.update_spells_to_learn();
+    }
+
+    pub fn is_mage_caster(&self) -> bool {
+        self.is_wizard || matches!(self.class, Class::Mage | Class::Rogue | Class::Ranger)
+    }
+
+    pub fn is_priest_caster(&self) -> bool {
+        self.is_wizard || matches!(self.class, Class::Priest | Class::Paladin)
+    }
+
+    pub fn knows_spell(&self, spell_idx: usize) -> bool {
+        self.is_wizard || (self.spells_learnt & (1 << spell_idx)) != 0
+    }
+
+    pub fn learn_spell(&mut self, spell_idx: usize) {
+        self.spells_learnt |= 1 << spell_idx;
+        for slot in self.spells_learned_order.iter_mut() {
+            if *slot == 99 {
+                *slot = spell_idx as u8;
+                break;
+            }
+        }
+        if self.new_spells_to_learn > 0 {
+            self.new_spells_to_learn -= 1;
+        }
+        if self.max_mana == 0 {
+            self.update_max_hp_and_mana();
+            self.mana = self.max_mana;
+        }
+    }
+
+    pub fn update_spells_to_learn(&mut self) {
+        let stat_val = if self.is_mage_caster() {
+            self.stats.intelligence
+        } else if self.is_priest_caster() {
+            self.stats.wisdom
+        } else {
+            self.new_spells_to_learn = 0;
+            return;
+        };
+        let allowed = crate::magic::number_of_spells_allowed(self.level, self.class, stat_val);
+        let known = self.spells_learnt.count_ones();
+        if allowed > known {
+            self.new_spells_to_learn = allowed - known;
+        } else {
+            self.new_spells_to_learn = 0;
+        }
+    }
+
+    pub fn carried_books(&self, is_prayer: bool) -> Vec<&Item> {
+        self.inventory
+            .iter()
+            .filter(|item| {
+                if is_prayer {
+                    matches!(item.item_type, ItemType::PrayerBook { .. }) || item.name.contains("Prayerbook")
+                } else {
+                    matches!(item.item_type, ItemType::MagicBook { .. }) || item.name.contains("Spellbook")
+                }
+            })
+            .collect()
+    }
+
+    pub fn carried_spell_flags(&self, is_prayer: bool) -> u32 {
+        let mut flags = 0u32;
+        for item in self.carried_books(is_prayer) {
+            match item.item_type {
+                ItemType::MagicBook { spell_flags } => flags |= spell_flags,
+                ItemType::PrayerBook { spell_flags } => flags |= spell_flags,
+                _ => {
+                    if item.name.contains("Beginner") {
+                        flags |= if is_prayer { 0x000000FF } else { 0x0000007F };
+                    } else if item.name.contains("Incantation") || item.name.contains("Words") || item.name.contains("Magick I") {
+                        flags |= if is_prayer { 0x0000FF00 } else { 0x0000FF80 };
+                    } else if item.name.contains("Sorcery") || item.name.contains("Chants") || item.name.contains("Magick II") {
+                        flags |= if is_prayer { 0x01FF0000 } else { 0x00FF0000 };
+                    } else if item.name.contains("Arcana") || item.name.contains("Power") || item.name.contains("Holy") || item.name.contains("Exorcism") {
+                        flags |= if is_prayer { 0x7E000000 } else { 0x7F000000 };
+                    }
+                }
+            }
+        }
+        flags
+    }
+
+    pub fn learnable_spells(&self) -> Vec<usize> {
+        let is_prayer = self.is_priest_caster();
+        let book_flags = if is_prayer {
+            0x7FFFFFFF // Priests receive prayers directly from their god
+        } else {
+            self.carried_spell_flags(false)
+        };
+        let mut list = Vec::new();
+        for i in 0..31 {
+            if (self.spells_learnt & (1 << i)) == 0
+                && (book_flags & (1 << i)) != 0
+                && let Some(def) = crate::magic::get_spell_def(self.class, i, is_prayer)
+                && def.level_required <= self.level
+            {
+                list.push(i);
+            }
+        }
+        list
+    }
+
+    pub fn known_spells(&self, is_prayer: bool) -> Vec<usize> {
+        let carried_flags = self.carried_spell_flags(is_prayer);
+        let mut list = Vec::new();
+        for i in 0..31 {
+            if self.knows_spell(i)
+                && (self.is_wizard || (carried_flags & (1 << i)) != 0)
+                && let Some(def) = crate::magic::get_spell_def(self.class, i, is_prayer)
+                && (def.level_required <= self.level || self.is_wizard)
+            {
+                list.push(i);
+            }
+        }
+        list
     }
 
     pub fn get_exp_to_next_level(&self) -> u32 {

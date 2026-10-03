@@ -51,6 +51,7 @@ pub enum Action {
     Help,               // Display help screen
     RefillLight,        // Refill lamp/lantern (F)
     ToggleSearch,       // Toggle search mode (#)
+    GainSpells,         // Study/learn magic spells or prayers (G)
     Unknown(char),
 }
 
@@ -129,6 +130,7 @@ impl InputMapper {
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,
             'Q' => Action::Quit,
+            'G' => Action::GainSpells,
             '?' => Action::Help,
 
             other => Action::Unknown(other),
@@ -180,6 +182,8 @@ impl InputMapper {
             '<' => Action::GoUpStairs,
             '>' => Action::GoDownStairs,
             '?' => Action::Help,
+            'G' => Action::GainSpells,
+            'b' => Action::BrowseBook,
             'j' => Action::JamDoor,
             'u' => Action::UseStaff,
 
