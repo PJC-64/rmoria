@@ -413,6 +413,13 @@ fn process_end_of_turn(
     if !new_monsters.is_empty() {
         monsters.append(&mut new_monsters);
     }
+
+    // Periodic town store maintenance every 1000 turns on town level (depth == 0)
+    if turn > 0 && turn.is_multiple_of(1000) && level.depth == 0 {
+        for shop in &mut level.shops {
+            shop.maintain(turn, &mut rng);
+        }
+    }
     
     Ok(())
 }
@@ -940,18 +947,14 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     let mut entered_shop = false;
                                     if level.depth == 0
                                         && let Some(shop_info) = level.shops.iter().find(|s| s.door_x == next_x && s.door_y == next_y) {
-                                            screen_mode = ScreenMode::Shop;
-                                            active_shop = shop_info.shop_type;
-                                            let shop_name = match active_shop {
-                                                ShopType::General => "Town General Store",
-                                                ShopType::Armory => "Town Armory",
-                                                ShopType::Weaponsmith => "Weaponsmith Forge",
-                                                ShopType::Temple => "Town Temple",
-                                                ShopType::Alchemy => "Alchemy Lab",
-                                                ShopType::Magic => "Magic-User Conclave",
-                                            };
-                                            status_msg = format!("Welcome to the {}!", shop_name);
-                                            entered_shop = true;
+                                            if shop_info.is_closed(game_turn) {
+                                                status_msg = "The door is locked! The shopkeeper had enough of your insults. Come back later.".to_string();
+                                            } else {
+                                                screen_mode = ScreenMode::Shop;
+                                                active_shop = shop_info.shop_type;
+                                                status_msg = format!("Welcome to {}!", shop_info.owner().name.trim());
+                                                entered_shop = true;
+                                            }
                                         }
 
                                     if entered_shop {
@@ -1483,12 +1486,17 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     } else if screen_mode == ScreenMode::BarterBuyMenu || screen_mode == ScreenMode::BarterSellMenu {
+                        let closed_turn_opt = level.shops.iter_mut()
+                            .find(|s| s.shop_type == active_shop)
+                            .map(|s| &mut s.closed_until_turn);
                         handle_haggle_input(
                             key_event,
                             &mut screen_mode,
                             &mut active_haggle,
                             &mut player,
                             &mut status_msg,
+                            game_turn,
+                            closed_turn_opt,
                         );
                     } else {
                         match key_event.code {
@@ -2520,9 +2528,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             let items = get_shop_items(active_shop);
                                             if idx < items.len() {
                                                 let (name, price, ref item_type) = items[idx];
-                                                let min_p = (price * 6 / 10).max(1);
+                                                let shop_info = level.shops.iter().find(|s| s.shop_type == active_shop);
+                                                let owner_idx = shop_info.map(|s| s.owner_index).unwrap_or(active_shop as usize);
+                                                let owner = &dungeon::STORE_OWNERS[owner_idx.min(dungeon::MAX_OWNERS - 1)];
+                                                let (min_p, max_p) = dungeon::calculate_buy_price(price, owner, player.race, player.stats.charisma);
                                                 if player.gold >= min_p {
-                                                    let base_p = price;
                                                     let h_item = Item::new(name, 1, match item_type {
                                                          ItemType::Weapon {..} => 10,
                                                          ItemType::Armor {..} => 80,
@@ -2536,15 +2546,16 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     active_haggle = Some(HaggleState {
                                                         item: h_item,
                                                         item_index: idx,
-                                                        initial_price: base_p,
+                                                        initial_price: max_p,
                                                         min_price: min_p,
-                                                        max_price: base_p,
-                                                        current_asking: base_p,
+                                                        max_price: max_p,
+                                                        current_asking: max_p,
                                                         last_bid: None,
                                                         insults: 0,
                                                         offers_count: 0,
-                                                        comment: "I will sell this for...".to_string(),
+                                                        comment: format!("Asking price: {} gp", max_p),
                                                         player_input: String::new(),
+                                                        owner_index: owner_idx,
                                                     });
                                                     screen_mode = ScreenMode::BarterBuyMenu;
                                                     status_msg = format!("Bartering for {}.", name);
@@ -2559,35 +2570,25 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     let idx = c as usize - 'a' as usize;
                                     if idx < player.inventory.len() {
                                         let item = &player.inventory[idx];
-                                        let base_val = match item.item_type {
-                                            ItemType::Weapon {..} => 25,
-                                            ItemType::Bow {..} => 25,
-                                            ItemType::Missile {..} => 3,
-                                            ItemType::Armor {..} => 40,
-                                            ItemType::Potion {..} => 15,
-                                            ItemType::Scroll {..} => 10,
-                                            ItemType::Wand {..} => 50,
-                                            ItemType::Staff {..} => 60,
-                                            ItemType::Food {..} => 5,
-                                            ItemType::Light {..} => 15,
-                                            ItemType::Ring {..} => 80,
-                                            ItemType::Amulet {..} => 80,
-                                            ItemType::MagicBook {..} => 30,
-                                            ItemType::PrayerBook {..} => 30,
-                                        };
+                                        let base_val = dungeon::get_item_base_value(item);
+                                        let shop_info = level.shops.iter().find(|s| s.shop_type == active_shop);
+                                        let owner_idx = shop_info.map(|s| s.owner_index).unwrap_or(active_shop as usize);
+                                        let owner = &dungeon::STORE_OWNERS[owner_idx.min(dungeon::MAX_OWNERS - 1)];
+                                        let (min_offer, max_offer) = dungeon::calculate_sell_price(base_val, owner, player.race, player.stats.charisma);
 
                                         active_haggle = Some(HaggleState {
                                             item: item.clone(),
                                             item_index: idx,
-                                            initial_price: (base_val * 6 / 10).max(1),
-                                            min_price: (base_val * 5 / 10).max(1),
-                                            max_price: (base_val * 13 / 10).max(1),
-                                            current_asking: (base_val * 6 / 10).max(1),
+                                            initial_price: min_offer,
+                                            min_price: min_offer,
+                                            max_price: max_offer,
+                                            current_asking: min_offer,
                                             last_bid: None,
                                             insults: 0,
                                             offers_count: 0,
-                                            comment: "I can pay...".to_string(),
+                                            comment: format!("I can offer you {} gp.", min_offer),
                                             player_input: String::new(),
+                                            owner_index: owner_idx,
                                         });
                                         screen_mode = ScreenMode::BarterSellMenu;
                                         status_msg = format!("Bartering to sell {}.", item.name);

@@ -5,7 +5,10 @@ pub mod tile;
 pub mod shop;
 
 pub use tile::{Tile, TileType, TrapType};
-pub use shop::{HaggleState, handle_haggle_input};
+pub use shop::{
+    HaggleState, handle_haggle_input, StoreOwner, STORE_OWNERS, MAX_OWNERS,
+    calculate_buy_price, calculate_sell_price, get_item_base_value,
+};
 use crate::player::{Item, ItemType, Player};
 use crate::dice::Dice;
 use crate::entity::monster::Monster;
@@ -25,6 +28,49 @@ pub struct ShopInfo {
     pub door_x: usize,
     pub door_y: usize,
     pub shop_type: ShopType,
+    #[serde(default)]
+    pub owner_index: usize,
+    #[serde(default)]
+    pub insults: u32,
+    #[serde(default)]
+    pub closed_until_turn: u64,
+}
+
+impl ShopInfo {
+    pub fn new(door_x: usize, door_y: usize, shop_type: ShopType, rng: &mut impl rand::Rng) -> Self {
+        let store_offset = shop_type as usize;
+        let owner_variant = rng.gen_range(0..3);
+        let owner_index = store_offset + owner_variant * 6;
+        Self {
+            door_x,
+            door_y,
+            shop_type,
+            owner_index,
+            insults: 0,
+            closed_until_turn: 0,
+        }
+    }
+
+    pub fn owner(&self) -> &'static StoreOwner {
+        &STORE_OWNERS[self.owner_index.min(MAX_OWNERS - 1)]
+    }
+
+    pub fn is_closed(&self, turn: u64) -> bool {
+        turn < self.closed_until_turn
+    }
+
+    pub fn maintain(&mut self, turn: u64, rng: &mut impl rand::Rng) {
+        self.insults = self.insults.saturating_sub(1);
+        if self.closed_until_turn > 0 && turn >= self.closed_until_turn {
+            self.closed_until_turn = 0;
+        }
+        if self.insults >= self.owner().max_insults && rng.gen_bool(0.20) {
+            let store_offset = self.shop_type as usize;
+            let owner_variant = rng.gen_range(0..3);
+            self.owner_index = store_offset + owner_variant * 6;
+            self.insults = 0;
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -534,7 +580,7 @@ impl DungeonLevel {
                             tile.tile_type = TileType::ShopDoor(shop_num);
                         }
 
-                        self.shops.push(ShopInfo { door_x, door_y, shop_type });
+                        self.shops.push(ShopInfo::new(door_x, door_y, shop_type, &mut rng));
                         placed_rects.push((sx, sy, sw, sh));
                         break;
                     }
