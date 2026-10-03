@@ -125,9 +125,38 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
             Item::new("Staff of Cure Light Wounds [3 charges]", 1, 12, ItemType::Staff { charges: 3, prayer_index: 1 })
         }
     } else if roll < 78 {
-        Item::new("Ration of Food", 1, 10, ItemType::Food { nutrition: 5000 })
-    } else if roll < 87 {
-        Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 })
+        let is_food = rng.gen_bool(0.5);
+        if is_food {
+            Item::new("Ration of Food", 1, 10, ItemType::Food { nutrition: 5000 })
+        } else {
+            Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 })
+        }
+    } else if roll < 88 {
+        let is_ring = rng.gen_bool(0.65);
+        if is_ring {
+            let ring_choice = rng.gen_range(0..10);
+            match ring_choice {
+                0 => Item::new_unidentified("Ring of Protection", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=3) }),
+                1 => Item::new_unidentified("Ring of Strength", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
+                2 => Item::new_unidentified("Ring of Dexterity", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
+                3 => Item::new_unidentified("Ring of Constitution", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
+                4 => Item::new_unidentified("Ring of Intelligence", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=2) }),
+                5 => Item::new_unidentified("Ring of Slow Digestion", 1, 2, ItemType::Ring { bonus: 0 }),
+                6 => Item::new_unidentified("Ring of Feather Falling", 1, 2, ItemType::Ring { bonus: 0 }),
+                7 => Item::new_unidentified("Ring of Resist Fire", 1, 2, ItemType::Ring { bonus: 0 }),
+                8 => Item::new_unidentified("Ring of Resist Cold", 1, 2, ItemType::Ring { bonus: 0 }),
+                _ => Item::new_unidentified("Ring of Increase Damage", 1, 2, ItemType::Ring { bonus: rng.gen_range(1..=3) }),
+            }
+        } else {
+            let amulet_choice = rng.gen_range(0..5);
+            match amulet_choice {
+                0 => Item::new_unidentified("Amulet of Wisdom", 1, 3, ItemType::Amulet { bonus: rng.gen_range(1..=2) }),
+                1 => Item::new_unidentified("Amulet of Charisma", 1, 3, ItemType::Amulet { bonus: rng.gen_range(1..=2) }),
+                2 => Item::new_unidentified("Amulet of Slow Digestion", 1, 3, ItemType::Amulet { bonus: 0 }),
+                3 => Item::new_unidentified("Amulet of Resist Acid", 1, 3, ItemType::Amulet { bonus: 0 }),
+                _ => Item::new_unidentified("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 }),
+            }
+        }
     } else {
         let gold_amount = rng.gen_range(15..=40) * (depth + 1);
         Item::new(&format!("Gold Pile [{} gp]", gold_amount), 1, 1, ItemType::Scroll { teleport: false })
@@ -821,6 +850,10 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Scroll of Identify", 50, ItemType::Scroll { teleport: false }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
             ("Priest Prayerbook [Beginner's Handbook]", 50, ItemType::Scroll { teleport: false }),
+            ("Amulet of Wisdom (+1)", 300, ItemType::Amulet { bonus: 1 }),
+            ("Amulet of Charisma (+1)", 250, ItemType::Amulet { bonus: 1 }),
+            ("Amulet of Slow Digestion", 200, ItemType::Amulet { bonus: 0 }),
+            ("Amulet of Resist Acid", 250, ItemType::Amulet { bonus: 0 }),
         ],
         ShopType::Alchemy => vec![
             ("Potion of Cure Light Wounds", 30, ItemType::Potion { heal_amount: 10 }),
@@ -837,6 +870,11 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(&'static str, u32, ItemType)> {
             ("Scroll of Teleportation", 60, ItemType::Scroll { teleport: true }),
             ("Scroll of Word of Recall", 150, ItemType::Scroll { teleport: false }),
             ("Mage Spellbook [Beginner's Magick]", 50, ItemType::Scroll { teleport: false }),
+            ("Ring of Protection (+1)", 200, ItemType::Ring { bonus: 1 }),
+            ("Ring of Slow Digestion", 250, ItemType::Ring { bonus: 0 }),
+            ("Ring of Feather Falling", 250, ItemType::Ring { bonus: 0 }),
+            ("Ring of Resist Fire", 300, ItemType::Ring { bonus: 0 }),
+            ("Ring of Strength (+1)", 400, ItemType::Ring { bonus: 1 }),
         ],
     }
 }

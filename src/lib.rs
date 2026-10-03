@@ -2714,6 +2714,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                          ItemType::Armor {..} => 80,
                                                          ItemType::Potion {..} => 5,
                                                          ItemType::Light {..} => 15,
+                                                         ItemType::Ring {..} => 2,
+                                                         ItemType::Amulet {..} => 3,
                                                          _ => 2,
                                                      }, item_type.clone());
                                                     
@@ -2754,6 +2756,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             ItemType::Staff {..} => 60,
                                             ItemType::Food {..} => 5,
                                             ItemType::Light {..} => 15,
+                                            ItemType::Ring {..} => 80,
+                                            ItemType::Amulet {..} => 80,
                                         };
 
                                         active_haggle = Some(HaggleState {
@@ -2777,21 +2781,38 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     let equippable_indices: Vec<usize> = player.inventory.iter()
                                         .enumerate()
                                         .filter(|(_, item)| {
-                                            matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..})
+                                            matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..} | ItemType::Ring {..} | ItemType::Amulet {..})
                                         })
                                         .map(|(i, _)| i)
                                         .collect();
 
                                     if idx < equippable_indices.len() {
                                         let inv_idx = equippable_indices[idx];
-                                        let item = player.inventory.remove(inv_idx);
-                                        let item_slot = item.get_equipment_slot();
+                                        let mut item = player.inventory.remove(inv_idx);
+                                        let target_slot = match &item.item_type {
+                                            ItemType::Ring { .. } => {
+                                                let right_taken = player.equipment.iter().any(|eq| eq.get_equipment_slot() == "On right hand");
+                                                let left_taken = player.equipment.iter().any(|eq| eq.get_equipment_slot() == "On left hand");
+                                                if !right_taken {
+                                                    "On right hand".to_string()
+                                                } else if !left_taken {
+                                                    "On left hand".to_string()
+                                                } else {
+                                                    "On right hand".to_string()
+                                                }
+                                            }
+                                            ItemType::Amulet { .. } => "Around neck".to_string(),
+                                            _ => item.get_equipment_slot().to_string(),
+                                        };
+                                        item.equipped_slot = Some(target_slot.clone());
+
                                         let already_equipped = player.equipment.iter().position(|eq| {
-                                            eq.get_equipment_slot() == item_slot
+                                            eq.get_equipment_slot() == target_slot
                                         });
 
                                         if let Some(eq_idx) = already_equipped {
-                                            let old = player.equipment.remove(eq_idx);
+                                            let mut old = player.equipment.remove(eq_idx);
+                                            old.equipped_slot = None;
                                             status_msg = format!("You take off {} and equip {}.", old.name, item.name);
                                             player.inventory.push(old);
                                         } else {
@@ -2799,15 +2820,18 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         }
 
                                         player.equipment.push(item);
+                                        player.update_equipment_bonuses();
                                         screen_mode = ScreenMode::Dungeon;
                                         player_acted = true;
                                     }
                                 } else if screen_mode == ScreenMode::TakeOffMenu {
                                     let idx = c as usize - 'a' as usize;
                                     if idx < player.equipment.len() {
-                                        let item = player.equipment.remove(idx);
+                                        let mut item = player.equipment.remove(idx);
+                                        item.equipped_slot = None;
                                         status_msg = format!("You took off {}.", item.name);
                                         player.inventory.push(item);
+                                        player.update_equipment_bonuses();
                                         screen_mode = ScreenMode::Dungeon;
                                         player_acted = true;
                                     }

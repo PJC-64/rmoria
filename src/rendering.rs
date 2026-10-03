@@ -68,9 +68,10 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         "          "
     };
 
-    let speed_str = if player.flags.fast > 0 && player.flags.slow == 0 {
+    let is_slow = player.flags.slow > 0 || player.is_encumbered();
+    let speed_str = if player.flags.fast > 0 && !is_slow {
         "Fast     "
-    } else if player.flags.slow > 0 && player.flags.fast == 0 {
+    } else if is_slow && player.flags.fast == 0 {
         "Slow     "
     } else {
         "         "
@@ -170,6 +171,8 @@ fn get_item_symbol(item: &Item) -> char {
             ItemType::Staff { .. } => '_',
             ItemType::Food { .. } => ',',
             ItemType::Light { .. } => '~',
+            ItemType::Ring { .. } => '=',
+            ItemType::Amulet { .. } => '"',
         }
     }
 }
@@ -302,7 +305,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         }
         ScreenMode::InventoryList => {
             if row == 0 {
-                return "--- INVENTORY LIST ---".to_string();
+                let w_quot = player.total_weight() / 10;
+                let w_rem = player.total_weight() % 10;
+                let cap_quot = player.carrying_capacity() / 10;
+                let cap_rem = player.carrying_capacity() % 10;
+                return format!("--- INVENTORY (Carrying {}.{} lbs / Capacity {}.{} lbs) ---", w_quot, w_rem, cap_quot, cap_rem);
             }
             if row == player.inventory.len() + 2 {
                 return "----------------------".to_string();
@@ -330,6 +337,20 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Staff { charges, .. } => format!("Staff ({} charges)", charges),
                     ItemType::Food { nutrition } => format!("Food (nutrition {})", nutrition),
                     ItemType::Light { fuel } => format!("Light ({} turns left)", fuel),
+                    ItemType::Ring { bonus } => {
+                        if *bonus != 0 {
+                            format!("Ring, {:+}", bonus)
+                        } else {
+                            "Ring".to_string()
+                        }
+                    }
+                    ItemType::Amulet { bonus } => {
+                        if *bonus != 0 {
+                            format!("Amulet, {:+}", bonus)
+                        } else {
+                            "Amulet".to_string()
+                        }
+                    }
                 };
                 return format!("{}. {} ({}) x{}", (b'a' + idx as u8) as char, item.display_name(), details, item.count);
             }
@@ -363,7 +384,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             let equippable: Vec<(usize, &Item)> = player.inventory.iter()
                 .enumerate()
                 .filter(|(_, item)| {
-                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..})
+                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..} | ItemType::Ring {..} | ItemType::Amulet {..})
                 })
                 .collect();
 
@@ -378,14 +399,29 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let (_, item) = equippable[idx];
                 let details = match &item.item_type {
                     ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
+                    ItemType::Bow { multiplier } => format!("Launcher, x{} dmg", multiplier),
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
                     ItemType::Light { fuel } => format!("Light Source ({} turns fuel)", fuel),
+                    ItemType::Ring { bonus } => {
+                        if *bonus != 0 {
+                            format!("Ring, {:+}", bonus)
+                        } else {
+                            "Ring".to_string()
+                        }
+                    }
+                    ItemType::Amulet { bonus } => {
+                        if *bonus != 0 {
+                            format!("Amulet, {:+}", bonus)
+                        } else {
+                            "Amulet".to_string()
+                        }
+                    }
                     _ => "Accessory".to_string(),
                 };
                 return format!("{}. {} ({})", (b'a' + idx as u8) as char, item.display_name(), details);
             }
             if equippable.is_empty() && row == 1 {
-                return "(No equippable weapons, armors or lights in inventory)".to_string();
+                return "(No equippable weapons, armors, rings, amulets or lights in inventory)".to_string();
             }
             "".to_string()
         }
@@ -614,6 +650,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 9 => format!("  HP:   {}/{}       Mana: {}/{}", player.hp, player.max_hp, player.mana, player.max_mana),
                 10 => format!("  AC:   {:<10} Gold: {} gp", player.calculate_ac(), player.gold),
                 11 => format!("  Level: {:<9} Exp:  {} exp", player.level, player.exp),
+                12 => format!("  Weight: {}.{} lbs   Capacity: {}.{} lbs", player.total_weight() / 10, player.total_weight() % 10, player.carrying_capacity() / 10, player.carrying_capacity() % 10),
                 13 => "Racial History & Background:".to_string(),
                 r if r >= 14 && r < 14 + split_history.len() => {
                     format!("  {}", split_history[r - 14])
@@ -925,6 +962,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::Staff {..} => 60,
                     ItemType::Food {..} => 5,
                     ItemType::Light {..} => 15,
+                    ItemType::Ring {..} => 80,
+                    ItemType::Amulet {..} => 80,
                 };
                 return format!("{}. {} (sells for {} gp) x{}", (b'a' + idx as u8) as char, item.display_name(), value, item.count);
             }

@@ -159,7 +159,9 @@ pub fn run_character_creation(
             max_mana: 0, mana: 0,
             food: 7500,
             stats: rolled.clone(),
+            base_stats: rolled.clone(),
             max_stats: rolled.clone(),
+            body_weight: 150,
             flags: PlayerFlags::default(),
             max_depth_reached: 0,
             flavors: crate::flavor::FlavorRegistry::new(rng),
@@ -175,7 +177,9 @@ pub fn run_character_creation(
             history: "".to_string(),
         };
         temp_player.apply_race_and_class_modifiers();
+        temp_player.base_stats = temp_player.stats.clone();
         temp_player.max_stats = temp_player.stats.clone();
+        temp_player.update_equipment_bonuses();
         let history = generate_history(race);
         let split_history = wrap_text(&history, 54);
 

@@ -88,7 +88,15 @@ pub fn generate_scroll_title<R: Rng>(rng: &mut R) -> String {
 pub struct FlavorRegistry {
     pub potion_flavors: HashMap<String, String>,
     pub scroll_flavors: HashMap<String, String>,
+    #[serde(default)]
+    pub ring_flavors: HashMap<String, String>,
+    #[serde(default)]
+    pub amulet_flavors: HashMap<String, String>,
     pub available_colors: Vec<String>,
+    #[serde(default)]
+    pub available_rocks: Vec<String>,
+    #[serde(default)]
+    pub available_amulets: Vec<String>,
     pub identified_items: HashSet<String>,
 }
 
@@ -107,10 +115,20 @@ impl FlavorRegistry {
             colors[3..].shuffle(rng);
         }
 
+        let mut rocks: Vec<String> = ROCKS.iter().map(|s| s.to_string()).collect();
+        rocks.shuffle(rng);
+
+        let mut amulets: Vec<String> = AMULETS.iter().map(|s| s.to_string()).collect();
+        amulets.shuffle(rng);
+
         Self {
             potion_flavors: HashMap::new(),
             scroll_flavors: HashMap::new(),
+            ring_flavors: HashMap::new(),
+            amulet_flavors: HashMap::new(),
             available_colors: colors,
+            available_rocks: rocks,
+            available_amulets: amulets,
             identified_items: HashSet::new(),
         }
     }
@@ -155,6 +173,50 @@ impl FlavorRegistry {
         title
     }
 
+    pub fn get_or_create_ring_flavor<R: Rng>(&mut self, item_name: &str, rng: &mut R) -> String {
+        if let Some(flavor) = self.ring_flavors.get(item_name) {
+            return flavor.clone();
+        }
+
+        if self.available_rocks.is_empty() {
+            let mut rocks: Vec<String> = ROCKS.iter().map(|s| s.to_string()).collect();
+            rocks.shuffle(rng);
+            self.available_rocks = rocks;
+        }
+
+        let flavor = if !self.available_rocks.is_empty() {
+            self.available_rocks.remove(0)
+        } else {
+            let idx = rng.gen_range(0..ROCKS.len());
+            ROCKS[idx].to_string()
+        };
+
+        self.ring_flavors.insert(item_name.to_string(), flavor.clone());
+        flavor
+    }
+
+    pub fn get_or_create_amulet_flavor<R: Rng>(&mut self, item_name: &str, rng: &mut R) -> String {
+        if let Some(flavor) = self.amulet_flavors.get(item_name) {
+            return flavor.clone();
+        }
+
+        if self.available_amulets.is_empty() {
+            let mut ams: Vec<String> = AMULETS.iter().map(|s| s.to_string()).collect();
+            ams.shuffle(rng);
+            self.available_amulets = ams;
+        }
+
+        let flavor = if !self.available_amulets.is_empty() {
+            self.available_amulets.remove(0)
+        } else {
+            let idx = rng.gen_range(0..AMULETS.len());
+            AMULETS[idx].to_string()
+        };
+
+        self.amulet_flavors.insert(item_name.to_string(), flavor.clone());
+        flavor
+    }
+
     pub fn assign_flavor<R: Rng>(&mut self, item: &mut Item, rng: &mut R) {
         // Books and mundane equipment don't have flavors
         if item.name.contains("Spellbook") || item.name.contains("Prayerbook") || item.name.contains("Torch") || item.name.contains("Flask") {
@@ -174,6 +236,14 @@ impl FlavorRegistry {
                 }
                 ItemType::Scroll { .. } => {
                     let flv = self.get_or_create_scroll_flavor(&item.name, rng);
+                    item.flavor = Some(flv);
+                }
+                ItemType::Ring { .. } => {
+                    let flv = self.get_or_create_ring_flavor(&item.name, rng);
+                    item.flavor = Some(flv);
+                }
+                ItemType::Amulet { .. } => {
+                    let flv = self.get_or_create_amulet_flavor(&item.name, rng);
                     item.flavor = Some(flv);
                 }
                 _ => {}
@@ -224,5 +294,33 @@ mod tests {
         reg.identify(&sc.name);
         sc.identified = true;
         assert_eq!(sc.display_name(), "Scroll of Phase Door");
+    }
+
+    #[test]
+    fn test_ring_and_amulet_flavor_assignment() {
+        let mut rng = rand::thread_rng();
+        let mut reg = FlavorRegistry::new(&mut rng);
+
+        let mut ring = Item::new_unidentified("Ring of Strength", 1, 2, ItemType::Ring { bonus: 2 });
+        reg.assign_flavor(&mut ring, &mut rng);
+        assert!(!ring.identified);
+        assert!(ring.flavor.is_some());
+        assert!(ring.display_name().ends_with("Ring"));
+        assert!(!ring.display_name().contains("Strength"));
+
+        reg.identify(&ring.name);
+        ring.identified = true;
+        assert_eq!(ring.display_name(), "Ring of Strength (+2)");
+
+        let mut amulet = Item::new_unidentified("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 });
+        reg.assign_flavor(&mut amulet, &mut rng);
+        assert!(!amulet.identified);
+        assert!(amulet.flavor.is_some());
+        assert!(amulet.display_name().ends_with("Amulet"));
+        assert!(!amulet.display_name().contains("Magi"));
+
+        reg.identify(&amulet.name);
+        amulet.identified = true;
+        assert_eq!(amulet.display_name(), "Amulet of the Magi (+3)");
     }
 }

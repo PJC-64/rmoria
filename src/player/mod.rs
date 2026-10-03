@@ -79,6 +79,34 @@ pub fn format_stat(val: i16) -> String {
     }
 }
 
+/// Adjusts a stat value by an integer modifier (such as from rings or amulets),
+/// following canonical Umoria rules:
+/// - Positive modifier: increases stat by 1 if < 18, or by 10 percentile points if >= 18 (capped at 118).
+/// - Negative modifier: decreases stat by 10 percentile points if > 27, caps down to 18 if between 19 and 27,
+///   or decreases by 1 if <= 18 (down to a minimum of 3).
+pub fn modify_stat(current: i16, amount: i32) -> i16 {
+    let mut new_stat = current;
+    let loop_count = amount.unsigned_abs();
+    for _ in 0..loop_count {
+        if amount > 0 {
+            if new_stat < 18 {
+                new_stat += 1;
+            } else if new_stat < 108 {
+                new_stat += 10;
+            } else {
+                new_stat = 118;
+            }
+        } else if new_stat > 27 {
+            new_stat -= 10;
+        } else if new_stat > 18 {
+            new_stat = 18;
+        } else if new_stat > 3 {
+            new_stat -= 1;
+        }
+    }
+    new_stat
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct PlayerFlags {
     pub rest: i16,
@@ -141,6 +169,8 @@ pub enum ItemType {
     Light { fuel: i32 },
     Bow { multiplier: u32 },
     Missile { damage: Dice },
+    Ring { bonus: i32 },
+    Amulet { bonus: i32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +192,8 @@ pub struct Item {
     pub identified: bool,
     #[serde(default)]
     pub flavor: Option<String>,
+    #[serde(default)]
+    pub equipped_slot: Option<String>,
 }
 
 fn default_identified() -> bool {
@@ -178,6 +210,7 @@ impl Item {
             inscription: None,
             identified: true,
             flavor: None,
+            equipped_slot: None,
         }
     }
 
@@ -190,6 +223,7 @@ impl Item {
             inscription: None,
             identified: false,
             flavor: None,
+            equipped_slot: None,
         }
     }
 
@@ -201,13 +235,23 @@ impl Item {
                     ItemType::Scroll { .. } => format!("Scroll titled \"{}\"", flv),
                     ItemType::Wand { .. } => format!("{} Wand", flv),
                     ItemType::Staff { .. } => format!("{} Staff", flv),
+                    ItemType::Ring { .. } => format!("{} Ring", flv),
+                    ItemType::Amulet { .. } => format!("{} Amulet", flv),
                     _ => format!("{} {}", flv, self.name),
                 }
             } else {
                 self.name.clone()
             }
         } else {
-            self.name.clone()
+            match &self.item_type {
+                ItemType::Ring { bonus } if *bonus != 0 && !self.name.contains('(') => {
+                    format!("{} ({:+})", self.name, bonus)
+                }
+                ItemType::Amulet { bonus } if *bonus != 0 && !self.name.contains('(') => {
+                    format!("{} ({:+})", self.name, bonus)
+                }
+                _ => self.name.clone(),
+            }
         };
 
         if let Some(ref ins) = self.inscription {
@@ -217,11 +261,16 @@ impl Item {
         }
     }
 
-    pub fn get_equipment_slot(&self) -> &'static str {
+    pub fn get_equipment_slot(&self) -> &str {
+        if let Some(ref slot) = self.equipped_slot {
+            return slot.as_str();
+        }
         match &self.item_type {
             ItemType::Weapon { .. } => "Weapon",
             ItemType::Bow { .. } => "Ranged Weapon",
             ItemType::Light { .. } => "Light Source",
+            ItemType::Ring { .. } => "On right hand",
+            ItemType::Amulet { .. } => "Around neck",
             ItemType::Armor { .. } => {
                 let name = self.name.to_lowercase();
                 if name.contains("shield") {
@@ -254,6 +303,10 @@ fn default_food() -> i32 {
     7500
 }
 
+fn default_body_weight() -> u32 {
+    150
+}
+
 fn default_town_threshold() -> u32 {
     use rand::Rng;
     rand::thread_rng().gen_range(1..=5)
@@ -280,7 +333,11 @@ pub struct Player {
     
     pub stats: Attributes,
     #[serde(default)]
+    pub base_stats: Attributes,
+    #[serde(default)]
     pub max_stats: Attributes,
+    #[serde(default = "default_body_weight")]
+    pub body_weight: u32,
     #[serde(default)]
     pub flags: PlayerFlags,
     #[serde(default)]
@@ -520,6 +577,16 @@ impl Player {
         };
         let exp_factor = race_exp + class_exp;
         let history = generate_history(race);
+        let body_weight = match race {
+            Race::Human => 180,
+            Race::HalfElf => 130,
+            Race::Elf => 100,
+            Race::Halfling => 60,
+            Race::Gnome => 90,
+            Race::Dwarf => 150,
+            Race::HalfOrc => 150,
+            Race::HalfTroll => 220,
+        };
 
         let mut player = Self {
             name: name.to_string(),
@@ -536,7 +603,9 @@ impl Player {
             mana: 0,
             food: 7500,
             stats: base_stats.clone(),
+            base_stats: base_stats.clone(),
             max_stats: base_stats,
+            body_weight,
             flags: PlayerFlags::default(),
             max_depth_reached: 0,
             flavors: crate::flavor::FlavorRegistry::new(&mut temp_rng),
@@ -576,7 +645,9 @@ impl Player {
         player.flavors.identify("Scroll of Phase Door");
         
         player.apply_race_and_class_modifiers();
+        player.base_stats = player.stats.clone();
         player.max_stats = player.stats.clone();
+        player.update_equipment_bonuses();
         player.update_max_hp_and_mana();
         player.hp = player.max_hp;
         player.mana = player.max_mana;
@@ -713,6 +784,155 @@ impl Player {
         }
     }
 
+    /// Recalculates all intrinsic flags and stat bonuses granted by equipped items.
+    pub fn update_equipment_bonuses(&mut self) {
+        if self.base_stats.strength == 0 && self.base_stats.intelligence == 0 {
+            self.base_stats = self.stats.clone();
+        }
+
+        // Reset intrinsic flags provided by equipment
+        self.flags.see_invisible = self.flags.detect_invisible > 0;
+        self.flags.teleport = false;
+        self.flags.free_action = false;
+        self.flags.slow_digest = false;
+        self.flags.aggravate = false;
+        self.flags.resistant_to_fire = false;
+        self.flags.resistant_to_cold = false;
+        self.flags.resistant_to_acid = false;
+        self.flags.free_fall = false;
+        self.flags.sustain_str = false;
+        self.flags.sustain_int = false;
+        self.flags.sustain_wis = false;
+        self.flags.sustain_con = false;
+        self.flags.sustain_dex = false;
+        self.flags.sustain_chr = false;
+
+        let mut str_mod = 0i32;
+        let mut int_mod = 0i32;
+        let mut wis_mod = 0i32;
+        let mut dex_mod = 0i32;
+        let mut con_mod = 0i32;
+        let mut chr_mod = 0i32;
+
+        for item in &self.equipment {
+            let name_lower = item.name.to_lowercase();
+            match &item.item_type {
+                ItemType::Ring { bonus } => {
+                    if name_lower.contains("strength") && !name_lower.contains("sustain") {
+                        str_mod += bonus;
+                    } else if name_lower.contains("dexterity") && !name_lower.contains("sustain") {
+                        dex_mod += bonus;
+                    } else if name_lower.contains("constitution") && !name_lower.contains("sustain") {
+                        con_mod += bonus;
+                    } else if name_lower.contains("intelligence") && !name_lower.contains("sustain") {
+                        int_mod += bonus;
+                    } else if name_lower.contains("weakness") {
+                        str_mod -= bonus.abs().max(1);
+                    } else if name_lower.contains("stupidity") {
+                        int_mod -= bonus.abs().max(1);
+                    } else if name_lower.contains("woe") {
+                        str_mod -= 5;
+                        int_mod -= 5;
+                        wis_mod -= 5;
+                    }
+
+                    if name_lower.contains("see invisible") {
+                        self.flags.see_invisible = true;
+                    }
+                    if name_lower.contains("free action") {
+                        self.flags.free_action = true;
+                    }
+                    if name_lower.contains("slow digestion") {
+                        self.flags.slow_digest = true;
+                    }
+                    if name_lower.contains("feather falling") {
+                        self.flags.free_fall = true;
+                    }
+                    if name_lower.contains("resist fire") || name_lower.contains("lordly protection (fire)") {
+                        self.flags.resistant_to_fire = true;
+                    }
+                    if name_lower.contains("resist cold") || name_lower.contains("lordly protection (cold)") {
+                        self.flags.resistant_to_cold = true;
+                    }
+                    if name_lower.contains("lordly protection (acid)") {
+                        self.flags.resistant_to_acid = true;
+                    }
+                    if name_lower.contains("teleportation") {
+                        self.flags.teleport = true;
+                    }
+                    if name_lower.contains("aggravate") {
+                        self.flags.aggravate = true;
+                    }
+                    if name_lower.contains("sustain strength") {
+                        self.flags.sustain_str = true;
+                    }
+                    if name_lower.contains("sustain intelligence") {
+                        self.flags.sustain_int = true;
+                    }
+                    if name_lower.contains("sustain wisdom") {
+                        self.flags.sustain_wis = true;
+                    }
+                    if name_lower.contains("sustain constitution") {
+                        self.flags.sustain_con = true;
+                    }
+                    if name_lower.contains("sustain dexterity") {
+                        self.flags.sustain_dex = true;
+                    }
+                    if name_lower.contains("sustain charisma") {
+                        self.flags.sustain_chr = true;
+                    }
+                }
+                ItemType::Amulet { bonus } => {
+                    if name_lower.contains("wisdom") {
+                        wis_mod += bonus;
+                    } else if name_lower.contains("charisma") {
+                        chr_mod += bonus;
+                    } else if name_lower.contains("the magi") {
+                        int_mod += bonus;
+                        wis_mod += bonus;
+                        chr_mod += bonus;
+                        self.flags.free_action = true;
+                        self.flags.see_invisible = true;
+                    } else if name_lower.contains("doom") {
+                        str_mod -= 5;
+                        int_mod -= 5;
+                        wis_mod -= 5;
+                        dex_mod -= 5;
+                        con_mod -= 5;
+                        chr_mod -= 5;
+                    }
+
+                    if name_lower.contains("resist acid") {
+                        self.flags.resistant_to_acid = true;
+                    }
+                    if name_lower.contains("slow digestion") {
+                        self.flags.slow_digest = true;
+                    }
+                    if name_lower.contains("teleportation") {
+                        self.flags.teleport = true;
+                    }
+                }
+                _ => {
+                    if name_lower.contains("see invisible") {
+                        self.flags.see_invisible = true;
+                    }
+                    if name_lower.contains("free action") {
+                        self.flags.free_action = true;
+                    }
+                }
+            }
+        }
+
+        self.stats.strength = modify_stat(self.base_stats.strength, str_mod);
+        self.stats.intelligence = modify_stat(self.base_stats.intelligence, int_mod);
+        self.stats.wisdom = modify_stat(self.base_stats.wisdom, wis_mod);
+        self.stats.dexterity = modify_stat(self.base_stats.dexterity, dex_mod);
+        self.stats.constitution = modify_stat(self.base_stats.constitution, con_mod);
+        self.stats.charisma = modify_stat(self.base_stats.charisma, chr_mod);
+
+        self.update_max_hp_and_mana();
+    }
+
     /// Drains a stat by 1 or percentile chunk according to canonical Umoria rules.
     /// If sustained, does nothing and returns false.
     pub fn drain_stat<R: rand::Rng>(&mut self, stat_idx: usize, rng: &mut R) -> bool {
@@ -720,13 +940,17 @@ impl Player {
             return false;
         }
 
+        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+            self.base_stats = self.stats.clone();
+        }
+
         let current = match stat_idx {
-            0 => self.stats.strength,
-            1 => self.stats.intelligence,
-            2 => self.stats.wisdom,
-            3 => self.stats.dexterity,
-            4 => self.stats.constitution,
-            5 => self.stats.charisma,
+            0 => self.base_stats.strength,
+            1 => self.base_stats.intelligence,
+            2 => self.base_stats.wisdom,
+            3 => self.base_stats.dexterity,
+            4 => self.base_stats.constitution,
+            5 => self.base_stats.charisma,
             _ => return false,
         };
 
@@ -743,28 +967,32 @@ impl Player {
         };
 
         match stat_idx {
-            0 => self.stats.strength = new_stat,
-            1 => self.stats.intelligence = new_stat,
-            2 => self.stats.wisdom = new_stat,
-            3 => self.stats.dexterity = new_stat,
-            4 => self.stats.constitution = new_stat,
-            5 => self.stats.charisma = new_stat,
+            0 => self.base_stats.strength = new_stat,
+            1 => self.base_stats.intelligence = new_stat,
+            2 => self.base_stats.wisdom = new_stat,
+            3 => self.base_stats.dexterity = new_stat,
+            4 => self.base_stats.constitution = new_stat,
+            5 => self.base_stats.charisma = new_stat,
             _ => {}
         }
 
-        self.update_max_hp_and_mana();
+        self.update_equipment_bonuses();
         true
     }
 
     /// Restores a single stat back to its natural maximum.
     pub fn restore_stat(&mut self, stat_idx: usize) -> bool {
+        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+            self.base_stats = self.stats.clone();
+        }
+
         let (current, max) = match stat_idx {
-            0 => (self.stats.strength, self.max_stats.strength),
-            1 => (self.stats.intelligence, self.max_stats.intelligence),
-            2 => (self.stats.wisdom, self.max_stats.wisdom),
-            3 => (self.stats.dexterity, self.max_stats.dexterity),
-            4 => (self.stats.constitution, self.max_stats.constitution),
-            5 => (self.stats.charisma, self.max_stats.charisma),
+            0 => (self.base_stats.strength, self.max_stats.strength),
+            1 => (self.base_stats.intelligence, self.max_stats.intelligence),
+            2 => (self.base_stats.wisdom, self.max_stats.wisdom),
+            3 => (self.base_stats.dexterity, self.max_stats.dexterity),
+            4 => (self.base_stats.constitution, self.max_stats.constitution),
+            5 => (self.base_stats.charisma, self.max_stats.charisma),
             _ => return false,
         };
 
@@ -773,16 +1001,16 @@ impl Player {
         }
 
         match stat_idx {
-            0 => self.stats.strength = max,
-            1 => self.stats.intelligence = max,
-            2 => self.stats.wisdom = max,
-            3 => self.stats.dexterity = max,
-            4 => self.stats.constitution = max,
-            5 => self.stats.charisma = max,
+            0 => self.base_stats.strength = max,
+            1 => self.base_stats.intelligence = max,
+            2 => self.base_stats.wisdom = max,
+            3 => self.base_stats.dexterity = max,
+            4 => self.base_stats.constitution = max,
+            5 => self.base_stats.charisma = max,
             _ => {}
         }
 
-        self.update_max_hp_and_mana();
+        self.update_equipment_bonuses();
         true
     }
 
@@ -799,13 +1027,17 @@ impl Player {
 
     /// Increases a stat (e.g. via stat gain potion) up to 118 (18/100).
     pub fn increase_stat<R: rand::Rng>(&mut self, stat_idx: usize, rng: &mut R) -> bool {
+        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+            self.base_stats = self.stats.clone();
+        }
+
         let current = match stat_idx {
-            0 => self.stats.strength,
-            1 => self.stats.intelligence,
-            2 => self.stats.wisdom,
-            3 => self.stats.dexterity,
-            4 => self.stats.constitution,
-            5 => self.stats.charisma,
+            0 => self.base_stats.strength,
+            1 => self.base_stats.intelligence,
+            2 => self.base_stats.wisdom,
+            3 => self.base_stats.dexterity,
+            4 => self.base_stats.constitution,
+            5 => self.base_stats.charisma,
             _ => return false,
         };
 
@@ -823,33 +1055,33 @@ impl Player {
 
         match stat_idx {
             0 => {
-                self.stats.strength = new_stat;
+                self.base_stats.strength = new_stat;
                 if new_stat > self.max_stats.strength { self.max_stats.strength = new_stat; }
             }
             1 => {
-                self.stats.intelligence = new_stat;
+                self.base_stats.intelligence = new_stat;
                 if new_stat > self.max_stats.intelligence { self.max_stats.intelligence = new_stat; }
             }
             2 => {
-                self.stats.wisdom = new_stat;
+                self.base_stats.wisdom = new_stat;
                 if new_stat > self.max_stats.wisdom { self.max_stats.wisdom = new_stat; }
             }
             3 => {
-                self.stats.dexterity = new_stat;
+                self.base_stats.dexterity = new_stat;
                 if new_stat > self.max_stats.dexterity { self.max_stats.dexterity = new_stat; }
             }
             4 => {
-                self.stats.constitution = new_stat;
+                self.base_stats.constitution = new_stat;
                 if new_stat > self.max_stats.constitution { self.max_stats.constitution = new_stat; }
             }
             5 => {
-                self.stats.charisma = new_stat;
+                self.base_stats.charisma = new_stat;
                 if new_stat > self.max_stats.charisma { self.max_stats.charisma = new_stat; }
             }
             _ => {}
         }
 
-        self.update_max_hp_and_mana();
+        self.update_equipment_bonuses();
         true
     }
 
@@ -1105,6 +1337,14 @@ impl Player {
         };
 
         let mut damage = base_dice.roll(rng) as i32 + (self.stats.strength as i32 - 10) / 2;
+        for item in &self.equipment {
+            if let ItemType::Ring { bonus } = &item.item_type {
+                let lname = item.name.to_lowercase();
+                if lname.contains("increase damage") || lname.contains("slaying") {
+                    damage += bonus;
+                }
+            }
+        }
         if self.flags.heroism > 0 {
             damage += 2;
         }
@@ -1144,8 +1384,11 @@ impl Player {
         ac += (self.stats.dexterity as i32 - 10) / 2;
         
         for item in &self.equipment {
-            if let ItemType::Armor { ac: item_ac } = &item.item_type {
-                ac += item_ac;
+            match &item.item_type {
+                ItemType::Armor { ac: item_ac } => ac += item_ac,
+                ItemType::Ring { bonus } if item.name.to_lowercase().contains("protection") => ac += bonus,
+                ItemType::Amulet { bonus } if item.name.to_lowercase().contains("the magi") => ac += bonus,
+                _ => {}
             }
         }
 
@@ -1157,6 +1400,35 @@ impl Player {
         }
         
         ac
+    }
+
+    /// Total weight of items carried in inventory (in 1/10th lbs).
+    pub fn total_weight(&self) -> u32 {
+        self.inventory.iter().map(|item| item.weight * item.count).sum()
+    }
+
+    /// Maximum carrying capacity (in 1/10th lbs) according to canonical Umoria formula:
+    /// `capacity = (STR * 130 + body_weight).min(3000)`.
+    pub fn carrying_capacity(&self) -> u32 {
+        let str_val = self.stats.strength.max(3) as u32;
+        let cap = str_val * 130 + self.body_weight;
+        cap.min(3000)
+    }
+
+    /// Returns true if the player's pack weight exceeds their carrying load limit.
+    pub fn is_encumbered(&self) -> bool {
+        self.total_weight() > self.carrying_capacity()
+    }
+
+    /// Returns the encumbrance speed penalty level (0 if unencumbered).
+    pub fn encumbrance_penalty(&self) -> u32 {
+        let cap = self.carrying_capacity();
+        let total = self.total_weight();
+        if total > cap {
+            total / (cap + 1)
+        } else {
+            0
+        }
     }
 
     pub fn apply_race_and_class_modifiers(&mut self) {
@@ -1650,5 +1922,126 @@ mod tests {
         let bolt = Item::new("Bolt", 20, 3, ItemType::Missile { damage: Dice::new(1, 5) });
         assert_eq!(bolt.count, 20);
         assert_eq!(bolt.get_equipment_slot(), "Accessory");
+    }
+
+    #[test]
+    fn test_rings_and_amulets_equipment_slots() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        
+        let mut ring1 = Item::new("Ring of Protection", 1, 2, ItemType::Ring { bonus: 2 });
+        assert_eq!(ring1.get_equipment_slot(), "On right hand");
+        ring1.equipped_slot = Some("On right hand".to_string());
+        player.equipment.push(ring1);
+
+        let mut ring2 = Item::new("Ring of Resist Fire", 1, 2, ItemType::Ring { bonus: 0 });
+        ring2.equipped_slot = Some("On left hand".to_string());
+        player.equipment.push(ring2);
+
+        let mut amulet = Item::new("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 });
+        assert_eq!(amulet.get_equipment_slot(), "Around neck");
+        amulet.equipped_slot = Some("Around neck".to_string());
+        player.equipment.push(amulet);
+
+        assert_eq!(player.equipment[0].get_equipment_slot(), "On right hand");
+        assert_eq!(player.equipment[1].get_equipment_slot(), "On left hand");
+        assert_eq!(player.equipment[2].get_equipment_slot(), "Around neck");
+    }
+
+    #[test]
+    fn test_equipment_bonuses_and_intrinsics() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.equipment.clear();
+        player.update_equipment_bonuses();
+
+        assert!(!player.flags.see_invisible);
+        assert!(!player.flags.free_action);
+        assert!(!player.flags.slow_digest);
+        assert!(!player.flags.free_fall);
+        assert!(!player.flags.resistant_to_fire);
+        assert!(!player.flags.resistant_to_cold);
+        assert!(!player.flags.resistant_to_acid);
+        assert!(!player.flags.sustain_str);
+
+        // Equip Ring of Free Action
+        player.equipment.push(Item::new("Ring of Free Action", 1, 2, ItemType::Ring { bonus: 0 }));
+        // Equip Ring of Lordly Protection (FIRE)
+        player.equipment.push(Item::new("Ring of Lordly Protection (FIRE)", 1, 2, ItemType::Ring { bonus: 5 }));
+        // Equip Ring of Sustain Strength
+        player.equipment.push(Item::new("Ring of Sustain Strength", 1, 2, ItemType::Ring { bonus: 0 }));
+        // Equip Amulet of the Magi
+        player.equipment.push(Item::new("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 }));
+
+        player.update_equipment_bonuses();
+
+        assert!(player.flags.free_action, "Must have free action from ring/amulet");
+        assert!(player.flags.resistant_to_fire, "Must have fire resistance from lordly ring");
+        assert!(player.flags.sustain_str, "Must have sustain strength from ring");
+        assert!(player.flags.see_invisible, "Must have see invisible from Amulet of the Magi");
+
+        // Calculate AC with bonuses: 10 base + DEX mod + 5 (ring) + 3 (amulet)
+        let ac = player.calculate_ac();
+        let expected_ac = 10 + (player.stats.dexterity as i32 - 10) / 2 + 5 + 3;
+        assert_eq!(ac, expected_ac);
+
+        // Unequip all items
+        player.equipment.clear();
+        player.update_equipment_bonuses();
+
+        assert!(!player.flags.free_action);
+        assert!(!player.flags.resistant_to_fire);
+        assert!(!player.flags.sustain_str);
+        assert!(!player.flags.see_invisible);
+    }
+
+    #[test]
+    fn test_stat_modifiers_from_equipment() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.equipment.clear();
+        player.stats.strength = 18;
+        player.base_stats.strength = 18;
+        player.max_stats.strength = 18;
+        player.update_equipment_bonuses();
+        assert_eq!(player.stats.strength, 18);
+
+        // Equip Ring of Strength (+2)
+        player.equipment.push(Item::new("Ring of Strength", 1, 2, ItemType::Ring { bonus: 2 }));
+        player.update_equipment_bonuses();
+
+        // 18 boosted by +2 becomes 18/20 (stat value 38)
+        assert_eq!(player.stats.strength, 38);
+        assert_eq!(format_stat(player.stats.strength), " 18/20");
+
+        // Unequip
+        player.equipment.clear();
+        player.update_equipment_bonuses();
+        assert_eq!(player.stats.strength, 18);
+        assert_eq!(format_stat(player.stats.strength), "    18");
+    }
+
+    #[test]
+    fn test_weight_capacity_and_encumbrance() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.inventory.clear();
+        player.equipment.clear();
+        player.body_weight = 180;
+        player.stats.strength = 10;
+        player.base_stats.strength = 10;
+
+        // Capacity = STR * 130 + body_weight = 10 * 130 + 180 = 1480 (148.0 lbs)
+        assert_eq!(player.carrying_capacity(), 1480);
+        assert_eq!(player.total_weight(), 0);
+        assert!(!player.is_encumbered());
+        assert_eq!(player.encumbrance_penalty(), 0);
+
+        // Add 100 lbs (1000 tenths) of iron spikes
+        player.inventory.push(Item::new("Iron Spike", 500, 2, ItemType::Scroll { teleport: false }));
+        assert_eq!(player.total_weight(), 1000);
+        assert!(!player.is_encumbered());
+
+        // Add another 50 lbs (500 tenths) -> total 1500 > 1480 -> encumbered!
+        player.inventory.push(Item::new("Iron Spike", 250, 2, ItemType::Scroll { teleport: false }));
+        assert_eq!(player.total_weight(), 1500);
+        assert!(player.is_encumbered());
+        assert_eq!(player.encumbrance_penalty(), 1500 / 1481); // 1
     }
 }
