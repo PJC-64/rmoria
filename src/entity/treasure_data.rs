@@ -1102,8 +1102,9 @@ mod tests {
             .expect("Must find a non-dragon non-evil");
 
         let mut rng = rand::thread_rng();
-        let dmg_dragon = player.roll_melee_damage_against(&mut rng, Some(dragon_id));
-        let dmg_normal = player.roll_melee_damage_against(&mut rng, Some(normal_id));
+        let weapon = player.equipped_weapon();
+        let dmg_dragon = player.single_blown_damage(&mut rng, weapon, Some(dragon_id));
+        let dmg_normal = player.single_blown_damage(&mut rng, weapon, Some(normal_id));
 
         // Dragon damage should be substantially higher due to 4x multiplier on weapon dice (2d5 * 4 = 8..40 vs 2..10)
         assert!(dmg_dragon > dmg_normal || dmg_dragon >= 13);

@@ -1,11 +1,11 @@
-mod input;
-mod dungeon;
-mod player;
+pub mod input;
+pub mod dungeon;
+pub mod player;
 pub mod flavor;
 pub mod magic;
 mod save;
-mod dice;
-mod entity;
+pub mod dice;
+pub mod entity;
 pub mod rendering;
 
 pub use rendering::draw_map;
@@ -169,6 +169,11 @@ pub enum ScreenMode {
     SelectThrowItem,
     SelectThrowDirection,
     GameOver,
+    CombatLog,
+    MessageHistory,
+    IdentifySymbol,
+    OptionsMenu,
+    HighScores,
 }
 
 
@@ -916,6 +921,26 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     } else if screen_mode == ScreenMode::Dungeon {
+                        if key_event.code == KeyCode::Char('p') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                            screen_mode = ScreenMode::MessageHistory;
+                            draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
+                            continue 'game_loop;
+                        }
+                        if key_event.code == KeyCode::Char('=') {
+                            screen_mode = ScreenMode::OptionsMenu;
+                            draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
+                            continue 'game_loop;
+                        }
+                        if key_event.code == KeyCode::Char('/') {
+                            screen_mode = ScreenMode::IdentifySymbol;
+                            draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
+                            continue 'game_loop;
+                        }
+                        if key_event.code == KeyCode::Char('V') {
+                            screen_mode = ScreenMode::HighScores;
+                            draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
+                            continue 'game_loop;
+                        }
                         if let KeyCode::Char(c) = key_event.code {
                             let action = mapper.map_key(c);
                             match action {
@@ -1183,6 +1208,16 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 Action::TakeOff => {
                                     screen_mode = ScreenMode::TakeOffMenu;
                                     status_msg = "Select item to unequip.".to_string();
+                                }
+                                Action::MultiBlow => {
+                                    let weapon = player.equipped_weapon();
+                                    let blows = player.calculate_blows(&weapon);
+                                    let dmg = player.roll_melee_damage_against(&mut rng, None);
+                                    player.message_history.push(format!(
+                                        "You strike {} times for {} total damage!",
+                                        blows, dmg
+                                    ));
+                                    screen_mode = ScreenMode::CombatLog;
                                 }
                                 Action::Fire | Action::Throw => {
                                     if player.inventory.is_empty() {
@@ -1514,6 +1549,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 if (screen_mode == ScreenMode::InventoryList && c == 'i')
                                     || (screen_mode == ScreenMode::EquipmentList && c == 'I')
                                     || screen_mode == ScreenMode::HelpMenu
+                                    || screen_mode == ScreenMode::CombatLog
+                                    || screen_mode == ScreenMode::MessageHistory
+                                    || screen_mode == ScreenMode::IdentifySymbol
+                                    || screen_mode == ScreenMode::OptionsMenu
+                                    || screen_mode == ScreenMode::HighScores
                                     || screen_mode == ScreenMode::BrowseBookMenu
                                 {
                                     screen_mode = ScreenMode::Dungeon;

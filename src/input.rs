@@ -39,6 +39,7 @@ pub enum Action {
     ReadScroll,         // Read scroll
     TakeOff,            // Unequip item
     Fire,               // Fire missile weapon (f)
+    MultiBlow,          // Multi-blow attack (M)
     Throw,              // Throw an item (t)
     UseStaff,           // Activate staff
     Eat,                // Eat food (E)
@@ -107,6 +108,7 @@ impl InputMapper {
             'E' => Action::Eat,              // Eat food
             'R' => Action::Rest,             // Rest a while
             'f' => Action::Fire,             // Fire missile
+            'M' => Action::MultiBlow,
             't' => Action::Throw,            // Throw item
             'T' => Action::TakeOff,          // Take off equipment
             'B' => Action::Bash,             // Bash
@@ -156,6 +158,7 @@ impl InputMapper {
             'E' => Action::Eat,              // Eat food
             'R' => Action::Rest,             // Rest a while
             'f' => Action::Fire,             // Fire missile
+            'M' => Action::MultiBlow,
             't' => Action::Throw,            // Throw item
             'T' => Action::TakeOff,          // Take off equipment
             'B' => Action::Bash,             // Bash

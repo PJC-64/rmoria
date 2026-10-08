@@ -172,6 +172,7 @@ pub fn run_character_creation(
             is_wizard: false,
             killed_town_npcs: 0,
             town_npc_attack_threshold: rng.gen_range(1..=5),
+            message_history: Vec::new(),
             base_hp_levels: vec![15; 40],
             exp_factor: 100,
             history: "".to_string(),

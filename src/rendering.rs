@@ -58,6 +58,12 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         "        "
     };
 
+    let halluc_str = if player.flags.image > 0 {
+        "Halluc"
+    } else {
+        "      "
+    };
+
     let movement_str = if player.flags.paralysis > 0 {
         "Paralysed "
     } else if is_resting {
@@ -89,8 +95,8 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
     };
 
     format!(
-        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<10} {:<9} {:<5} {:<6} {:>7}",
-        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, movement_str, speed_str, study_str, recall_str, depth_str
+        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<6} {:<10} {:<9} {:<5} {:<6} {:>7}",
+        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, halluc_str, movement_str, speed_str, study_str, recall_str, depth_str
     )
 }
 
@@ -113,10 +119,22 @@ pub fn render_gui_screen(
                         map_part.push('@');
                     } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
-                        map_part.push(monster.symbol);
+                        if player.flags.image > 0 {
+                            let mut rng = rand::thread_rng();
+                            let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                        } else {
+                            map_part.push(monster.symbol);
+                        }
                     } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
                         let floor_item = level.items.iter().find(|i| i.x == map_x && i.y == map_y).unwrap();
-                        map_part.push(get_item_symbol(&floor_item.item));
+                        if player.flags.image > 0 {
+                            let mut rng = rand::thread_rng();
+                            let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                        } else {
+                            map_part.push(get_item_symbol(&floor_item.item));
+                        }
                     } else if tile.visible || tile.remembered {
                         match tile.tile_type {
                             TileType::Wall => map_part.push('#'),
@@ -850,18 +868,17 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 "                          z x c     (South-West / South / South-East)",
                 "",
                 "Command Keys (Standard Profile):",
-                "  h : Quaff Potion        W : Wear/Wield equipment",
-                "  i : Inventory List      I : Equipment List",
-                "  k : Search surrounding  D : Drop an item",
-                "  o : Open closed door    C : Close open door",
-                "  n : Disarm a trap       H : Character Sheet Stats",
-                "  r : Read scroll         T : Take off equipment",
-                "  f/t : Fire / Throw item B : Bash door/monster",
-                "  b : Browse spellbook    m : Cast Mage spell",
-                "  p : Recite Priest prayer G : Gain spells (study)",
-                "  < : Climb up stairs     > : Climb down stairs",
-                "  g : Tunnel rock/vein    F : Refill light with oil",
-                "  Q : Save and Quit       ? : This Help Menu",
+                "  i/I : Inventory/Equipment h : Quaff potion        b : Browse book",
+                "  W/T : Wear/Take off       r : Read scroll         m : Cast Mage spell",
+                "  D   : Drop item           u : Use staff           p : Recite prayer",
+                "  E   : Eat food            y : Aim wand            G : Gain spells",
+                "  F   : Refill light        f/t : Fire/Throw item   n : Disarm trap",
+                "  R   : Rest a while        B   : Bash door/foe     o/C : Open/Close door",
+                "  #   : Toggle auto-search  g   : Tunnel rock       j : Jam door",
+                "  k   : Search 1 turn       l   : Look              { : Inscribe item",
+                "  X   : Swap weapon         /   : Identify symbol   H : Character Sheet",
+                "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
+                "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
                 "",
                 "Press ESC or any key to return to the game."
             ];
@@ -1007,6 +1024,77 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         ScreenMode::SelectBashDirection => "".to_string(),
         ScreenMode::SelectTunnelDirection => "".to_string(),
         ScreenMode::GameOver => "".to_string(),
+        ScreenMode::MessageHistory => {
+            if row == 0 {
+                return "--- MESSAGE HISTORY ---".to_string();
+            }
+            if row == 22 {
+                return "[Press ESC to return]".to_string();
+            }
+            if row >= 2 && row <= 21 {
+                let start_idx = player.message_history.len().saturating_sub(20);
+                let current_idx = start_idx + (row - 2);
+                if current_idx < player.message_history.len() {
+                    return player.message_history[current_idx].clone();
+                }
+            }
+            "".to_string()
+        }
+        ScreenMode::IdentifySymbol => {
+            if row == 0 {
+                return "--- IDENTIFY SYMBOL ---".to_string();
+            }
+            if row == 2 {
+                return "Enter a character to identify:".to_string();
+            }
+            if row == 22 {
+                return "[Press ESC to return]".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::OptionsMenu => {
+            if row == 0 {
+                return "--- OPTIONS MENU ---".to_string();
+            }
+            if row == 2 {
+                return "1) Toggle Roguelike Keys (Currently: false)".to_string();
+            }
+            if row == 3 {
+                return "2) Toggle Auto-Pickup (Currently: true)".to_string();
+            }
+            if row == 22 {
+                return "[Press ESC to return]".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::HighScores => {
+            if row == 0 {
+                return "--- HALL OF FAME ---".to_string();
+            }
+            if row == 2 {
+                return "1. Player - Level 50 Warrior - Killed by Balrog on depth 50".to_string();
+            }
+            if row == 22 {
+                return "[Press ESC to return]".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::CombatLog => {
+            if row == 0 {
+                return "--- COMBAT LOG ---".to_string();
+            }
+            if row == 2 {
+                return "Most recent messages:".to_string();
+            }
+            if row > 3 && row <= 3 + player.message_history.len().min(5) {
+                let idx = player.message_history.len() - (row - 3);
+                return player.message_history[idx].clone();
+            }
+            if row == 10 {
+                return "Press ESC or any key to continue...".to_string();
+            }
+            "".to_string()
+        }
     }
 }
 
@@ -1061,6 +1149,7 @@ pub fn draw_map(
                 "confused": player.flags.confused > 0,
                 "afraid": player.flags.afraid > 0,
                 "poisoned": player.flags.poisoned > 0,
+                "hallucinating": player.flags.image > 0,
                 "paralyzed": player.flags.paralysis > 0,
                 "fast": player.flags.fast > 0,
                 "slow": player.flags.slow > 0,
@@ -1101,10 +1190,22 @@ pub fn draw_map(
                         map_part.push('@');
                     } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
                         let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
-                        map_part.push(monster.symbol);
+                        if player.flags.image > 0 {
+                            let mut rng = rand::thread_rng();
+                            let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                        } else {
+                            map_part.push(monster.symbol);
+                        }
                     } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
                         let floor_item = level.items.iter().find(|i| i.x == map_x && i.y == map_y).unwrap();
-                        map_part.push(get_item_symbol(&floor_item.item));
+                        if player.flags.image > 0 {
+                            let mut rng = rand::thread_rng();
+                            let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                        } else {
+                            map_part.push(get_item_symbol(&floor_item.item));
+                        }
                     } else if tile.visible || tile.remembered {
                         match tile.tile_type {
                             TileType::Wall => map_part.push('#'),

@@ -409,7 +409,8 @@ pub struct Player {
     pub spells_learned_order: [u8; 32],
     #[serde(default)]
     pub new_spells_to_learn: u32,
-    
+    #[serde(default)]
+    pub message_history: Vec<String>,
     pub base_hp_levels: Vec<i32>,
     pub exp_factor: u32,
     pub history: String,
@@ -695,6 +696,7 @@ impl Player {
             spells_forgotten: 0,
             spells_learned_order: [99; 32],
             new_spells_to_learn: 0,
+            message_history: Vec::new(),
             base_hp_levels,
             exp_factor,
             history,
@@ -1490,9 +1492,32 @@ impl Player {
         self.roll_melee_damage_against(rng, None)
     }
 
-    pub fn roll_melee_damage_against<R: rand::Rng>(&self, rng: &mut R, target_creature_id: Option<usize>) -> i32 {
-        let weapon_item = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
-        let (base_dice, weapon_flags, weapon_to_dam) = if let Some(weapon) = weapon_item {
+    pub fn equipped_weapon(&self) -> Option<&Item> {
+        self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }))
+    }
+
+    pub fn calculate_blows(&self, weapon: &Option<&Item>) -> u32 {
+        let weight = weapon.map(|w| w.weight).unwrap_or(10);
+        let weight = if weight == 0 { 10 } else { weight };
+        let str_dex = (self.stats.strength as u32 + self.stats.dexterity as u32) * 10;
+        let blows = str_dex / weight as u32;
+        blows.clamp(1, 5)
+    }
+
+    pub fn test_hit<R: rand::Rng>(&self, rng: &mut R, target_ac: i32) -> bool {
+        let mut to_hit_bonus = 0;
+        for item in &self.equipment {
+            to_hit_bonus += item.to_hit as i32;
+        }
+        let hit_chance = (self.stats.strength as i32 / 2) + self.level as i32 + to_hit_bonus;
+        let roll = rng.gen_range(1..=20);
+        if roll == 1 { return false; }
+        if roll == 20 { return true; }
+        roll + hit_chance >= target_ac
+    }
+
+    pub fn single_blown_damage<R: rand::Rng>(&self, rng: &mut R, weapon: Option<&Item>, target_creature_id: Option<usize>) -> i32 {
+        let (base_dice, weapon_flags, weapon_to_dam) = if let Some(weapon) = weapon {
             let dice = match &weapon.item_type {
                 ItemType::Weapon { damage } => *damage,
                 _ => Dice::new(1, 4),
@@ -1522,16 +1547,27 @@ impl Player {
                 }
             }
         }
-        if self.flags.heroism > 0 {
-            damage += 2;
+        if self.flags.heroism > 0 { damage += 2; }
+        if self.flags.super_heroism > 0 { damage += 4; }
+        if damage < 1 { 1 } else { damage }
+    }
+
+    pub fn roll_melee_damage_against<R: rand::Rng>(&self, rng: &mut R, target_creature_id: Option<usize>) -> i32 {
+        let weapon = self.equipped_weapon();
+        let blows = self.calculate_blows(&weapon);
+        let mut total_damage = 0;
+        let target_ac = 10; // For now, we assume a default target AC of 10 if not provided
+        
+        for _ in 0..blows {
+            if self.test_hit(rng, target_ac) {
+                total_damage += self.single_blown_damage(rng, weapon, target_creature_id);
+            }
         }
-        if self.flags.super_heroism > 0 {
-            damage += 4;
-        }
-        if damage < 1 {
-            1
+        
+        if total_damage == 0 {
+            0
         } else {
-            damage
+            total_damage
         }
     }
 
