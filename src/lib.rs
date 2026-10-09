@@ -190,6 +190,7 @@ fn process_end_of_turn(
     is_resting: bool,
     turn: u64,
     max_depth: u32,
+    level_cache: &mut std::collections::HashMap<u32, (DungeonLevel, Vec<Monster>)>,
 ) -> Result<(), std::io::Error> {
     let mut rng = rand::thread_rng();
 
@@ -233,10 +234,18 @@ fn process_end_of_turn(
             status_msg.push_str(" You feel yourself yanked downwards!");
             target
         };
-        *level = DungeonLevel::new(66, 22, new_depth, max_depth);
+        
+        level_cache.insert(level.depth, (level.clone(), monsters.clone()));
+        if let Some((cached_level, cached_monsters)) = level_cache.remove(&new_depth) {
+            *level = cached_level;
+            *monsters = cached_monsters;
+        } else {
+            *level = DungeonLevel::new(66, 22, new_depth, max_depth);
+            *monsters = level.generate_monsters(player.balrog_killed);
+        }
+        
         let (px, py) = level.find_random_floor_tile();
         player.move_to(px, py);
-        *monsters = level.generate_monsters(player.balrog_killed);
         level.update_fov(player);
     }
 
@@ -560,7 +569,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
     'outer_loop: loop {
         let mut restart_game = false;
-        let (mut player, mut level, mut monsters, mut status_msg, max_depth) = if is_gui {
+        let (mut player, mut level, mut monsters, mut status_msg, max_depth, mut level_cache) = if is_gui {
         if let Some(rx_mutex) = GUI_SETUP_RX.get() {
             let rx = rx_mutex.lock().unwrap();
             let state_tx = crate::GUI_STATE_TX.get().unwrap().lock().unwrap().clone();
@@ -569,7 +578,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 if val["type"] == "load" {
                     let state = GameState::load_from_file(&save_path)?;
-                    break (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth);
+                    break (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth, state.level_cache);
                 } else if val["type"] == "roll_character" {
                     let race_str = val["race"].as_str().unwrap_or("Human");
                     let class_str = val["class"].as_str().unwrap_or("Warrior");
@@ -683,7 +692,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                     final_player.move_to(start_pos.0, start_pos.1);
                     let mons = lvl.generate_monsters(false);
 
-                    break (final_player, lvl, mons, "Welcome to rmoria! Find town shops or descend stairs (>)".to_string(), rolled_max);
+                    break (final_player, lvl, mons, "Welcome to rmoria! Find town shops or descend stairs (>)".to_string(), rolled_max, std::collections::HashMap::new());
                 } else {
                     val = rx.recv()?;
                 }
@@ -694,7 +703,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     } else if save_path.exists() {
         match GameState::load_from_file(&save_path) {
             Ok(state) => {
-                (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth)
+                (state.player, state.level, state.monsters, "Save game loaded successfully!".to_string(), state.max_depth, state.level_cache)
             }
             Err(e) => {
                 let rolled_max = rng.gen_range(8..=15);
@@ -705,7 +714,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                 let mut player = p;
                 player.move_to(start_pos.0, start_pos.1);
                 let mons = lvl.generate_monsters(false);
-                (player, lvl, mons, format!("Failed to load save: {}. Started new game.", e), rolled_max)
+                (player, lvl, mons, format!("Failed to load save: {}. Started new game.", e), rolled_max, std::collections::HashMap::new())
             }
         }
     } else {
@@ -717,7 +726,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
         let mut player = p;
         player.move_to(start_pos.0, start_pos.1);
         let mons = lvl.generate_monsters(false);
-        (player, lvl, mons, "Welcome to rmoria! Find town shops or descend stairs (>)".to_string(), rolled_max)
+        (player, lvl, mons, "Welcome to rmoria! Find town shops or descend stairs (>)".to_string(), rolled_max, std::collections::HashMap::new())
     };
 
     let mut screen_mode = ScreenMode::Dungeon;
@@ -800,6 +809,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                 false,
                 game_turn,
                 max_depth,
+                &mut level_cache,
             )?;
             draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
             std::thread::sleep(std::time::Duration::from_millis(150));
@@ -1155,9 +1165,15 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     if let Some(tile) = level.get_tile(player.x, player.y) {
                                         if tile.tile_type == TileType::StairsUp && level.depth > 0 {
                                             let new_depth = level.depth - 1;
-                                            level = DungeonLevel::new(66, 22, new_depth, max_depth);
-                                            level.generate_simple_floor();
-                                            monsters = level.generate_monsters(player.balrog_killed);
+                                            level_cache.insert(level.depth, (level.clone(), monsters.clone()));
+                                            if let Some((cached_level, cached_monsters)) = level_cache.remove(&new_depth) {
+                                                level = cached_level;
+                                                monsters = cached_monsters;
+                                            } else {
+                                                level = DungeonLevel::new(66, 22, new_depth, max_depth);
+                                                level.generate_simple_floor();
+                                                monsters = level.generate_monsters(player.balrog_killed);
+                                            }
                                             
                                             let sd_pos = level.tiles.iter().enumerate()
                                                 .find(|(_, t)| t.tile_type == TileType::StairsDown)
@@ -1176,9 +1192,15 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     if let Some(tile) = level.get_tile(player.x, player.y) {
                                         if tile.tile_type == TileType::StairsDown && level.depth < max_depth {
                                             let new_depth = level.depth + 1;
-                                            level = DungeonLevel::new(66, 22, new_depth, max_depth);
-                                            level.generate_simple_floor();
-                                            monsters = level.generate_monsters(player.balrog_killed);
+                                            level_cache.insert(level.depth, (level.clone(), monsters.clone()));
+                                            if let Some((cached_level, cached_monsters)) = level_cache.remove(&new_depth) {
+                                                level = cached_level;
+                                                monsters = cached_monsters;
+                                            } else {
+                                                level = DungeonLevel::new(66, 22, new_depth, max_depth);
+                                                level.generate_simple_floor();
+                                                monsters = level.generate_monsters(player.balrog_killed);
+                                            }
                                             
                                             let su_pos = level.tiles.iter().enumerate()
                                                 .find(|(_, t)| t.tile_type == TileType::StairsUp)
@@ -1507,7 +1529,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     status_msg = "Saving game and quitting...".to_string();
                                     draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
                                     
-                                    let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth);
+                                    let state = GameState::new(player.clone(), level.clone(), monsters.clone(), max_depth, level_cache.clone());
                                     if let Err(e) = state.save_to_file(&save_path) {
                                         status_msg = format!("Save failed: {}", e);
                                         draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
@@ -2902,6 +2924,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             false,
                             game_turn,
                             max_depth,
+                            &mut level_cache,
                         )?;
                         draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
                     } else {
@@ -2969,6 +2992,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                     true,
                     game_turn,
                     max_depth,
+                    &mut level_cache,
                 )?;
                 draw_map(&mut level, &player, &monsters, &status_msg, screen_mode, active_shop, active_haggle.as_ref(), active_inscribe.as_ref())?;
             }
