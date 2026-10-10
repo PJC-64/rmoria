@@ -602,6 +602,10 @@
               <span class="stat-label">Gold</span>
               <span class="stat-value font-gold">{player?.gold} gp</span>
             </div>
+            <div class="stat-item">
+              <span class="stat-label">Armor Class</span>
+              <span class="stat-value font-gold">{player?.ac}</span>
+            </div>
           </div>
         </div>
 
@@ -1055,7 +1059,7 @@
   /* Stats grid */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;
   }
 

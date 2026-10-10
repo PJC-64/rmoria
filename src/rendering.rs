@@ -1127,6 +1127,7 @@ pub fn draw_map(
             "food_status": get_food_status_str(player.food),
             "searching": player.searching,
             "depth": level.depth,
+            "ac": player.calculate_ac(),
             "screen_mode": format!("{:?}", mode),
             "stats": {
                 "strength": player.stats.strength,
