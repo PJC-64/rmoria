@@ -315,7 +315,7 @@ impl Item {
                 let name = self.name.to_lowercase();
                 if name.contains("shield") {
                     "Shield"
-                } else if name.contains("helm") || name.contains("hat") || name.contains("crown") {
+                } else if name.contains("helm") || name.contains("hat") || name.contains("crown") || name.contains("cap") {
                     "Headwear"
                 } else if name.contains("gloves") || name.contains("gauntlets") {
                     "Gloves"
