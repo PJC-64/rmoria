@@ -1156,7 +1156,22 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                                 player_acted = true;
                                             } else {
-                                                status_msg = "Ouch! You bumped into a wall.".to_string();
+                                                if tile.tile_type == TileType::SecretDoor {
+                                                    let is_rogue = player.class == Class::Rogue;
+                                                    let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
+                                                    let door_chance = if is_rogue { 0.60 } else if is_elf { 0.40 } else { 0.20 };
+                                                    if rng.gen_bool(door_chance) {
+                                                        if let Some(t) = level.get_tile_mut(next_x, next_y) {
+                                                            t.tile_type = TileType::DoorClosed { spikes: 0 };
+                                                        }
+                                                        status_msg = "You feel a seam in the wall and find a secret door!".to_string();
+                                                    } else {
+                                                        status_msg = "Ouch! You bumped into a wall.".to_string();
+                                                    }
+                                                    player_acted = true;
+                                                } else {
+                                                    status_msg = "Ouch! You bumped into a wall.".to_string();
+                                                }
                                             }
                                         }
                                     }

@@ -546,28 +546,60 @@ impl DungeonLevel {
             }
 
             // Only place doors at the entrance to rooms, never in corridors
+            let mut entrances = Vec::new();
             for y in 2..(self.height - 2) {
                 for x in 2..(self.width - 2) {
                     if let Some(tile) = self.get_tile(x, y)
                         && tile.tile_type == TileType::Floor
                         && self.is_room_entrance(x, y) {
-                            // 85% chance a room entrance has a door (15% remains an open entryway)
-                            if rng.gen_bool(0.85)
-                                && let Some(mut_tile) = self.get_tile_mut(x, y) {
-                                    let roll = rng.gen_range(0..100);
-                                    if roll < 20 {
-                                        // 20% secret door
-                                        mut_tile.tile_type = TileType::SecretDoor;
-                                    } else if roll < 35 {
-                                        // 15% open door
-                                        mut_tile.tile_type = TileType::DoorOpen;
-                                    } else {
-                                        // 65% closed door
-                                        mut_tile.tile_type = TileType::DoorClosed { spikes: 0 };
-                                    }
-                                }
+                            entrances.push((x, y));
                         }
                 }
+            }
+
+            // Map each room to its entrances
+            let mut room_entrances: std::collections::HashMap<usize, Vec<(usize, usize)>> = std::collections::HashMap::new();
+            for &(ex, ey) in &entrances {
+                let adjacent_rooms = [(ex.wrapping_sub(1), ey), (ex + 1, ey), (ex, ey.wrapping_sub(1)), (ex, ey + 1)];
+                for (nx, ny) in adjacent_rooms {
+                    if let Some(r_idx) = self.room_index_at(nx, ny) {
+                        room_entrances.entry(r_idx).or_default().push((ex, ey));
+                    }
+                }
+            }
+
+            // Track how many secret doors each room has received so far
+            let mut room_secret_doors: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+
+            for (ex, ey) in entrances {
+                let adjacent_rooms = [(ex.wrapping_sub(1), ey), (ex + 1, ey), (ex, ey.wrapping_sub(1)), (ex, ey + 1)];
+                let adj_r_indices: Vec<usize> = adjacent_rooms.iter().filter_map(|&(nx, ny)| self.room_index_at(nx, ny)).collect();
+                let can_be_secret = adj_r_indices.iter().all(|&r_idx| {
+                    let total = room_entrances.get(&r_idx).map(|v| v.len()).unwrap_or(0);
+                    let secrets = room_secret_doors.get(&r_idx).copied().unwrap_or(0);
+                    total > 1 && secrets == 0
+                });
+
+                let new_type = if rng.gen_bool(0.85) {
+                    let roll = rng.gen_range(0..100);
+                    if can_be_secret && roll < 20 {
+                        for &r_idx in &adj_r_indices {
+                            *room_secret_doors.entry(r_idx).or_default() += 1;
+                        }
+                        Some(TileType::SecretDoor)
+                    } else if roll < 35 {
+                        Some(TileType::DoorOpen)
+                    } else {
+                        Some(TileType::DoorClosed { spikes: 0 })
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(tt) = new_type
+                    && let Some(mut_tile) = self.get_tile_mut(ex, ey) {
+                        mut_tile.tile_type = tt;
+                    }
             }
 
             // Spawn Magma and Quartz veins
@@ -674,17 +706,31 @@ impl DungeonLevel {
             }
             if (cx != x1 as isize || cy != y1 as isize)
                 && let Some(tile) = self.get_tile(cx as usize, cy as usize)
-                    && !tile.is_passable() && tile.tile_type != TileType::SecretDoor {
+                    && !tile.is_passable() {
                         return false;
                     }
             let e2 = 2 * err;
+            let mut stepped_x = false;
+            let mut stepped_y = false;
+            let prev_x = cx;
+            let prev_y = cy;
             if e2 > -dy {
                 err -= dy;
                 cx += sx;
+                stepped_x = true;
             }
             if e2 < dx {
                 err += dx;
                 cy += sy;
+                stepped_y = true;
+            }
+            // Prevent rays from slipping diagonally through between two impassable corner blocks
+            if stepped_x && stepped_y {
+                let c1_blocked = self.get_tile(cx as usize, prev_y as usize).map(|t| !t.is_passable()).unwrap_or(true);
+                let c2_blocked = self.get_tile(prev_x as usize, cy as usize).map(|t| !t.is_passable()).unwrap_or(true);
+                if c1_blocked && c2_blocked {
+                    return false;
+                }
             }
         }
     }
@@ -748,13 +794,10 @@ impl DungeonLevel {
                 
                 if dist <= max_dist
                     && self.has_los(player.x, player.y, x, y) {
-                        if dist <= radius {
+                        let is_in_lit_room = self.rooms.iter().any(|r| r.is_lit && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+                        if dist <= radius || is_in_lit_room {
                             if let Some(tile) = self.get_tile_mut(x, y) {
                                 tile.visible = true;
-                                tile.remembered = true;
-                            }
-                        } else {
-                            if let Some(tile) = self.get_tile_mut(x, y) {
                                 tile.remembered = true;
                             }
                         }
@@ -962,6 +1005,63 @@ mod tests {
         // Verify that doors are actively generated and not 0
         assert!(total_doors > 50, "Expected doors to be generated, got {}", total_doors);
         assert!(total_secret_doors > 0, "Expected secret doors to be generated, got {}", total_secret_doors);
+    }
+
+    #[test]
+    fn test_secret_door_and_corners_block_los() {
+        let mut level = DungeonLevel::new(10, 10, 1, 50);
+        for tile in level.tiles.iter_mut() {
+            tile.tile_type = TileType::Floor;
+        }
+
+        // 1. Direct SecretDoor between player (1, 1) and target (3, 1)
+        level.get_tile_mut(2, 1).unwrap().tile_type = TileType::SecretDoor;
+        assert!(!level.has_los(1, 1, 3, 1), "SecretDoor must block line of sight!");
+
+        // 2. Open door allows LOS
+        level.get_tile_mut(2, 1).unwrap().tile_type = TileType::DoorOpen;
+        assert!(level.has_los(1, 1, 3, 1), "DoorOpen should allow line of sight");
+
+        // 3. Diagonal corner pinch between two walls
+        level.get_tile_mut(2, 1).unwrap().tile_type = TileType::Wall;
+        level.get_tile_mut(1, 2).unwrap().tile_type = TileType::Wall;
+        assert!(!level.has_los(1, 1, 2, 2), "Diagonal wall corner pinch must block line of sight!");
+    }
+
+    #[test]
+    fn test_all_rooms_have_accessible_entrance() {
+        for depth in 1..=10 {
+            let mut level = DungeonLevel::new(66, 22, depth, 50);
+            level.generate_simple_floor();
+
+            for r_idx in 0..level.rooms.len() {
+                let room = &level.rooms[r_idx];
+                // Check all perimeter tiles around the room
+                let mut has_accessible_entrance = false;
+                for y in (room.y.saturating_sub(1))..=(room.y + room.h) {
+                    for x in (room.x.saturating_sub(1))..=(room.x + room.w) {
+                        let is_perimeter = x == room.x.saturating_sub(1)
+                            || x == room.x + room.w
+                            || y == room.y.saturating_sub(1)
+                            || y == room.y + room.h;
+                        if is_perimeter && let Some(tile) = level.get_tile(x, y) {
+                            if matches!(tile.tile_type, TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. }) {
+                                has_accessible_entrance = true;
+                                break;
+                            }
+                        }
+                    }
+                    if has_accessible_entrance {
+                        break;
+                    }
+                }
+                assert!(
+                    has_accessible_entrance,
+                    "Room {} on depth {} has no accessible entrance!",
+                    r_idx, depth
+                );
+            }
+        }
     }
 }
 
