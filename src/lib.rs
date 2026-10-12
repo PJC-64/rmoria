@@ -1156,21 +1156,71 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                                 player_acted = true;
                                             } else {
-                                                if tile.tile_type == TileType::SecretDoor {
-                                                    let is_rogue = player.class == Class::Rogue;
-                                                    let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
-                                                    let door_chance = if is_rogue { 0.60 } else if is_elf { 0.40 } else { 0.20 };
-                                                    if rng.gen_bool(door_chance) {
-                                                        if let Some(t) = level.get_tile_mut(next_x, next_y) {
-                                                            t.tile_type = TileType::DoorClosed { spikes: 0 };
+                                                match tile.tile_type {
+                                                    TileType::SecretDoor => {
+                                                        let is_rogue = player.class == Class::Rogue;
+                                                        let is_elf = matches!(player.race, Race::Elf | Race::HalfElf);
+                                                        let door_chance = if is_rogue { 0.60 } else if is_elf { 0.40 } else { 0.20 };
+                                                        if rng.gen_bool(door_chance) {
+                                                            if let Some(t) = level.get_tile_mut(next_x, next_y) {
+                                                                t.tile_type = TileType::DoorClosed { spikes: 0 };
+                                                            }
+                                                            status_msg = "You feel a seam in the wall and find a secret door!".to_string();
+                                                        } else {
+                                                            status_msg = "Ouch! You bumped into a wall.".to_string();
                                                         }
-                                                        status_msg = "You feel a seam in the wall and find a secret door!".to_string();
-                                                    } else {
+                                                        player_acted = true;
+                                                    }
+                                                    TileType::DoorClosed { spikes } => {
+                                                        if spikes > 0 {
+                                                            status_msg = format!("The door is spiked shut! ({} spikes)", spikes);
+                                                        } else {
+                                                            if let Some(t) = level.get_tile_mut(next_x, next_y) {
+                                                                t.tile_type = TileType::DoorOpen;
+                                                            }
+                                                            status_msg = "You open the door.".to_string();
+                                                            player_acted = true;
+                                                        }
+                                                    }
+                                                    TileType::Chest { trapped: _, locked } => {
+                                                        if locked {
+                                                            status_msg = "There is a chest here, but it is locked! (Use 'D' to disarm or pick the lock, or 'o' to force open)".to_string();
+                                                        } else {
+                                                            level.open_chest(next_x, next_y, &mut player, &mut rng, &mut status_msg, &mut monsters);
+                                                            player_acted = true;
+                                                        }
+                                                    }
+                                                    TileType::Rubble => {
+                                                        let ability = player.digging_ability();
+                                                        if ability == 0 {
+                                                            status_msg = "There is rubble blocking your way. (Equip a shovel or pickaxe to dig)".to_string();
+                                                        } else {
+                                                            let chance = rng.gen_range(0..180);
+                                                            if ability > chance {
+                                                                if let Some(t) = level.get_tile_mut(next_x, next_y) {
+                                                                    t.tile_type = TileType::Floor;
+                                                                }
+                                                                status_msg = "You have removed the rubble.".to_string();
+                                                                if rng.gen_bool(0.10) {
+                                                                    let item = generate_random_floor_item(level.depth, &mut rng);
+                                                                    status_msg = format!("You removed the rubble and found a {} under it!", item.name);
+                                                                    level.items.push(FloorItem { x: next_x, y: next_y, item });
+                                                                }
+                                                            } else {
+                                                                status_msg = "You dig in the rubble.".to_string();
+                                                            }
+                                                            player_acted = true;
+                                                        }
+                                                    }
+                                                    TileType::MagmaVein { .. } => {
+                                                        status_msg = "There is a magma vein in the granite wall. (Use 'T' to tunnel)".to_string();
+                                                    }
+                                                    TileType::QuartzVein { .. } => {
+                                                        status_msg = "There is a quartz vein in the granite wall. (Use 'T' to tunnel)".to_string();
+                                                    }
+                                                    _ => {
                                                         status_msg = "Ouch! You bumped into a wall.".to_string();
                                                     }
-                                                    player_acted = true;
-                                                } else {
-                                                    status_msg = "Ouch! You bumped into a wall.".to_string();
                                                 }
                                             }
                                         }
