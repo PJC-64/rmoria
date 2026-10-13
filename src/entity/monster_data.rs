@@ -8,63 +8,63 @@ use crate::dice::Dice;
 // Movement flags (CM_*)
 pub const CM_ATTACK_ONLY: u32 = 0x0000_0001;
 pub const CM_MOVE_NORMAL: u32 = 0x0000_0002;
-pub const CM_ONLY_MAGIC: u32  = 0x0000_0004;
-pub const CM_20_RANDOM: u32   = 0x0000_0008;
-pub const CM_40_RANDOM: u32   = 0x0000_0010;
-pub const CM_75_RANDOM: u32   = 0x0000_0020;
+pub const CM_ONLY_MAGIC: u32 = 0x0000_0004;
+pub const CM_20_RANDOM: u32 = 0x0000_0008;
+pub const CM_40_RANDOM: u32 = 0x0000_0010;
+pub const CM_75_RANDOM: u32 = 0x0000_0020;
 pub const CM_RANDOM_MOVE: u32 = 0x0000_0038;
-pub const CM_INVISIBLE: u32   = 0x0001_0000;
-pub const CM_OPEN_DOOR: u32   = 0x0002_0000;
-pub const CM_PHASE: u32       = 0x0004_0000;
-pub const CM_EATS_OTHER: u32  = 0x0008_0000;
-pub const CM_PICKS_UP: u32    = 0x0010_0000;
-pub const CM_MULTIPLY: u32    = 0x0020_0000;
-pub const CM_CARRY_OBJ: u32   = 0x0100_0000;
-pub const CM_CARRY_GOLD: u32  = 0x0200_0000;
-pub const CM_60_RANDOM: u32   = 0x0400_0000;
-pub const CM_90_RANDOM: u32   = 0x0800_0000;
-pub const CM_1D2_OBJ: u32     = 0x1000_0000;
-pub const CM_2D2_OBJ: u32     = 0x2000_0000;
-pub const CM_4D2_OBJ: u32     = 0x4000_0000;
-pub const CM_WIN: u32         = 0x8000_0000;
+pub const CM_INVISIBLE: u32 = 0x0001_0000;
+pub const CM_OPEN_DOOR: u32 = 0x0002_0000;
+pub const CM_PHASE: u32 = 0x0004_0000;
+pub const CM_EATS_OTHER: u32 = 0x0008_0000;
+pub const CM_PICKS_UP: u32 = 0x0010_0000;
+pub const CM_MULTIPLY: u32 = 0x0020_0000;
+pub const CM_CARRY_OBJ: u32 = 0x0100_0000;
+pub const CM_CARRY_GOLD: u32 = 0x0200_0000;
+pub const CM_60_RANDOM: u32 = 0x0400_0000;
+pub const CM_90_RANDOM: u32 = 0x0800_0000;
+pub const CM_1D2_OBJ: u32 = 0x1000_0000;
+pub const CM_2D2_OBJ: u32 = 0x2000_0000;
+pub const CM_4D2_OBJ: u32 = 0x4000_0000;
+pub const CM_WIN: u32 = 0x8000_0000;
 
 // Creature spell / breath flags (CS_*)
-pub const CS_FREQ: u32        = 0x0000_000F;
-pub const CS_TEL_SHORT: u32   = 0x0000_0010;
-pub const CS_TEL_LONG: u32    = 0x0000_0020;
-pub const CS_TEL_TO: u32      = 0x0000_0040;
-pub const CS_LGHT_WND: u32    = 0x0000_0080;
-pub const CS_SER_WND: u32     = 0x0000_0100;
-pub const CS_HOLD_PER: u32    = 0x0000_0200;
-pub const CS_BLIND: u32       = 0x0000_0400;
-pub const CS_CONFUSE: u32     = 0x0000_0800;
-pub const CS_FEAR: u32        = 0x0000_1000;
-pub const CS_SUMMON_MON: u32  = 0x0000_2000;
-pub const CS_SUMMON_UND: u32  = 0x0000_4000;
-pub const CS_SLOW_PER: u32    = 0x0000_8000;
-pub const CS_DRAIN_MANA: u32  = 0x0001_0000;
-pub const CS_BREATHE: u32     = 0x00F8_0000;
-pub const CS_BR_LIGHT: u32    = 0x0008_0000;
-pub const CS_BR_GAS: u32      = 0x0010_0000;
-pub const CS_BR_ACID: u32     = 0x0020_0000;
-pub const CS_BR_FROST: u32    = 0x0040_0000;
-pub const CS_BR_FIRE: u32     = 0x0080_0000;
+pub const CS_FREQ: u32 = 0x0000_000F;
+pub const CS_TEL_SHORT: u32 = 0x0000_0010;
+pub const CS_TEL_LONG: u32 = 0x0000_0020;
+pub const CS_TEL_TO: u32 = 0x0000_0040;
+pub const CS_LGHT_WND: u32 = 0x0000_0080;
+pub const CS_SER_WND: u32 = 0x0000_0100;
+pub const CS_HOLD_PER: u32 = 0x0000_0200;
+pub const CS_BLIND: u32 = 0x0000_0400;
+pub const CS_CONFUSE: u32 = 0x0000_0800;
+pub const CS_FEAR: u32 = 0x0000_1000;
+pub const CS_SUMMON_MON: u32 = 0x0000_2000;
+pub const CS_SUMMON_UND: u32 = 0x0000_4000;
+pub const CS_SLOW_PER: u32 = 0x0000_8000;
+pub const CS_DRAIN_MANA: u32 = 0x0001_0000;
+pub const CS_BREATHE: u32 = 0x00F8_0000;
+pub const CS_BR_LIGHT: u32 = 0x0008_0000;
+pub const CS_BR_GAS: u32 = 0x0010_0000;
+pub const CS_BR_ACID: u32 = 0x0020_0000;
+pub const CS_BR_FROST: u32 = 0x0040_0000;
+pub const CS_BR_FIRE: u32 = 0x0080_0000;
 
 // Creature defense flags (CD_*)
-pub const CD_DRAGON: u16      = 0x0001;
-pub const CD_ANIMAL: u16      = 0x0002;
-pub const CD_EVIL: u16        = 0x0004;
-pub const CD_UNDEAD: u16      = 0x0008;
-pub const CD_WEAKNESS: u16    = 0x03F0;
-pub const CD_FROST: u16       = 0x0010;
-pub const CD_FIRE: u16        = 0x0020;
-pub const CD_POISON: u16      = 0x0040;
-pub const CD_ACID: u16        = 0x0080;
-pub const CD_LIGHT: u16       = 0x0100;
-pub const CD_STONE: u16       = 0x0200;
-pub const CD_NO_SLEEP: u16    = 0x1000;
-pub const CD_INFRA: u16       = 0x2000;
-pub const CD_MAX_HP: u16      = 0x4000;
+pub const CD_DRAGON: u16 = 0x0001;
+pub const CD_ANIMAL: u16 = 0x0002;
+pub const CD_EVIL: u16 = 0x0004;
+pub const CD_UNDEAD: u16 = 0x0008;
+pub const CD_WEAKNESS: u16 = 0x03F0;
+pub const CD_FROST: u16 = 0x0010;
+pub const CD_FIRE: u16 = 0x0020;
+pub const CD_POISON: u16 = 0x0040;
+pub const CD_ACID: u16 = 0x0080;
+pub const CD_LIGHT: u16 = 0x0100;
+pub const CD_STONE: u16 = 0x0200;
+pub const CD_NO_SLEEP: u16 = 0x1000;
+pub const CD_INFRA: u16 = 0x2000;
+pub const CD_MAX_HP: u16 = 0x4000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MonsterAttack {
@@ -91,221 +91,1081 @@ pub struct CreatureDefinition {
 }
 
 pub const MONSTER_ATTACKS: [MonsterAttack; 215] = [
-    MonsterAttack { type_id: 0, desc_id: 0, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 7 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 9 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 1, sides: 12 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 2, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 3, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 3, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 3, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 4, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 4, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 1, dice: Dice { num: 5, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 7 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 10 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 12 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 2, sides: 14 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 3, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 3, sides: 12 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 4, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 4, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 4, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 5, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 2, dice: Dice { num: 5, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 9 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 1, sides: 12 } },
-    MonsterAttack { type_id: 1, desc_id: 3, dice: Dice { num: 3, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 4, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 4, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 4, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 4, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 5, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 5, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 5, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 5, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 1, desc_id: 10, dice: Dice { num: 5, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 12, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 1, desc_id: 12, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 1, desc_id: 13, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 1, desc_id: 13, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 1, desc_id: 14, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 1, desc_id: 16, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 1, desc_id: 16, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 1, desc_id: 16, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 16, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 1, desc_id: 16, dice: Dice { num: 2, sides: 8 } },
-    MonsterAttack { type_id: 1, desc_id: 17, dice: Dice { num: 8, sides: 12 } },
-    MonsterAttack { type_id: 1, desc_id: 18, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 2, desc_id: 1, dice: Dice { num: 3, sides: 4 } },
-    MonsterAttack { type_id: 2, desc_id: 1, dice: Dice { num: 4, sides: 6 } },
-    MonsterAttack { type_id: 2, desc_id: 2, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 2, desc_id: 2, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 2, desc_id: 2, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 2, desc_id: 4, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 2, desc_id: 4, dice: Dice { num: 1, sides: 7 } },
-    MonsterAttack { type_id: 2, desc_id: 5, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 2, desc_id: 7, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 3, desc_id: 1, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 3, desc_id: 5, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 3, desc_id: 13, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 3, desc_id: 7, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 4, desc_id: 1, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 4, desc_id: 1, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 4, desc_id: 2, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 4, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 4, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 4, desc_id: 7, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 4, desc_id: 10, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 4, desc_id: 13, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 5, desc_id: 1, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 5, desc_id: 1, dice: Dice { num: 3, sides: 7 } },
-    MonsterAttack { type_id: 5, desc_id: 1, dice: Dice { num: 4, sides: 6 } },
-    MonsterAttack { type_id: 5, desc_id: 1, dice: Dice { num: 10, sides: 12 } },
-    MonsterAttack { type_id: 5, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 5, desc_id: 2, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 5, desc_id: 2, dice: Dice { num: 3, sides: 12 } },
-    MonsterAttack { type_id: 5, desc_id: 5, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 5, desc_id: 9, dice: Dice { num: 3, sides: 7 } },
-    MonsterAttack { type_id: 5, desc_id: 9, dice: Dice { num: 4, sides: 5 } },
-    MonsterAttack { type_id: 5, desc_id: 12, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 6, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 6, desc_id: 2, dice: Dice { num: 2, sides: 8 } },
-    MonsterAttack { type_id: 6, desc_id: 2, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 6, desc_id: 5, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 6, desc_id: 5, dice: Dice { num: 2, sides: 3 } },
-    MonsterAttack { type_id: 6, desc_id: 8, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 6, desc_id: 9, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 6, desc_id: 9, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 1, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 7, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 2, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 2, dice: Dice { num: 3, sides: 10 } },
-    MonsterAttack { type_id: 7, desc_id: 5, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 5, dice: Dice { num: 2, sides: 3 } },
-    MonsterAttack { type_id: 7, desc_id: 5, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 7, desc_id: 5, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 7, desc_id: 12, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 8, desc_id: 1, dice: Dice { num: 3, sides: 8 } },
-    MonsterAttack { type_id: 8, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 8, desc_id: 2, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 8, desc_id: 2, dice: Dice { num: 3, sides: 8 } },
-    MonsterAttack { type_id: 8, desc_id: 2, dice: Dice { num: 5, sides: 5 } },
-    MonsterAttack { type_id: 8, desc_id: 5, dice: Dice { num: 5, sides: 4 } },
-    MonsterAttack { type_id: 9, desc_id: 5, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 9, desc_id: 5, dice: Dice { num: 2, sides: 5 } },
-    MonsterAttack { type_id: 9, desc_id: 5, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 9, desc_id: 8, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 9, desc_id: 12, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 10, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 10, desc_id: 4, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 10, desc_id: 7, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 10, desc_id: 9, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 11, desc_id: 1, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 11, desc_id: 7, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 11, desc_id: 13, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 12, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 13, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 13, desc_id: 19, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 14, desc_id: 1, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 14, desc_id: 1, dice: Dice { num: 3, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 1, sides: 5 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 2, sides: 5 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 3, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 3, sides: 9 } },
-    MonsterAttack { type_id: 14, desc_id: 2, dice: Dice { num: 4, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 4, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 14, desc_id: 4, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 4, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 14, desc_id: 4, dice: Dice { num: 2, sides: 5 } },
-    MonsterAttack { type_id: 14, desc_id: 5, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 14, desc_id: 5, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 14, desc_id: 5, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 5, dice: Dice { num: 2, sides: 6 } },
-    MonsterAttack { type_id: 14, desc_id: 5, dice: Dice { num: 3, sides: 5 } },
-    MonsterAttack { type_id: 14, desc_id: 12, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 14, desc_id: 12, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 14, desc_id: 13, dice: Dice { num: 2, sides: 4 } },
-    MonsterAttack { type_id: 15, desc_id: 2, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 15, desc_id: 2, dice: Dice { num: 3, sides: 6 } },
-    MonsterAttack { type_id: 15, desc_id: 5, dice: Dice { num: 1, sides: 8 } },
-    MonsterAttack { type_id: 15, desc_id: 5, dice: Dice { num: 2, sides: 8 } },
-    MonsterAttack { type_id: 15, desc_id: 5, dice: Dice { num: 2, sides: 10 } },
-    MonsterAttack { type_id: 15, desc_id: 5, dice: Dice { num: 2, sides: 12 } },
-    MonsterAttack { type_id: 15, desc_id: 12, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 16, desc_id: 13, dice: Dice { num: 1, sides: 2 } },
-    MonsterAttack { type_id: 17, desc_id: 3, dice: Dice { num: 1, sides: 10 } },
-    MonsterAttack { type_id: 18, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 5, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 12, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 14, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 15, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 18, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 20, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 22, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 26, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 30, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 32, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 34, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 36, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 38, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 42, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 44, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 46, sides: 8 } },
-    MonsterAttack { type_id: 19, desc_id: 5, dice: Dice { num: 52, sides: 8 } },
-    MonsterAttack { type_id: 20, desc_id: 10, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 21, desc_id: 1, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 21, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 21, desc_id: 5, dice: Dice { num: 1, sides: 6 } },
-    MonsterAttack { type_id: 21, desc_id: 7, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 21, desc_id: 12, dice: Dice { num: 1, sides: 4 } },
-    MonsterAttack { type_id: 22, desc_id: 5, dice: Dice { num: 2, sides: 3 } },
-    MonsterAttack { type_id: 22, desc_id: 12, dice: Dice { num: 0, sides: 0 } },
-    MonsterAttack { type_id: 22, desc_id: 15, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 23, desc_id: 1, dice: Dice { num: 1, sides: 1 } },
-    MonsterAttack { type_id: 23, desc_id: 5, dice: Dice { num: 1, sides: 3 } },
-    MonsterAttack { type_id: 24, desc_id: 5, dice: Dice { num: 0, sides: 0 } },
+    MonsterAttack {
+        type_id: 0,
+        desc_id: 0,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 7 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 9 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 4, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 4, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 1,
+        dice: Dice { num: 5, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 7 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 14 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 5, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 2,
+        dice: Dice { num: 5, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 9 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 3,
+        dice: Dice { num: 3, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 4,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 10,
+        dice: Dice { num: 5, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 13,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 13,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 14,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 16,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 16,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 16,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 16,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 16,
+        dice: Dice { num: 2, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 17,
+        dice: Dice { num: 8, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 1,
+        desc_id: 18,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 1,
+        dice: Dice { num: 4, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 7 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 2,
+        desc_id: 7,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 3,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 3,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 3,
+        desc_id: 13,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 3,
+        desc_id: 7,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 7,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 10,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 4,
+        desc_id: 13,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 1,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 7 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 1,
+        dice: Dice { num: 4, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 1,
+        dice: Dice { num: 10, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 5,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 9,
+        dice: Dice { num: 3, sides: 7 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 9,
+        dice: Dice { num: 4, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 5,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 8,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 9,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 6,
+        desc_id: 9,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 5,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 7,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 2,
+        dice: Dice { num: 5, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 8,
+        desc_id: 5,
+        dice: Dice { num: 5, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 9,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 9,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 9,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 9,
+        desc_id: 8,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 9,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 10,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 10,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 10,
+        desc_id: 7,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 10,
+        desc_id: 9,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 11,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 11,
+        desc_id: 7,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 11,
+        desc_id: 13,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 12,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 13,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 13,
+        desc_id: 19,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 1,
+        dice: Dice { num: 3, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 9 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 2,
+        dice: Dice { num: 4, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 4,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 4,
+        dice: Dice { num: 2, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 5,
+        dice: Dice { num: 3, sides: 5 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 14,
+        desc_id: 13,
+        dice: Dice { num: 2, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 2,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 2,
+        dice: Dice { num: 3, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 12 },
+    },
+    MonsterAttack {
+        type_id: 15,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 16,
+        desc_id: 13,
+        dice: Dice { num: 1, sides: 2 },
+    },
+    MonsterAttack {
+        type_id: 17,
+        desc_id: 3,
+        dice: Dice { num: 1, sides: 10 },
+    },
+    MonsterAttack {
+        type_id: 18,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 5, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 12, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 14, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 15, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 18, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 20, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 22, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 26, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 30, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 32, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 34, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 36, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 38, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 42, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 44, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 46, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 19,
+        desc_id: 5,
+        dice: Dice { num: 52, sides: 8 },
+    },
+    MonsterAttack {
+        type_id: 20,
+        desc_id: 10,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 21,
+        desc_id: 1,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 21,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 21,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 6 },
+    },
+    MonsterAttack {
+        type_id: 21,
+        desc_id: 7,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 21,
+        desc_id: 12,
+        dice: Dice { num: 1, sides: 4 },
+    },
+    MonsterAttack {
+        type_id: 22,
+        desc_id: 5,
+        dice: Dice { num: 2, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 22,
+        desc_id: 12,
+        dice: Dice { num: 0, sides: 0 },
+    },
+    MonsterAttack {
+        type_id: 22,
+        desc_id: 15,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 23,
+        desc_id: 1,
+        dice: Dice { num: 1, sides: 1 },
+    },
+    MonsterAttack {
+        type_id: 23,
+        desc_id: 5,
+        dice: Dice { num: 1, sides: 3 },
+    },
+    MonsterAttack {
+        type_id: 24,
+        desc_id: 5,
+        dice: Dice { num: 0, sides: 0 },
+    },
 ];
 
 pub const CREATURES_LIST: [CreatureDefinition; 279] = [
@@ -4497,9 +5357,10 @@ pub const CREATURES_LIST: [CreatureDefinition; 279] = [
 ];
 
 pub const MONSTER_LEVELS: [usize; 41] = [
-    8, 19, 34, 49, 59, 73, 81, 90, 96, 105, 113, 118, 128, 135, 143, 153, 160, 164, 167, 174, 178, 182, 187, 193, 197, 202, 208, 212, 215, 221, 227, 231, 235, 239, 244, 250, 256, 261, 265, 270, 277
+    8, 19, 34, 49, 59, 73, 81, 90, 96, 105, 113, 118, 128, 135, 143, 153, 160, 164, 167, 174, 178,
+    182, 187, 193, 197, 202, 208, 212, 215, 221, 227, 231, 235, 239, 244, 250, 256, 261, 265, 270,
+    277,
 ];
-
 
 /// Canonical Umoria monster selection algorithm.
 /// Selects an authentic creature index (0..277) suitable for the dungeon depth.

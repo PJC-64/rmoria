@@ -1,15 +1,13 @@
-use serde::{Serialize, Deserialize};
 use crate::dice::Dice;
-use crate::player::Player;
 use crate::dungeon::DungeonLevel;
 use crate::entity::monster_data::{
-    CreatureDefinition, CREATURES_LIST, MONSTER_ATTACKS,
-    CM_MULTIPLY, CD_MAX_HP, CD_EVIL,
-    CS_FREQ, CS_TEL_SHORT, CS_TEL_LONG, CS_TEL_TO,
-    CS_LGHT_WND, CS_SER_WND, CS_HOLD_PER, CS_BLIND, CS_CONFUSE, CS_FEAR,
-    CS_SUMMON_MON, CS_SUMMON_UND, CS_SLOW_PER, CS_DRAIN_MANA,
-    CS_BR_LIGHT, CS_BR_GAS, CS_BR_ACID, CS_BR_FROST, CS_BR_FIRE,
+    CD_EVIL, CD_MAX_HP, CM_MULTIPLY, CREATURES_LIST, CS_BLIND, CS_BR_ACID, CS_BR_FIRE, CS_BR_FROST,
+    CS_BR_GAS, CS_BR_LIGHT, CS_CONFUSE, CS_DRAIN_MANA, CS_FEAR, CS_FREQ, CS_HOLD_PER, CS_LGHT_WND,
+    CS_SER_WND, CS_SLOW_PER, CS_SUMMON_MON, CS_SUMMON_UND, CS_TEL_LONG, CS_TEL_SHORT, CS_TEL_TO,
+    CreatureDefinition, MONSTER_ATTACKS,
 };
+use crate::player::Player;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Monster {
@@ -41,10 +39,25 @@ pub struct Monster {
 
 impl Monster {
     /// Legacy constructor for backward compatibility with existing tests.
-    pub fn new(name: &str, symbol: char, x: usize, y: usize, max_hp: i32, damage: Dice, experience_reward: u32) -> Self {
-        let creature_id = CREATURES_LIST.iter().position(|c| c.name == name).unwrap_or(0);
+    pub fn new(
+        name: &str,
+        symbol: char,
+        x: usize,
+        y: usize,
+        max_hp: i32,
+        damage: Dice,
+        experience_reward: u32,
+    ) -> Self {
+        let creature_id = CREATURES_LIST
+            .iter()
+            .position(|c| c.name == name)
+            .unwrap_or(0);
         let (ac, speed, level) = if creature_id < CREATURES_LIST.len() {
-            (CREATURES_LIST[creature_id].ac, CREATURES_LIST[creature_id].speed, CREATURES_LIST[creature_id].level)
+            (
+                CREATURES_LIST[creature_id].ac,
+                CREATURES_LIST[creature_id].speed,
+                CREATURES_LIST[creature_id].level,
+            )
         } else {
             (10, 10, 1)
         };
@@ -93,11 +106,12 @@ impl Monster {
             0
         };
 
-        let primary_damage = if def.attacks[0] != 0 && (def.attacks[0] as usize) < MONSTER_ATTACKS.len() {
-            MONSTER_ATTACKS[def.attacks[0] as usize].dice
-        } else {
-            Dice { num: 1, sides: 1 }
-        };
+        let primary_damage =
+            if def.attacks[0] != 0 && (def.attacks[0] as usize) < MONSTER_ATTACKS.len() {
+                MONSTER_ATTACKS[def.attacks[0] as usize].dice
+            } else {
+                Dice { num: 1, sides: 1 }
+            };
 
         Self {
             name: def.name.to_string(),
@@ -167,7 +181,11 @@ impl Monster {
 
         if self.confused > 0 || self.symbol == 'p' {
             // Confused monsters or townsfolk wander semi-randomly
-            let wander_chance = if is_hostile && self.confused == 0 { 0.70 } else { 1.00 };
+            let wander_chance = if is_hostile && self.confused == 0 {
+                0.70
+            } else {
+                1.00
+            };
             if rng.gen_bool(wander_chance) {
                 let dx = rng.gen_range(-1..=1);
                 let dy = rng.gen_range(-1..=1);
@@ -177,9 +195,10 @@ impl Monster {
                 let next_x = (self.x as isize + dx) as usize;
                 let next_y = (self.y as isize + dy) as usize;
                 if let Some(tile) = level.get_tile(next_x, next_y)
-                    && tile.is_passable() {
-                        return Some((next_x, next_y));
-                    }
+                    && tile.is_passable()
+                {
+                    return Some((next_x, next_y));
+                }
                 return None;
             }
         }
@@ -195,21 +214,36 @@ impl Monster {
         let next_y = (self.y as isize + dy) as usize;
 
         if let Some(tile) = level.get_tile(next_x, next_y)
-            && (tile.is_passable() || matches!(tile.tile_type, crate::dungeon::tile::TileType::DoorClosed { .. })) {
-                return Some((next_x, next_y));
-            }
+            && (tile.is_passable()
+                || matches!(
+                    tile.tile_type,
+                    crate::dungeon::tile::TileType::DoorClosed { .. }
+                ))
+        {
+            return Some((next_x, next_y));
+        }
 
         let next_x_only = (self.x as isize + dx) as usize;
         if let Some(tile) = level.get_tile(next_x_only, self.y)
-            && (tile.is_passable() || matches!(tile.tile_type, crate::dungeon::tile::TileType::DoorClosed { .. })) {
-                return Some((next_x_only, self.y));
-            }
+            && (tile.is_passable()
+                || matches!(
+                    tile.tile_type,
+                    crate::dungeon::tile::TileType::DoorClosed { .. }
+                ))
+        {
+            return Some((next_x_only, self.y));
+        }
 
         let next_y_only = (self.y as isize + dy) as usize;
         if let Some(tile) = level.get_tile(self.x, next_y_only)
-            && (tile.is_passable() || matches!(tile.tile_type, crate::dungeon::tile::TileType::DoorClosed { .. })) {
-                return Some((self.x, next_y_only));
-            }
+            && (tile.is_passable()
+                || matches!(
+                    tile.tile_type,
+                    crate::dungeon::tile::TileType::DoorClosed { .. }
+                ))
+        {
+            return Some((self.x, next_y_only));
+        }
 
         None
     }
@@ -230,11 +264,7 @@ impl Monster {
     pub fn movement_rate(&self, player_speed_mod: i16, turn: u64, is_resting: bool) -> usize {
         let rel = self.relative_speed(player_speed_mod);
         if rel > 0 {
-            if is_resting {
-                1
-            } else {
-                rel as usize
-            }
+            if is_resting { 1 } else { rel as usize }
         } else if rel == 0 {
             1
         } else {
@@ -249,7 +279,12 @@ impl Monster {
 }
 
 /// Hit chance check based on canonical Umoria formula.
-pub fn player_test_attack_hits<R: rand::Rng>(attack_id: u8, level: u8, player_ac: i32, rng: &mut R) -> bool {
+pub fn player_test_attack_hits<R: rand::Rng>(
+    attack_id: u8,
+    level: u8,
+    player_ac: i32,
+    rng: &mut R,
+) -> bool {
     let base_to_hit = match attack_id {
         1 => 60,
         2 => -3,
@@ -298,18 +333,16 @@ pub fn attack_description<R: rand::Rng>(desc_id: u8, rng: &mut R) -> &'static st
         16 => "crushes you.",
         17 => "tramples you.",
         18 => "drools on you.",
-        19 => {
-            match rng.gen_range(1..=8) {
-                1 => "insults you!",
-                2 => "insults your mother!",
-                3 => "gives you the finger!",
-                4 => "humiliates you!",
-                5 => "wets on your leg!",
-                6 => "defiles you!",
-                7 => "dances around you!",
-                _ => "makes obscene gestures!",
-            }
-        }
+        19 => match rng.gen_range(1..=8) {
+            1 => "insults you!",
+            2 => "insults your mother!",
+            3 => "gives you the finger!",
+            4 => "humiliates you!",
+            5 => "wets on your leg!",
+            6 => "defiles you!",
+            7 => "dances around you!",
+            _ => "makes obscene gestures!",
+        },
         99 => "is repelled.",
         _ => "attacks you.",
     }
@@ -337,7 +370,10 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
         let dice = att.dice;
 
         // Protection from Evil repels evil monsters if player level >= creature level
-        if player.flags.protect_evil > 0 && (def.defenses & CD_EVIL) != 0 && (player.level as u8 + 1 > def.level) {
+        if player.flags.protect_evil > 0
+            && (def.defenses & CD_EVIL) != 0
+            && (player.level as u8 + 1 > def.level)
+        {
             attack_type = 99;
             attack_desc = 99;
         }
@@ -449,7 +485,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 12 => {
                     // Steal money
-                    if player.flags.paralysis < 1 && rng.gen_range(0..124) < player.stats.dexterity as u32 {
+                    if player.flags.paralysis < 1
+                        && rng.gen_range(0..124) < player.stats.dexterity as u32
+                    {
                         status_msg.push_str(" You quickly protect your money pouch!");
                     } else {
                         let stolen = (player.gold / 10) + rng.gen_range(1..=25);
@@ -459,12 +497,17 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 13 => {
                     // Steal object
-                    if player.flags.paralysis < 1 && rng.gen_range(0..124) < player.stats.dexterity as u32 {
+                    if player.flags.paralysis < 1
+                        && rng.gen_range(0..124) < player.stats.dexterity as u32
+                    {
                         status_msg.push_str(" You grab hold of your backpack!");
                     } else if !player.inventory.is_empty() {
                         let idx = rng.gen_range(0..player.inventory.len());
                         let stolen_item = player.inventory.remove(idx);
-                        status_msg.push_str(&format!(" Your backpack feels lighter (lost {}).", stolen_item.name));
+                        status_msg.push_str(&format!(
+                            " Your backpack feels lighter (lost {}).",
+                            stolen_item.name
+                        ));
                     }
                 }
                 14 => {
@@ -489,7 +532,8 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                     if player.flags.sustain_con {
                         status_msg.push_str(" Your body resists the effects of the disease.");
                     } else {
-                        player.stats.constitution = player.stats.constitution.saturating_sub(1).max(3);
+                        player.stats.constitution =
+                            player.stats.constitution.saturating_sub(1).max(3);
                         status_msg.push_str(" Your health is damaged!");
                     }
                 }
@@ -497,9 +541,12 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                     // Lose intelligence
                     player.take_damage(raw_damage);
                     if player.flags.sustain_int {
-                        status_msg.push_str(" You have trouble thinking clearly, but your mind quickly clears.");
+                        status_msg.push_str(
+                            " You have trouble thinking clearly, but your mind quickly clears.",
+                        );
                     } else {
-                        player.stats.intelligence = player.stats.intelligence.saturating_sub(1).max(3);
+                        player.stats.intelligence =
+                            player.stats.intelligence.saturating_sub(1).max(3);
                         status_msg.push_str(" You have trouble thinking clearly.");
                     }
                 }
@@ -529,7 +576,11 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 22 => {
                     // Eat food
-                    if let Some(pos) = player.inventory.iter().position(|i| matches!(i.item_type, crate::player::ItemType::Food { .. })) {
+                    if let Some(pos) = player
+                        .inventory
+                        .iter()
+                        .position(|i| matches!(i.item_type, crate::player::ItemType::Food { .. }))
+                    {
                         player.inventory.remove(pos);
                         status_msg.push_str(" It got at your rations!");
                     }
@@ -578,7 +629,9 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
         return false;
     }
 
-    let dist = (monster.x as isize - player.x as isize).abs().max((monster.y as isize - player.y as isize).abs());
+    let dist = (monster.x as isize - player.x as isize)
+        .abs()
+        .max((monster.y as isize - player.y as isize).abs());
     if dist > 20 || !level.has_los(monster.x, monster.y, player.x, player.y) {
         return false;
     }
@@ -590,12 +643,24 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
 
     let mut available_spells = Vec::new();
     let check_spells = [
-        CS_TEL_SHORT, CS_TEL_LONG, CS_TEL_TO,
-        CS_LGHT_WND, CS_SER_WND, CS_HOLD_PER,
-        CS_BLIND, CS_CONFUSE, CS_FEAR,
-        CS_SUMMON_MON, CS_SUMMON_UND,
-        CS_SLOW_PER, CS_DRAIN_MANA,
-        CS_BR_LIGHT, CS_BR_GAS, CS_BR_ACID, CS_BR_FROST, CS_BR_FIRE,
+        CS_TEL_SHORT,
+        CS_TEL_LONG,
+        CS_TEL_TO,
+        CS_LGHT_WND,
+        CS_SER_WND,
+        CS_HOLD_PER,
+        CS_BLIND,
+        CS_CONFUSE,
+        CS_FEAR,
+        CS_SUMMON_MON,
+        CS_SUMMON_UND,
+        CS_SLOW_PER,
+        CS_DRAIN_MANA,
+        CS_BR_LIGHT,
+        CS_BR_GAS,
+        CS_BR_ACID,
+        CS_BR_FROST,
+        CS_BR_FIRE,
     ];
 
     for &s in &check_spells {
@@ -629,7 +694,10 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
             for (dx, dy) in adj {
                 let tx = (monster.x as isize + dx) as usize;
                 let ty = (monster.y as isize + dy) as usize;
-                if let Some(t) = level.get_tile(tx, ty) && t.is_passable() && !occupied.iter().any(|&(ox, oy)| ox == tx && oy == ty) {
+                if let Some(t) = level.get_tile(tx, ty)
+                    && t.is_passable()
+                    && !occupied.iter().any(|&(ox, oy)| ox == tx && oy == ty)
+                {
                     player.x = tx;
                     player.y = ty;
                     break;
@@ -695,17 +763,30 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
             }
         }
         CS_SUMMON_MON => {
-            status_msg.push_str(&format!(" The {} magically summons a monster!", monster.name));
+            status_msg.push_str(&format!(
+                " The {} magically summons a monster!",
+                monster.name
+            ));
             let c_idx = crate::entity::monster_data::get_monster_for_level(level.depth, rng);
             let (sx, sy) = level.find_random_floor_tile_near(player.x, player.y, 3);
-            if !occupied.iter().any(|&(ox, oy)| ox == sx && oy == sy) && (player.x != sx || player.y != sy) {
+            if !occupied.iter().any(|&(ox, oy)| ox == sx && oy == sy)
+                && (player.x != sx || player.y != sy)
+            {
                 new_monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
             }
         }
         CS_SUMMON_UND => {
-            status_msg.push_str(&format!(" The {} magically summons an undead!", monster.name));
-            let undead_candidates: Vec<usize> = CREATURES_LIST.iter().enumerate()
-                .filter(|(_, c)| (c.defenses & crate::entity::monster_data::CD_UNDEAD) != 0 && c.level <= level.depth as u8 + 5)
+            status_msg.push_str(&format!(
+                " The {} magically summons an undead!",
+                monster.name
+            ));
+            let undead_candidates: Vec<usize> = CREATURES_LIST
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    (c.defenses & crate::entity::monster_data::CD_UNDEAD) != 0
+                        && c.level <= level.depth as u8 + 5
+                })
                 .map(|(i, _)| i)
                 .collect();
             let c_idx = if !undead_candidates.is_empty() {
@@ -714,7 +795,9 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
                 crate::entity::monster_data::get_monster_for_level(level.depth, rng)
             };
             let (sx, sy) = level.find_random_floor_tile_near(player.x, player.y, 3);
-            if !occupied.iter().any(|&(ox, oy)| ox == sx && oy == sy) && (player.x != sx || player.y != sy) {
+            if !occupied.iter().any(|&(ox, oy)| ox == sx && oy == sy)
+                && (player.x != sx || player.y != sy)
+            {
                 new_monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
             }
         }
@@ -731,10 +814,15 @@ pub fn try_monster_cast_spell<R: rand::Rng>(
         }
         CS_DRAIN_MANA => {
             if player.mana > 0 {
-                let drained = (rng.gen_range(1..=(def.level.max(1) as i32)) / 2 + 1).min(player.mana).max(0);
+                let drained = (rng.gen_range(1..=(def.level.max(1) as i32)) / 2 + 1)
+                    .min(player.mana)
+                    .max(0);
                 player.mana -= drained;
                 monster.hp = (monster.hp + (6 * drained)).min(monster.max_hp * 2);
-                status_msg.push_str(&format!(" The {} draws psychic energy from you! (lost {} mana)", monster.name, drained));
+                status_msg.push_str(&format!(
+                    " The {} draws psychic energy from you! (lost {} mana)",
+                    monster.name, drained
+                ));
             }
         }
         CS_BR_LIGHT => {
@@ -790,9 +878,14 @@ pub fn try_monster_multiply<R: rand::Rng>(
     }
 
     let adj = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1,  0),          (1,  0),
-        (-1,  1), (0,  1), (1,  1),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
     ];
 
     for (dx, dy) in adj {
@@ -801,9 +894,17 @@ pub fn try_monster_multiply<R: rand::Rng>(
         if tx == player_x && ty == player_y {
             continue;
         }
-        if let Some(tile) = level.get_tile(tx, ty) && tile.is_passable()
-            && !occupied.iter().any(|&(ox, oy)| ox == tx && oy == ty) {
-            return Some(Monster::from_creature_id(monster.creature_id, tx, ty, false, rng));
+        if let Some(tile) = level.get_tile(tx, ty)
+            && tile.is_passable()
+            && !occupied.iter().any(|&(ox, oy)| ox == tx && oy == ty)
+        {
+            return Some(Monster::from_creature_id(
+                monster.creature_id,
+                tx,
+                ty,
+                false,
+                rng,
+            ));
         }
     }
 
@@ -823,30 +924,124 @@ pub struct MonsterTemplate {
 
 #[allow(dead_code)]
 pub const MONSTER_DB: &[MonsterTemplate] = &[
-    MonsterTemplate { name: "Red Mold", symbol: 'm', level: 1, max_hp: 5, damage: Dice { num: 1, sides: 3 }, exp_reward: 5 },
-    MonsterTemplate { name: "Giant Centipede", symbol: 'c', level: 1, max_hp: 7, damage: Dice { num: 1, sides: 3 }, exp_reward: 7 },
-    MonsterTemplate { name: "Goblin", symbol: 'g', level: 2, max_hp: 8, damage: Dice { num: 1, sides: 4 }, exp_reward: 10 },
-    MonsterTemplate { name: "Giant White Rat", symbol: 'r', level: 2, max_hp: 9, damage: Dice { num: 1, sides: 4 }, exp_reward: 12 },
-    MonsterTemplate { name: "Orc", symbol: 'o', level: 3, max_hp: 15, damage: Dice { num: 1, sides: 6 }, exp_reward: 25 },
-    MonsterTemplate { name: "Baby Dragon", symbol: 'd', level: 3, max_hp: 20, damage: Dice { num: 2, sides: 4 }, exp_reward: 35 },
-    MonsterTemplate { name: "Cave Troll", symbol: 'T', level: 4, max_hp: 30, damage: Dice { num: 2, sides: 6 }, exp_reward: 50 },
-    MonsterTemplate { name: "Spectre", symbol: 'S', level: 4, max_hp: 22, damage: Dice { num: 1, sides: 8 }, exp_reward: 60 },
-    MonsterTemplate { name: "Uruk-Hai", symbol: 'U', level: 5, max_hp: 35, damage: Dice { num: 2, sides: 6 }, exp_reward: 80 },
-    MonsterTemplate { name: "Giant Spider", symbol: 's', level: 5, max_hp: 28, damage: Dice { num: 1, sides: 10 }, exp_reward: 75 },
-    MonsterTemplate { name: "Ghost Warrior", symbol: 'W', level: 6, max_hp: 40, damage: Dice { num: 2, sides: 8 }, exp_reward: 120 },
-    MonsterTemplate { name: "Lich", symbol: 'L', level: 7, max_hp: 55, damage: Dice { num: 3, sides: 6 }, exp_reward: 180 },
+    MonsterTemplate {
+        name: "Red Mold",
+        symbol: 'm',
+        level: 1,
+        max_hp: 5,
+        damage: Dice { num: 1, sides: 3 },
+        exp_reward: 5,
+    },
+    MonsterTemplate {
+        name: "Giant Centipede",
+        symbol: 'c',
+        level: 1,
+        max_hp: 7,
+        damage: Dice { num: 1, sides: 3 },
+        exp_reward: 7,
+    },
+    MonsterTemplate {
+        name: "Goblin",
+        symbol: 'g',
+        level: 2,
+        max_hp: 8,
+        damage: Dice { num: 1, sides: 4 },
+        exp_reward: 10,
+    },
+    MonsterTemplate {
+        name: "Giant White Rat",
+        symbol: 'r',
+        level: 2,
+        max_hp: 9,
+        damage: Dice { num: 1, sides: 4 },
+        exp_reward: 12,
+    },
+    MonsterTemplate {
+        name: "Orc",
+        symbol: 'o',
+        level: 3,
+        max_hp: 15,
+        damage: Dice { num: 1, sides: 6 },
+        exp_reward: 25,
+    },
+    MonsterTemplate {
+        name: "Baby Dragon",
+        symbol: 'd',
+        level: 3,
+        max_hp: 20,
+        damage: Dice { num: 2, sides: 4 },
+        exp_reward: 35,
+    },
+    MonsterTemplate {
+        name: "Cave Troll",
+        symbol: 'T',
+        level: 4,
+        max_hp: 30,
+        damage: Dice { num: 2, sides: 6 },
+        exp_reward: 50,
+    },
+    MonsterTemplate {
+        name: "Spectre",
+        symbol: 'S',
+        level: 4,
+        max_hp: 22,
+        damage: Dice { num: 1, sides: 8 },
+        exp_reward: 60,
+    },
+    MonsterTemplate {
+        name: "Uruk-Hai",
+        symbol: 'U',
+        level: 5,
+        max_hp: 35,
+        damage: Dice { num: 2, sides: 6 },
+        exp_reward: 80,
+    },
+    MonsterTemplate {
+        name: "Giant Spider",
+        symbol: 's',
+        level: 5,
+        max_hp: 28,
+        damage: Dice { num: 1, sides: 10 },
+        exp_reward: 75,
+    },
+    MonsterTemplate {
+        name: "Ghost Warrior",
+        symbol: 'W',
+        level: 6,
+        max_hp: 40,
+        damage: Dice { num: 2, sides: 8 },
+        exp_reward: 120,
+    },
+    MonsterTemplate {
+        name: "Lich",
+        symbol: 'L',
+        level: 7,
+        max_hp: 55,
+        damage: Dice { num: 3, sides: 6 },
+        exp_reward: 180,
+    },
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::player::{Race, Class};
-    use crate::entity::monster_data::{CREATURES_LIST, MONSTER_ATTACKS, MONSTER_LEVELS, get_monster_for_level};
+    use crate::entity::monster_data::{
+        CREATURES_LIST, MONSTER_ATTACKS, MONSTER_LEVELS, get_monster_for_level,
+    };
+    use crate::player::{Class, Race};
 
     #[test]
     fn test_canonical_creature_count_and_balrog_stats() {
-        assert_eq!(CREATURES_LIST.len(), 279, "Must contain all 279 canonical Umoria creatures");
-        assert_eq!(MONSTER_ATTACKS.len(), 215, "Must contain all 215 canonical monster attacks");
+        assert_eq!(
+            CREATURES_LIST.len(),
+            279,
+            "Must contain all 279 canonical Umoria creatures"
+        );
+        assert_eq!(
+            MONSTER_ATTACKS.len(),
+            215,
+            "Must contain all 215 canonical monster attacks"
+        );
 
         // The Balrog is creature index 278
         let balrog = &CREATURES_LIST[278];
@@ -864,7 +1059,10 @@ mod tests {
     fn test_canonical_monster_levels_prefix() {
         assert_eq!(MONSTER_LEVELS.len(), 41);
         assert_eq!(MONSTER_LEVELS[0], 8, "Level 0 town NPCs count");
-        assert_eq!(MONSTER_LEVELS[40], 277, "Prefix sum of all 277 non-endgame creatures");
+        assert_eq!(
+            MONSTER_LEVELS[40], 277,
+            "Prefix sum of all 277 non-endgame creatures"
+        );
 
         let mut rng = rand::thread_rng();
         for _ in 0..100 {
@@ -889,7 +1087,10 @@ mod tests {
 
         // Sleeping monster initialization
         let sleeping_mon = Monster::from_creature_id(16, 5, 5, true, &mut rng); // Kobold
-        assert!(sleeping_mon.asleep > 0, "Sleeping monster must have sleep counter > 0");
+        assert!(
+            sleeping_mon.asleep > 0,
+            "Sleeping monster must have sleep counter > 0"
+        );
     }
 
     #[test]
@@ -924,7 +1125,10 @@ mod tests {
                 break;
             }
         }
-        assert!(player.flags.poisoned > 0, "Poisonous creature must inflict poisoned status condition");
+        assert!(
+            player.flags.poisoned > 0,
+            "Poisonous creature must inflict poisoned status condition"
+        );
     }
 
     #[test]
@@ -940,7 +1144,10 @@ mod tests {
         for _ in 0..15 {
             let _ = execute_monster_melee_attacks(&eye, &mut player, &mut msg, &mut rng);
         }
-        assert_eq!(player.flags.paralysis, 0, "Free action must protect against paralysis attacks");
+        assert_eq!(
+            player.flags.paralysis, 0,
+            "Free action must protect against paralysis attacks"
+        );
     }
 
     #[test]
@@ -956,7 +1163,10 @@ mod tests {
         for _ in 0..20 {
             let _ = execute_monster_melee_attacks(&quasit, &mut player, &mut msg, &mut rng);
         }
-        assert_eq!(player.stats.strength, 16, "Sustained STR must prevent STR drain");
+        assert_eq!(
+            player.stats.strength, 16,
+            "Sustained STR must prevent STR drain"
+        );
     }
 
     #[test]
@@ -980,7 +1190,10 @@ mod tests {
 
         player.damage_lightning(30, &mut msg);
         // 30 / 3 = 10 damage
-        assert_eq!(player.hp, 240, "Lightning resistance reduces 30 damage to 10");
+        assert_eq!(
+            player.hp, 240,
+            "Lightning resistance reduces 30 damage to 10"
+        );
 
         player.damage_acid(45, &mut msg);
         // 45 / 3 = 15 damage
@@ -994,7 +1207,11 @@ mod tests {
         dungeon.get_tile_mut(11, 10).unwrap().tile_type = crate::dungeon::TileType::Floor;
         // White Worm mass (creature 17) has CM_MULTIPLY flag
         let worm = Monster::from_creature_id(17, 10, 10, false, &mut rng);
-        assert_ne!(worm.movement() & CM_MULTIPLY, 0, "Worm must have CM_MULTIPLY flag");
+        assert_ne!(
+            worm.movement() & CM_MULTIPLY,
+            0,
+            "Worm must have CM_MULTIPLY flag"
+        );
 
         // Test multiply attempt with guaranteed RNG roll
         let mut spawned = None;
@@ -1004,7 +1221,10 @@ mod tests {
                 break;
             }
         }
-        assert!(spawned.is_some(), "Multiplying monster should be able to produce offspring");
+        assert!(
+            spawned.is_some(),
+            "Multiplying monster should be able to produce offspring"
+        );
         let child = spawned.unwrap();
         assert_eq!(child.name, worm.name);
     }
@@ -1035,7 +1255,11 @@ mod tests {
         let balrog = Monster::from_creature_id(278, 5, 5, false, &mut rng);
         assert_eq!(balrog.speed, 13);
         assert_eq!(balrog.relative_speed(0), 3);
-        assert_eq!(balrog.movement_rate(0, 1, false), 3, "Balrog gets 3 moves per turn against normal player");
+        assert_eq!(
+            balrog.movement_rate(0, 1, false),
+            3,
+            "Balrog gets 3 moves per turn against normal player"
+        );
 
         // Fast player: Balrog gets 2 moves
         assert_eq!(balrog.relative_speed(-1), 2);
@@ -1046,7 +1270,11 @@ mod tests {
         assert_eq!(balrog.movement_rate(1, 1, false), 4);
 
         // Resting player clamps fast monsters to 1 move per tick!
-        assert_eq!(balrog.movement_rate(0, 1, true), 1, "Resting clamps monster moves to 1");
+        assert_eq!(
+            balrog.movement_rate(0, 1, true),
+            1,
+            "Resting clamps monster moves to 1"
+        );
 
         // 3. Slow monster: Iron Golem / Black Ooze (speed = 9)
         let slow_idx = CREATURES_LIST.iter().position(|c| c.speed == 9).unwrap();

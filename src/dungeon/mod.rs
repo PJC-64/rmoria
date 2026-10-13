@@ -1,16 +1,16 @@
-use serde::{Serialize, Deserialize};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
-pub mod tile;
 pub mod shop;
+pub mod tile;
 
-pub use tile::{Tile, TileType, TrapType};
-pub use shop::{
-    HaggleState, handle_haggle_input, StoreOwner, STORE_OWNERS, MAX_OWNERS,
-    calculate_buy_price, calculate_sell_price, get_item_base_value,
-};
-use crate::player::{Item, ItemType, Player};
 use crate::entity::monster::Monster;
+use crate::player::{Item, ItemType, Player};
+pub use shop::{
+    HaggleState, MAX_OWNERS, STORE_OWNERS, StoreOwner, calculate_buy_price, calculate_sell_price,
+    get_item_base_value, handle_haggle_input,
+};
+pub use tile::{Tile, TileType, TrapType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShopType {
@@ -36,7 +36,12 @@ pub struct ShopInfo {
 }
 
 impl ShopInfo {
-    pub fn new(door_x: usize, door_y: usize, shop_type: ShopType, rng: &mut impl rand::Rng) -> Self {
+    pub fn new(
+        door_x: usize,
+        door_y: usize,
+        shop_type: ShopType,
+        rng: &mut impl rand::Rng,
+    ) -> Self {
         let store_offset = shop_type as usize;
         let owner_variant = rng.gen_range(0..3);
         let owner_index = store_offset + owner_variant * 6;
@@ -117,8 +122,10 @@ impl Room {
     }
 
     fn intersects(&self, other: &Room) -> bool {
-        self.x <= other.x + other.w && self.x + self.w >= other.x &&
-        self.y <= other.y + other.h && self.y + self.h >= other.y
+        self.x <= other.x + other.w
+            && self.x + self.w >= other.x
+            && self.y <= other.y + other.h
+            && self.y + self.h >= other.y
     }
 }
 
@@ -129,7 +136,16 @@ pub fn generate_random_floor_item<R: Rng>(depth: u32, rng: &mut R) -> Item {
 impl DungeonLevel {
     pub fn new(width: usize, height: usize, depth: u32, max_depth: u32) -> Self {
         let tiles = vec![Tile::new(TileType::Wall); width * height];
-        Self { width, height, tiles, depth, shops: Vec::new(), max_depth, rooms: Vec::new(), items: Vec::new() }
+        Self {
+            width,
+            height,
+            tiles,
+            depth,
+            shops: Vec::new(),
+            max_depth,
+            rooms: Vec::new(),
+            items: Vec::new(),
+        }
     }
 
     pub fn get_tile(&self, x: usize, y: usize) -> Option<&Tile> {
@@ -153,9 +169,10 @@ impl DungeonLevel {
         let end = x1.max(x2);
         for x in start..=end {
             if let Some(tile) = self.get_tile_mut(x, y)
-                && tile.tile_type == TileType::Wall {
-                    tile.tile_type = TileType::Floor;
-                }
+                && tile.tile_type == TileType::Wall
+            {
+                tile.tile_type = TileType::Floor;
+            }
         }
     }
 
@@ -164,18 +181,23 @@ impl DungeonLevel {
         let end = y1.max(y2);
         for y in start..=end {
             if let Some(tile) = self.get_tile_mut(x, y)
-                && tile.tile_type == TileType::Wall {
-                    tile.tile_type = TileType::Floor;
-                }
+                && tile.tile_type == TileType::Wall
+            {
+                tile.tile_type = TileType::Floor;
+            }
         }
     }
 
     pub fn is_in_room(&self, x: usize, y: usize) -> bool {
-        self.rooms.iter().any(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+        self.rooms
+            .iter()
+            .any(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
     }
 
     pub fn room_index_at(&self, x: usize, y: usize) -> Option<usize> {
-        self.rooms.iter().position(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+        self.rooms
+            .iter()
+            .position(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
     }
 
     pub fn is_room_entrance(&self, x: usize, y: usize) -> bool {
@@ -183,7 +205,12 @@ impl DungeonLevel {
             return false;
         }
 
-        let is_wall = |tt: TileType| matches!(tt, TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. });
+        let is_wall = |tt: TileType| {
+            matches!(
+                tt,
+                TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. }
+            )
+        };
         let is_passage = |tt: TileType| !is_wall(tt);
 
         if let Some(tile) = self.get_tile(x, y) {
@@ -194,15 +221,39 @@ impl DungeonLevel {
             return false;
         }
 
-        let w_l = self.get_tile(x - 1, y).map(|t| is_wall(t.tile_type)).unwrap_or(false);
-        let w_r = self.get_tile(x + 1, y).map(|t| is_wall(t.tile_type)).unwrap_or(false);
-        let f_t = self.get_tile(x, y - 1).map(|t| is_passage(t.tile_type)).unwrap_or(false);
-        let f_b = self.get_tile(x, y + 1).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+        let w_l = self
+            .get_tile(x - 1, y)
+            .map(|t| is_wall(t.tile_type))
+            .unwrap_or(false);
+        let w_r = self
+            .get_tile(x + 1, y)
+            .map(|t| is_wall(t.tile_type))
+            .unwrap_or(false);
+        let f_t = self
+            .get_tile(x, y - 1)
+            .map(|t| is_passage(t.tile_type))
+            .unwrap_or(false);
+        let f_b = self
+            .get_tile(x, y + 1)
+            .map(|t| is_passage(t.tile_type))
+            .unwrap_or(false);
 
-        let w_t = self.get_tile(x, y - 1).map(|t| is_wall(t.tile_type)).unwrap_or(false);
-        let w_b = self.get_tile(x, y + 1).map(|t| is_wall(t.tile_type)).unwrap_or(false);
-        let f_l = self.get_tile(x - 1, y).map(|t| is_passage(t.tile_type)).unwrap_or(false);
-        let f_r = self.get_tile(x + 1, y).map(|t| is_passage(t.tile_type)).unwrap_or(false);
+        let w_t = self
+            .get_tile(x, y - 1)
+            .map(|t| is_wall(t.tile_type))
+            .unwrap_or(false);
+        let w_b = self
+            .get_tile(x, y + 1)
+            .map(|t| is_wall(t.tile_type))
+            .unwrap_or(false);
+        let f_l = self
+            .get_tile(x - 1, y)
+            .map(|t| is_passage(t.tile_type))
+            .unwrap_or(false);
+        let f_r = self
+            .get_tile(x + 1, y)
+            .map(|t| is_passage(t.tile_type))
+            .unwrap_or(false);
 
         if w_l && w_r && f_t && f_b {
             let r_t = self.room_index_at(x, y - 1);
@@ -223,23 +274,33 @@ impl DungeonLevel {
             let tx = rng.gen_range(1..(self.width - 1));
             let ty = rng.gen_range(1..(self.height - 1));
             if let Some(tile) = self.get_tile(tx, ty)
-                && tile.tile_type == TileType::Floor {
-                    return (tx, ty);
-                }
+                && tile.tile_type == TileType::Floor
+            {
+                return (tx, ty);
+            }
         }
         (30, 10)
     }
 
-    pub fn find_random_floor_tile_near(&self, center_x: usize, center_y: usize, max_dist: usize) -> (usize, usize) {
+    pub fn find_random_floor_tile_near(
+        &self,
+        center_x: usize,
+        center_y: usize,
+        max_dist: usize,
+    ) -> (usize, usize) {
         let mut rng = rand::thread_rng();
         for _ in 0..500 {
             let dx = rng.gen_range(-(max_dist as isize)..=(max_dist as isize));
             let dy = rng.gen_range(-(max_dist as isize)..=(max_dist as isize));
             let tx = center_x as isize + dx;
             let ty = center_y as isize + dy;
-            if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1
+            if tx > 0
+                && ty > 0
+                && (tx as usize) < self.width - 1
+                && (ty as usize) < self.height - 1
                 && let Some(tile) = self.get_tile(tx as usize, ty as usize)
-                && tile.tile_type == TileType::Floor {
+                && tile.tile_type == TileType::Floor
+            {
                 return (tx as usize, ty as usize);
             }
         }
@@ -251,8 +312,12 @@ impl DungeonLevel {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
-                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                {
                     tile.visible = true;
                     tile.remembered = true;
                 }
@@ -265,8 +330,12 @@ impl DungeonLevel {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
-                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                {
                     tile.remembered = true;
                 }
             }
@@ -279,9 +348,15 @@ impl DungeonLevel {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
                     && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
-                    && let TileType::Trap { ref mut detected, .. } = tile.tile_type {
+                    && let TileType::Trap {
+                        ref mut detected, ..
+                    } = tile.tile_type
+                {
                     *detected = true;
                     tile.remembered = true;
                     count += 1;
@@ -291,21 +366,33 @@ impl DungeonLevel {
         count
     }
 
-    pub fn detect_doors_and_stairs_near(&mut self, center_x: usize, center_y: usize, radius: usize) -> usize {
+    pub fn detect_doors_and_stairs_near(
+        &mut self,
+        center_x: usize,
+        center_y: usize,
+        radius: usize,
+    ) -> usize {
         let mut count = 0;
         for dy in -(radius as isize)..=(radius as isize) {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
-                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                {
                     match tile.tile_type {
                         TileType::SecretDoor => {
                             tile.tile_type = TileType::DoorClosed { spikes: 0 };
                             tile.remembered = true;
                             count += 1;
                         }
-                        TileType::DoorClosed { .. } | TileType::DoorOpen | TileType::StairsUp | TileType::StairsDown => {
+                        TileType::DoorClosed { .. }
+                        | TileType::DoorOpen
+                        | TileType::StairsUp
+                        | TileType::StairsDown => {
                             tile.remembered = true;
                             count += 1;
                         }
@@ -326,8 +413,12 @@ impl DungeonLevel {
                 }
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height
-                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                {
                     match tile.tile_type {
                         TileType::DoorClosed { .. } | TileType::SecretDoor => {
                             tile.tile_type = TileType::DoorOpen;
@@ -356,32 +447,54 @@ impl DungeonLevel {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1
-                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                if tx > 0
+                    && ty > 0
+                    && (tx as usize) < self.width - 1
+                    && (ty as usize) < self.height - 1
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                {
                     tile.tile_type = TileType::Floor;
                 }
             }
         }
         self.items.retain(|i| {
-            let dist = (i.x as isize - center_x as isize).abs().max((i.y as isize - center_y as isize).abs());
+            let dist = (i.x as isize - center_x as isize)
+                .abs()
+                .max((i.y as isize - center_y as isize).abs());
             dist > radius as isize
         });
     }
 
-    pub fn cause_earthquake<R: rand::Rng>(&mut self, center_x: usize, center_y: usize, radius: usize, rng: &mut R) {
+    pub fn cause_earthquake<R: rand::Rng>(
+        &mut self,
+        center_x: usize,
+        center_y: usize,
+        radius: usize,
+        rng: &mut R,
+    ) {
         for dy in -(radius as isize)..=(radius as isize) {
             for dx in -(radius as isize)..=(radius as isize) {
                 let tx = center_x as isize + dx;
                 let ty = center_y as isize + dy;
-                if tx > 0 && ty > 0 && (tx as usize) < self.width - 1 && (ty as usize) < self.height - 1 {
+                if tx > 0
+                    && ty > 0
+                    && (tx as usize) < self.width - 1
+                    && (ty as usize) < self.height - 1
+                {
                     if tx as usize == center_x && ty as usize == center_y {
                         continue;
                     }
                     if rng.gen_range(0..100) < 40
-                        && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize) {
+                        && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                    {
                         if tile.tile_type == TileType::Floor {
                             tile.tile_type = TileType::Rubble;
-                        } else if matches!(tile.tile_type, TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. }) {
+                        } else if matches!(
+                            tile.tile_type,
+                            TileType::Wall
+                                | TileType::MagmaVein { .. }
+                                | TileType::QuartzVein { .. }
+                        ) {
                             tile.tile_type = TileType::Floor;
                         }
                     }
@@ -406,12 +519,20 @@ impl DungeonLevel {
             }
 
             for x in 0..self.width {
-                if let Some(t) = self.get_tile_mut(x, 0) { t.tile_type = TileType::Wall; }
-                if let Some(t) = self.get_tile_mut(x, self.height - 1) { t.tile_type = TileType::Wall; }
+                if let Some(t) = self.get_tile_mut(x, 0) {
+                    t.tile_type = TileType::Wall;
+                }
+                if let Some(t) = self.get_tile_mut(x, self.height - 1) {
+                    t.tile_type = TileType::Wall;
+                }
             }
             for y in 0..self.height {
-                if let Some(t) = self.get_tile_mut(0, y) { t.tile_type = TileType::Wall; }
-                if let Some(t) = self.get_tile_mut(self.width - 1, y) { t.tile_type = TileType::Wall; }
+                if let Some(t) = self.get_tile_mut(0, y) {
+                    t.tile_type = TileType::Wall;
+                }
+                if let Some(t) = self.get_tile_mut(self.width - 1, y) {
+                    t.tile_type = TileType::Wall;
+                }
             }
 
             self.shops.clear();
@@ -435,15 +556,21 @@ impl DungeonLevel {
                     let sx = rng.gen_range(2..(self.width - sw - 2));
                     let sy = rng.gen_range(2..(self.height - sh - 2));
 
-                    if sx <= stairs_x + 2 && sx + sw >= stairs_x - 2 &&
-                       sy <= stairs_y + 2 && sy + sh >= stairs_y - 2 {
+                    if sx <= stairs_x + 2
+                        && sx + sw >= stairs_x - 2
+                        && sy <= stairs_y + 2
+                        && sy + sh >= stairs_y - 2
+                    {
                         continue;
                     }
 
                     let mut overlaps = false;
                     for &(ox, oy, ow, oh) in &placed_rects {
-                        if sx <= ox + ow + 1 && sx + sw + 1 >= ox &&
-                           sy <= oy + oh + 1 && sy + sh + 1 >= oy {
+                        if sx <= ox + ow + 1
+                            && sx + sw + 1 >= ox
+                            && sy <= oy + oh + 1
+                            && sy + sh + 1 >= oy
+                        {
                             overlaps = true;
                             break;
                         }
@@ -479,7 +606,8 @@ impl DungeonLevel {
                             tile.tile_type = TileType::ShopDoor(shop_num);
                         }
 
-                        self.shops.push(ShopInfo::new(door_x, door_y, shop_type, &mut rng));
+                        self.shops
+                            .push(ShopInfo::new(door_x, door_y, shop_type, &mut rng));
                         placed_rects.push((sx, sy, sw, sh));
                         break;
                     }
@@ -524,7 +652,13 @@ impl DungeonLevel {
                     let lit_chance = 1.0 - (self.depth as f64 / 10.0).min(1.0);
                     let is_lit = rng.gen_bool(lit_chance);
 
-                    self.rooms.push(RoomInfo { x: rx, y: ry, w, h, is_lit });
+                    self.rooms.push(RoomInfo {
+                        x: rx,
+                        y: ry,
+                        w,
+                        h,
+                        is_lit,
+                    });
                     rooms_temp.push(new_room);
                 }
                 if rooms_temp.len() >= 6 {
@@ -534,7 +668,7 @@ impl DungeonLevel {
 
             for i in 0..(rooms_temp.len() - 1) {
                 let (x1, y1) = rooms_temp[i].center();
-                let (x2, y2) = rooms_temp[i+1].center();
+                let (x2, y2) = rooms_temp[i + 1].center();
 
                 if rng.gen_bool(0.5) {
                     self.carve_h_corridor(x1, x2, y1);
@@ -551,16 +685,23 @@ impl DungeonLevel {
                 for x in 2..(self.width - 2) {
                     if let Some(tile) = self.get_tile(x, y)
                         && tile.tile_type == TileType::Floor
-                        && self.is_room_entrance(x, y) {
-                            entrances.push((x, y));
-                        }
+                        && self.is_room_entrance(x, y)
+                    {
+                        entrances.push((x, y));
+                    }
                 }
             }
 
             // Map each room to its entrances
-            let mut room_entrances: std::collections::HashMap<usize, Vec<(usize, usize)>> = std::collections::HashMap::new();
+            let mut room_entrances: std::collections::HashMap<usize, Vec<(usize, usize)>> =
+                std::collections::HashMap::new();
             for &(ex, ey) in &entrances {
-                let adjacent_rooms = [(ex.wrapping_sub(1), ey), (ex + 1, ey), (ex, ey.wrapping_sub(1)), (ex, ey + 1)];
+                let adjacent_rooms = [
+                    (ex.wrapping_sub(1), ey),
+                    (ex + 1, ey),
+                    (ex, ey.wrapping_sub(1)),
+                    (ex, ey + 1),
+                ];
                 for (nx, ny) in adjacent_rooms {
                     if let Some(r_idx) = self.room_index_at(nx, ny) {
                         room_entrances.entry(r_idx).or_default().push((ex, ey));
@@ -569,11 +710,20 @@ impl DungeonLevel {
             }
 
             // Track how many secret doors each room has received so far
-            let mut room_secret_doors: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+            let mut room_secret_doors: std::collections::HashMap<usize, usize> =
+                std::collections::HashMap::new();
 
             for (ex, ey) in entrances {
-                let adjacent_rooms = [(ex.wrapping_sub(1), ey), (ex + 1, ey), (ex, ey.wrapping_sub(1)), (ex, ey + 1)];
-                let adj_r_indices: Vec<usize> = adjacent_rooms.iter().filter_map(|&(nx, ny)| self.room_index_at(nx, ny)).collect();
+                let adjacent_rooms = [
+                    (ex.wrapping_sub(1), ey),
+                    (ex + 1, ey),
+                    (ex, ey.wrapping_sub(1)),
+                    (ex, ey + 1),
+                ];
+                let adj_r_indices: Vec<usize> = adjacent_rooms
+                    .iter()
+                    .filter_map(|&(nx, ny)| self.room_index_at(nx, ny))
+                    .collect();
                 let can_be_secret = adj_r_indices.iter().all(|&r_idx| {
                     let total = room_entrances.get(&r_idx).map(|v| v.len()).unwrap_or(0);
                     let secrets = room_secret_doors.get(&r_idx).copied().unwrap_or(0);
@@ -597,9 +747,10 @@ impl DungeonLevel {
                 };
 
                 if let Some(tt) = new_type
-                    && let Some(mut_tile) = self.get_tile_mut(ex, ey) {
-                        mut_tile.tile_type = tt;
-                    }
+                    && let Some(mut_tile) = self.get_tile_mut(ex, ey)
+                {
+                    mut_tile.tile_type = tt;
+                }
             }
 
             // Spawn Magma and Quartz veins
@@ -611,14 +762,15 @@ impl DungeonLevel {
                 let vein_len = rng.gen_range(6..=14);
                 for _ in 0..vein_len {
                     if let Some(tile) = self.get_tile_mut(vx, vy)
-                        && tile.tile_type == TileType::Wall {
-                            let has_gold = rng.gen_bool(0.25);
-                            tile.tile_type = if is_magma {
-                                TileType::MagmaVein { gold: has_gold }
-                            } else {
-                                TileType::QuartzVein { gold: has_gold }
-                            };
-                        }
+                        && tile.tile_type == TileType::Wall
+                    {
+                        let has_gold = rng.gen_bool(0.25);
+                        tile.tile_type = if is_magma {
+                            TileType::MagmaVein { gold: has_gold }
+                        } else {
+                            TileType::QuartzVein { gold: has_gold }
+                        };
+                    }
                     let dx = rng.gen_range(-1..=1);
                     let dy = rng.gen_range(-1..=1);
                     vx = ((vx as isize + dx).max(1).min(self.width as isize - 2)) as usize;
@@ -632,9 +784,10 @@ impl DungeonLevel {
                 let (rx, ry) = self.find_random_floor_tile();
                 if !self.is_room_entrance(rx, ry)
                     && let Some(tile) = self.get_tile_mut(rx, ry)
-                    && tile.tile_type == TileType::Floor {
-                        tile.tile_type = TileType::Rubble;
-                    }
+                    && tile.tile_type == TileType::Floor
+                {
+                    tile.tile_type = TileType::Rubble;
+                }
             }
 
             // --- SPAWN TRAPS ---
@@ -650,7 +803,10 @@ impl DungeonLevel {
                     _ => TrapType::ConfusionGas,
                 };
                 if let Some(tile) = self.get_tile_mut(tx, ty) {
-                    tile.tile_type = TileType::Trap { detected: false, trap_type };
+                    tile.tile_type = TileType::Trap {
+                        detected: false,
+                        trap_type,
+                    };
                 }
             }
 
@@ -660,11 +816,12 @@ impl DungeonLevel {
                 for _ in 0..num_chests {
                     let (cx, cy) = self.find_random_floor_tile();
                     if !self.is_room_entrance(cx, cy)
-                        && let Some(tile) = self.get_tile_mut(cx, cy) {
-                            let trapped = rng.gen_bool(0.60);
-                            let locked = rng.gen_bool(0.50);
-                            tile.tile_type = TileType::Chest { trapped, locked };
-                        }
+                        && let Some(tile) = self.get_tile_mut(cx, cy)
+                    {
+                        let trapped = rng.gen_bool(0.60);
+                        let locked = rng.gen_bool(0.50);
+                        tile.tile_type = TileType::Chest { trapped, locked };
+                    }
                 }
             }
 
@@ -696,19 +853,20 @@ impl DungeonLevel {
         let sx = if x1 < x2 { 1 } else { -1 };
         let sy = if y1 < y2 { 1 } else { -1 };
         let mut err = dx - dy;
-        
+
         let mut cx = x1 as isize;
         let mut cy = y1 as isize;
-        
+
         loop {
             if cx == x2 as isize && cy == y2 as isize {
                 return true;
             }
             if (cx != x1 as isize || cy != y1 as isize)
                 && let Some(tile) = self.get_tile(cx as usize, cy as usize)
-                    && !tile.is_passable() {
-                        return false;
-                    }
+                && !tile.is_passable()
+            {
+                return false;
+            }
             let e2 = 2 * err;
             let mut stepped_x = false;
             let mut stepped_y = false;
@@ -726,8 +884,14 @@ impl DungeonLevel {
             }
             // Prevent rays from slipping diagonally through between two impassable corner blocks
             if stepped_x && stepped_y {
-                let c1_blocked = self.get_tile(cx as usize, prev_y as usize).map(|t| !t.is_passable()).unwrap_or(true);
-                let c2_blocked = self.get_tile(prev_x as usize, cy as usize).map(|t| !t.is_passable()).unwrap_or(true);
+                let c1_blocked = self
+                    .get_tile(cx as usize, prev_y as usize)
+                    .map(|t| !t.is_passable())
+                    .unwrap_or(true);
+                let c2_blocked = self
+                    .get_tile(prev_x as usize, cy as usize)
+                    .map(|t| !t.is_passable())
+                    .unwrap_or(true);
                 if c1_blocked && c2_blocked {
                     return false;
                 }
@@ -746,7 +910,7 @@ impl DungeonLevel {
             }
             return;
         }
-        
+
         if self.depth == 0 {
             for tile in self.tiles.iter_mut() {
                 tile.visible = true;
@@ -754,27 +918,32 @@ impl DungeonLevel {
             }
             return;
         }
-        
+
         let mut lit_rooms_to_reveal = Vec::new();
         for room in &self.rooms {
             if room.is_lit {
-                let player_inside = player.x >= room.x && player.x < room.x + room.w &&
-                                    player.y >= room.y && player.y < room.y + room.h;
+                let player_inside = player.x >= room.x
+                    && player.x < room.x + room.w
+                    && player.y >= room.y
+                    && player.y < room.y + room.h;
                 if player_inside {
                     lit_rooms_to_reveal.push(room.clone());
                 }
             }
         }
-        
+
         let radius = player.get_light_radius();
         let max_dist = 8;
-        
+
         for y in 0..self.height {
             for x in 0..self.width {
                 let mut is_revealed_by_room = false;
                 for room in &lit_rooms_to_reveal {
-                    if x >= room.x - 1 && x <= room.x + room.w &&
-                       y >= room.y - 1 && y <= room.y + room.h {
+                    if x >= room.x - 1
+                        && x <= room.x + room.w
+                        && y >= room.y - 1
+                        && y <= room.y + room.h
+                    {
                         is_revealed_by_room = true;
                         break;
                     }
@@ -791,17 +960,18 @@ impl DungeonLevel {
                 let dx = (x as isize - player.x as isize).abs();
                 let dy = (y as isize - player.y as isize).abs();
                 let dist = dx.max(dy) as usize;
-                
-                if dist <= max_dist
-                    && self.has_los(player.x, player.y, x, y) {
-                        let is_in_lit_room = self.rooms.iter().any(|r| r.is_lit && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
-                        if dist <= radius || is_in_lit_room {
-                            if let Some(tile) = self.get_tile_mut(x, y) {
-                                tile.visible = true;
-                                tile.remembered = true;
-                            }
-                        }
+
+                if dist <= max_dist && self.has_los(player.x, player.y, x, y) {
+                    let is_in_lit_room = self.rooms.iter().any(|r| {
+                        r.is_lit && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+                    });
+                    if (dist <= radius || is_in_lit_room)
+                        && let Some(tile) = self.get_tile_mut(x, y)
+                    {
+                        tile.visible = true;
+                        tile.remembered = true;
                     }
+                }
             }
         }
     }
@@ -810,7 +980,7 @@ impl DungeonLevel {
         let depth = self.depth;
         let max_depth = self.max_depth;
         let mut rng = rand::thread_rng();
-        
+
         if depth == 0 {
             let mut mons = Vec::new();
             let count = rng.gen_range(3..=6);
@@ -821,7 +991,7 @@ impl DungeonLevel {
             }
             return mons;
         }
-        
+
         if depth == max_depth {
             let mut mons = Vec::new();
             if !player_has_killed_balrog {
@@ -832,11 +1002,17 @@ impl DungeonLevel {
             for _ in 0..guard_count {
                 let (gx, gy) = self.find_random_floor_tile();
                 let c_idx = crate::entity::monster_data::get_monster_for_level(40, &mut rng);
-                mons.push(Monster::from_creature_id(c_idx, gx, gy, rng.gen_bool(0.3), &mut rng));
+                mons.push(Monster::from_creature_id(
+                    c_idx,
+                    gx,
+                    gy,
+                    rng.gen_bool(0.3),
+                    &mut rng,
+                ));
             }
             return mons;
         }
-        
+
         let count = rng.gen_range(14..=20);
         let mut mons = Vec::new();
         for _ in 0..count {
@@ -845,7 +1021,7 @@ impl DungeonLevel {
             let sleeping = rng.gen_bool(0.4);
             mons.push(Monster::from_creature_id(c_idx, mx, my, sleeping, &mut rng));
         }
-        
+
         mons
     }
 
@@ -867,22 +1043,37 @@ impl DungeonLevel {
             1 => {
                 let dmg = rng.gen_range(2..=16);
                 player.hp -= dmg;
-                status_msg.push_str(&format!(" The chest sprays poison gas! You take {} poison damage.", dmg));
+                status_msg.push_str(&format!(
+                    " The chest sprays poison gas! You take {} poison damage.",
+                    dmg
+                ));
             }
             _ => {
                 status_msg.push_str(" The chest summons a monster!");
-                let adj_tiles = &[(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)];
+                let adj_tiles = &[
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                    (-1, 0),
+                    (1, 0),
+                    (-1, 1),
+                    (0, 1),
+                    (1, 1),
+                ];
                 let mut spawned = false;
                 for &(dx, dy) in adj_tiles {
                     let sx = (px as isize + dx) as usize;
                     let sy = (py as isize + dy) as usize;
                     if let Some(t) = self.get_tile(sx, sy)
-                        && t.is_passable() && monsters.iter().all(|m| m.x != sx || m.y != sy) {
-                            let c_idx = crate::entity::monster_data::get_monster_for_level(self.depth, rng);
-                            monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
-                            spawned = true;
-                            break;
-                        }
+                        && t.is_passable()
+                        && monsters.iter().all(|m| m.x != sx || m.y != sy)
+                    {
+                        let c_idx =
+                            crate::entity::monster_data::get_monster_for_level(self.depth, rng);
+                        monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
+                        spawned = true;
+                        break;
+                    }
                 }
                 if !spawned {
                     status_msg.push_str(" But there was no room to spawn.");
@@ -931,7 +1122,7 @@ impl DungeonLevel {
                 loot_desc.push(item_name);
             }
         }
-        
+
         status_msg.push_str(&format!(" Inside you find: {}.", loot_desc.join(", ")));
 
         if let Some(tile) = self.get_tile_mut(cx, cy) {
@@ -964,7 +1155,9 @@ mod tests {
                         if let Some(tile) = level.get_tile(x, y) {
                             let is_door = matches!(
                                 tile.tile_type,
-                                TileType::DoorClosed { .. } | TileType::DoorOpen | TileType::SecretDoor
+                                TileType::DoorClosed { .. }
+                                    | TileType::DoorOpen
+                                    | TileType::SecretDoor
                             );
 
                             if is_door {
@@ -977,19 +1170,27 @@ mod tests {
                                 assert!(
                                     !level.is_in_room(x, y),
                                     "Door at ({}, {}) was placed inside a room interior!",
-                                    x, y
+                                    x,
+                                    y
                                 );
 
                                 // 2. Door must be recognized as a valid room entrance
                                 assert!(
                                     level.is_room_entrance(x, y),
                                     "Door at ({}, {}) was NOT placed at a room entrance!",
-                                    x, y
+                                    x,
+                                    y
                                 );
 
                                 // 3. Door must have at least one orthogonal neighbor inside a room
-                                let neighbors = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)];
-                                let borders_room = neighbors.iter().any(|&(nx, ny)| level.is_in_room(nx, ny));
+                                let neighbors = [
+                                    (x.wrapping_sub(1), y),
+                                    (x + 1, y),
+                                    (x, y.wrapping_sub(1)),
+                                    (x, y + 1),
+                                ];
+                                let borders_room =
+                                    neighbors.iter().any(|&(nx, ny)| level.is_in_room(nx, ny));
                                 assert!(
                                     borders_room,
                                     "Door at ({}, {}) does not border any room!",
@@ -1003,8 +1204,16 @@ mod tests {
         }
 
         // Verify that doors are actively generated and not 0
-        assert!(total_doors > 50, "Expected doors to be generated, got {}", total_doors);
-        assert!(total_secret_doors > 0, "Expected secret doors to be generated, got {}", total_secret_doors);
+        assert!(
+            total_doors > 50,
+            "Expected doors to be generated, got {}",
+            total_doors
+        );
+        assert!(
+            total_secret_doors > 0,
+            "Expected secret doors to be generated, got {}",
+            total_secret_doors
+        );
     }
 
     #[test]
@@ -1016,16 +1225,25 @@ mod tests {
 
         // 1. Direct SecretDoor between player (1, 1) and target (3, 1)
         level.get_tile_mut(2, 1).unwrap().tile_type = TileType::SecretDoor;
-        assert!(!level.has_los(1, 1, 3, 1), "SecretDoor must block line of sight!");
+        assert!(
+            !level.has_los(1, 1, 3, 1),
+            "SecretDoor must block line of sight!"
+        );
 
         // 2. Open door allows LOS
         level.get_tile_mut(2, 1).unwrap().tile_type = TileType::DoorOpen;
-        assert!(level.has_los(1, 1, 3, 1), "DoorOpen should allow line of sight");
+        assert!(
+            level.has_los(1, 1, 3, 1),
+            "DoorOpen should allow line of sight"
+        );
 
         // 3. Diagonal corner pinch between two walls
         level.get_tile_mut(2, 1).unwrap().tile_type = TileType::Wall;
         level.get_tile_mut(1, 2).unwrap().tile_type = TileType::Wall;
-        assert!(!level.has_los(1, 1, 2, 2), "Diagonal wall corner pinch must block line of sight!");
+        assert!(
+            !level.has_los(1, 1, 2, 2),
+            "Diagonal wall corner pinch must block line of sight!"
+        );
     }
 
     #[test]
@@ -1044,11 +1262,15 @@ mod tests {
                             || x == room.x + room.w
                             || y == room.y.saturating_sub(1)
                             || y == room.y + room.h;
-                        if is_perimeter && let Some(tile) = level.get_tile(x, y) {
-                            if matches!(tile.tile_type, TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. }) {
-                                has_accessible_entrance = true;
-                                break;
-                            }
+                        if is_perimeter
+                            && let Some(tile) = level.get_tile(x, y)
+                            && matches!(
+                                tile.tile_type,
+                                TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. }
+                            )
+                        {
+                            has_accessible_entrance = true;
+                            break;
                         }
                     }
                     if has_accessible_entrance {
@@ -1064,4 +1286,3 @@ mod tests {
         }
     }
 }
-

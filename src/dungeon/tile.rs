@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrapType {
@@ -47,7 +47,12 @@ impl Tile {
 
     pub fn is_passable(&self) -> bool {
         match self.tile_type {
-            TileType::Floor | TileType::DoorOpen | TileType::StairsUp | TileType::StairsDown | TileType::ShopDoor(_) | TileType::GlyphOfWarding => true,
+            TileType::Floor
+            | TileType::DoorOpen
+            | TileType::StairsUp
+            | TileType::StairsDown
+            | TileType::ShopDoor(_)
+            | TileType::GlyphOfWarding => true,
             TileType::Trap { .. } => true, // Traps are on passable floor tiles
             _ => false,
         }

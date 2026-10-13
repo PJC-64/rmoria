@@ -1,10 +1,10 @@
-use serde::{Serialize, Deserialize};
+use crate::dungeon::DungeonLevel;
+use crate::entity::monster::Monster;
+use crate::player::Player;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
-use crate::dungeon::DungeonLevel;
-use crate::player::Player;
-use crate::entity::monster::Monster;
 
 #[derive(Serialize, Deserialize)]
 pub struct GameState {
@@ -17,8 +17,20 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn new(player: Player, level: DungeonLevel, monsters: Vec<Monster>, max_depth: u32, level_cache: std::collections::HashMap<u32, (DungeonLevel, Vec<Monster>)>) -> Self {
-        Self { player, level, monsters, max_depth, level_cache }
+    pub fn new(
+        player: Player,
+        level: DungeonLevel,
+        monsters: Vec<Monster>,
+        max_depth: u32,
+        level_cache: std::collections::HashMap<u32, (DungeonLevel, Vec<Monster>)>,
+    ) -> Self {
+        Self {
+            player,
+            level,
+            monsters,
+            max_depth,
+            level_cache,
+        }
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {

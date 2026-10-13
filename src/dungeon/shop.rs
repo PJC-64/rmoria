@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use crossterm::event::{KeyEvent, KeyCode};
+use crossterm::event::{KeyCode, KeyEvent};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
-use crate::player::{Player, Item, ItemType, Race};
 use crate::ScreenMode;
+use crate::player::{Item, ItemType, Player, Race};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoreOwner {
@@ -19,43 +19,185 @@ pub struct StoreOwner {
 pub const MAX_OWNERS: usize = 18;
 pub const STORE_OWNERS: [StoreOwner; MAX_OWNERS] = [
     // General Store (Store 0)
-    StoreOwner { name: "Erick the Honest       (Human)      General Store", max_cost: 250,   max_inflate: 175, min_inflate: 108, haggles_per: 4, race: 0, max_insults: 12 },
+    StoreOwner {
+        name: "Erick the Honest       (Human)      General Store",
+        max_cost: 250,
+        max_inflate: 175,
+        min_inflate: 108,
+        haggles_per: 4,
+        race: 0,
+        max_insults: 12,
+    },
     // Armory (Store 1)
-    StoreOwner { name: "Mauglin the Grumpy     (Dwarf)      Armory",        max_cost: 32000, max_inflate: 200, min_inflate: 112, haggles_per: 4, race: 5, max_insults: 5 },
+    StoreOwner {
+        name: "Mauglin the Grumpy     (Dwarf)      Armory",
+        max_cost: 32000,
+        max_inflate: 200,
+        min_inflate: 112,
+        haggles_per: 4,
+        race: 5,
+        max_insults: 5,
+    },
     // Weaponsmith (Store 2)
-    StoreOwner { name: "Arndal Beast-Slayer    (Half-Elf)   Weaponsmith",   max_cost: 10000, max_inflate: 185, min_inflate: 110, haggles_per: 5, race: 1, max_insults: 8 },
+    StoreOwner {
+        name: "Arndal Beast-Slayer    (Half-Elf)   Weaponsmith",
+        max_cost: 10000,
+        max_inflate: 185,
+        min_inflate: 110,
+        haggles_per: 5,
+        race: 1,
+        max_insults: 8,
+    },
     // Temple (Store 3)
-    StoreOwner { name: "Hardblow the Humble    (Human)      Temple",        max_cost: 3500,  max_inflate: 175, min_inflate: 109, haggles_per: 6, race: 0, max_insults: 15 },
+    StoreOwner {
+        name: "Hardblow the Humble    (Human)      Temple",
+        max_cost: 3500,
+        max_inflate: 175,
+        min_inflate: 109,
+        haggles_per: 6,
+        race: 0,
+        max_insults: 15,
+    },
     // Alchemist (Store 4)
-    StoreOwner { name: "Ga-nat the Greedy      (Gnome)      Alchemist",     max_cost: 12000, max_inflate: 220, min_inflate: 115, haggles_per: 4, race: 4, max_insults: 9 },
+    StoreOwner {
+        name: "Ga-nat the Greedy      (Gnome)      Alchemist",
+        max_cost: 12000,
+        max_inflate: 220,
+        min_inflate: 115,
+        haggles_per: 4,
+        race: 4,
+        max_insults: 9,
+    },
     // Magic Shop (Store 5)
-    StoreOwner { name: "Valeria Starshine      (Elf)        Magic Shop",    max_cost: 32000, max_inflate: 175, min_inflate: 110, haggles_per: 5, race: 2, max_insults: 11 },
-
+    StoreOwner {
+        name: "Valeria Starshine      (Elf)        Magic Shop",
+        max_cost: 32000,
+        max_inflate: 175,
+        min_inflate: 110,
+        haggles_per: 5,
+        race: 2,
+        max_insults: 11,
+    },
     // General Store (Store 0, Variant 1)
-    StoreOwner { name: "Andy the Friendly      (Halfling)   General Store", max_cost: 200,   max_inflate: 170, min_inflate: 108, haggles_per: 5, race: 3, max_insults: 15 },
+    StoreOwner {
+        name: "Andy the Friendly      (Halfling)   General Store",
+        max_cost: 200,
+        max_inflate: 170,
+        min_inflate: 108,
+        haggles_per: 5,
+        race: 3,
+        max_insults: 15,
+    },
     // Armory (Store 1, Variant 1)
-    StoreOwner { name: "Darg-Low the Grim      (Human)      Armory",        max_cost: 10000, max_inflate: 190, min_inflate: 111, haggles_per: 4, race: 0, max_insults: 9 },
+    StoreOwner {
+        name: "Darg-Low the Grim      (Human)      Armory",
+        max_cost: 10000,
+        max_inflate: 190,
+        min_inflate: 111,
+        haggles_per: 4,
+        race: 0,
+        max_insults: 9,
+    },
     // Weaponsmith (Store 2, Variant 1)
-    StoreOwner { name: "Oglign Dragon-Slayer   (Dwarf)      Weaponsmith",   max_cost: 32000, max_inflate: 195, min_inflate: 112, haggles_per: 4, race: 5, max_insults: 8 },
+    StoreOwner {
+        name: "Oglign Dragon-Slayer   (Dwarf)      Weaponsmith",
+        max_cost: 32000,
+        max_inflate: 195,
+        min_inflate: 112,
+        haggles_per: 4,
+        race: 5,
+        max_insults: 8,
+    },
     // Temple (Store 3, Variant 1)
-    StoreOwner { name: "Gunnar the Paladin     (Human)      Temple",        max_cost: 5000,  max_inflate: 185, min_inflate: 110, haggles_per: 5, race: 0, max_insults: 23 },
+    StoreOwner {
+        name: "Gunnar the Paladin     (Human)      Temple",
+        max_cost: 5000,
+        max_inflate: 185,
+        min_inflate: 110,
+        haggles_per: 5,
+        race: 0,
+        max_insults: 23,
+    },
     // Alchemist (Store 4, Variant 1)
-    StoreOwner { name: "Mauser the Chemist     (Half-Elf)   Alchemist",     max_cost: 10000, max_inflate: 190, min_inflate: 111, haggles_per: 5, race: 1, max_insults: 8 },
+    StoreOwner {
+        name: "Mauser the Chemist     (Half-Elf)   Alchemist",
+        max_cost: 10000,
+        max_inflate: 190,
+        min_inflate: 111,
+        haggles_per: 5,
+        race: 1,
+        max_insults: 8,
+    },
     // Magic Shop (Store 5, Variant 1)
-    StoreOwner { name: "Gopher the Great!      (Gnome)      Magic Shop",    max_cost: 20000, max_inflate: 215, min_inflate: 113, haggles_per: 6, race: 4, max_insults: 10 },
-
+    StoreOwner {
+        name: "Gopher the Great!      (Gnome)      Magic Shop",
+        max_cost: 20000,
+        max_inflate: 215,
+        min_inflate: 113,
+        haggles_per: 6,
+        race: 4,
+        max_insults: 10,
+    },
     // General Store (Store 0, Variant 2)
-    StoreOwner { name: "Lyar-el the Comely     (Elf)        General Store", max_cost: 300,   max_inflate: 165, min_inflate: 107, haggles_per: 6, race: 2, max_insults: 18 },
+    StoreOwner {
+        name: "Lyar-el the Comely     (Elf)        General Store",
+        max_cost: 300,
+        max_inflate: 165,
+        min_inflate: 107,
+        haggles_per: 6,
+        race: 2,
+        max_insults: 18,
+    },
     // Armory (Store 1, Variant 2)
-    StoreOwner { name: "Mauglim the Horrible   (Half-Orc)   Armory",        max_cost: 3000,  max_inflate: 200, min_inflate: 113, haggles_per: 5, race: 6, max_insults: 9 },
+    StoreOwner {
+        name: "Mauglim the Horrible   (Half-Orc)   Armory",
+        max_cost: 3000,
+        max_inflate: 200,
+        min_inflate: 113,
+        haggles_per: 5,
+        race: 6,
+        max_insults: 9,
+    },
     // Weaponsmith (Store 2, Variant 2)
-    StoreOwner { name: "Ithyl-Mak the Beastly  (Half-Troll) Weaponsmith",   max_cost: 3000,  max_inflate: 210, min_inflate: 115, haggles_per: 6, race: 7, max_insults: 8 },
+    StoreOwner {
+        name: "Ithyl-Mak the Beastly  (Half-Troll) Weaponsmith",
+        max_cost: 3000,
+        max_inflate: 210,
+        min_inflate: 115,
+        haggles_per: 6,
+        race: 7,
+        max_insults: 8,
+    },
     // Temple (Store 3, Variant 2)
-    StoreOwner { name: "Delilah the Pure       (Half-Elf)   Temple",        max_cost: 25000, max_inflate: 180, min_inflate: 107, haggles_per: 6, race: 1, max_insults: 20 },
+    StoreOwner {
+        name: "Delilah the Pure       (Half-Elf)   Temple",
+        max_cost: 25000,
+        max_inflate: 180,
+        min_inflate: 107,
+        haggles_per: 6,
+        race: 1,
+        max_insults: 20,
+    },
     // Alchemist (Store 4, Variant 2)
-    StoreOwner { name: "Wizzle the Chaotic     (Halfling)   Alchemist",     max_cost: 10000, max_inflate: 190, min_inflate: 110, haggles_per: 6, race: 3, max_insults: 8 },
+    StoreOwner {
+        name: "Wizzle the Chaotic     (Halfling)   Alchemist",
+        max_cost: 10000,
+        max_inflate: 190,
+        min_inflate: 110,
+        haggles_per: 6,
+        race: 3,
+        max_insults: 8,
+    },
     // Magic Shop (Store 5, Variant 2)
-    StoreOwner { name: "Inglorian the Mage     (Human?)     Magic Shop",    max_cost: 32000, max_inflate: 200, min_inflate: 110, haggles_per: 7, race: 0, max_insults: 10 },
+    StoreOwner {
+        name: "Inglorian the Mage     (Human?)     Magic Shop",
+        max_cost: 32000,
+        max_inflate: 200,
+        min_inflate: 110,
+        haggles_per: 7,
+        race: 0,
+        max_insults: 10,
+    },
 ];
 
 pub fn race_index(race: Race) -> usize {
@@ -76,9 +218,9 @@ pub const RACE_GOLD_ADJUSTMENTS: [[u32; 8]; 8] = [
     [100, 105, 105, 110, 113, 115, 120, 125], // Human
     [110, 100, 100, 105, 110, 120, 125, 130], // Half-Elf
     [110, 105, 100, 105, 110, 120, 125, 130], // Elf
-    [115, 110, 105,  95, 105, 110, 115, 130], // Halfling
-    [115, 115, 110, 105,  95, 110, 115, 130], // Gnome
-    [115, 120, 120, 110, 110,  95, 125, 135], // Dwarf
+    [115, 110, 105, 95, 105, 110, 115, 130],  // Halfling
+    [115, 115, 110, 105, 95, 110, 115, 130],  // Gnome
+    [115, 120, 120, 110, 110, 95, 125, 135],  // Dwarf
     [115, 120, 125, 115, 115, 130, 110, 115], // Half-Orc
     [110, 115, 115, 110, 110, 130, 110, 110], // Half-Troll
 ];
@@ -220,7 +362,9 @@ pub const SPEECH_SORRY: &[&str] = &[
 ];
 
 pub fn format_speech(template: &str, offer: u32, asking: u32) -> String {
-    template.replace("%A1", &offer.to_string()).replace("%A2", &asking.to_string())
+    template
+        .replace("%A1", &offer.to_string())
+        .replace("%A2", &asking.to_string())
 }
 
 /// Calculate asking price range when the player is buying an item from a store.
@@ -258,8 +402,12 @@ pub fn calculate_sell_price(
     let mut cost = (base_cost * (200 - chr_adj) / 100).max(1);
     cost = (cost * (200 - race_adj) / 100).max(1);
 
-    let max_buy = (cost * (200 - owner.min_inflate.min(199)) / 100).max(1).min(owner.max_cost);
-    let min_buy = (cost * (200 - owner.max_inflate.min(199)) / 100).max(1).min(max_buy);
+    let max_buy = (cost * (200 - owner.min_inflate.min(199)) / 100)
+        .max(1)
+        .min(owner.max_cost);
+    let min_buy = (cost * (200 - owner.max_inflate.min(199)) / 100)
+        .max(1)
+        .min(max_buy);
 
     (min_buy, max_buy)
 }
@@ -271,7 +419,13 @@ pub fn get_item_base_value(item: &Item) -> u32 {
         ItemType::Missile { damage } => (damage.num * damage.sides).max(2),
         ItemType::Armor { ac } => 20 + (*ac).max(0) as u32 * 15,
         ItemType::Potion { heal_amount } => 15 + (*heal_amount).max(0) as u32 * 2,
-        ItemType::Scroll { teleport } => if *teleport { 35 } else { 25 },
+        ItemType::Scroll { teleport } => {
+            if *teleport {
+                35
+            } else {
+                25
+            }
+        }
         ItemType::Wand { charges, .. } => 30 + charges * 5,
         ItemType::Staff { charges, .. } => 40 + charges * 6,
         ItemType::Food { nutrition } => ((*nutrition).max(0) as u32 / 500).max(2),
@@ -328,7 +482,8 @@ pub fn handle_haggle_input(
                     // Blank input: accept shopkeeper's asking price
                     if input.is_empty() {
                         if haggle.current_asking > player.gold {
-                            haggle.comment = "You do not have enough gold for that price!".to_string();
+                            haggle.comment =
+                                "You do not have enough gold for that price!".to_string();
                             return;
                         }
                         player.gold -= haggle.current_asking;
@@ -336,8 +491,12 @@ pub fn handle_haggle_input(
                         bought_item.identified = true;
                         player.identify_item_kind(&bought_item.name);
                         player.add_item_to_inventory(bought_item);
-                        let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                        *status_msg = format!("{} You buy the {} for {} gp.", speech, haggle.item.name, haggle.current_asking);
+                        let speech =
+                            SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                        *status_msg = format!(
+                            "{} You buy the {} for {} gp.",
+                            speech, haggle.item.name, haggle.current_asking
+                        );
                         *screen_mode = ScreenMode::Shop;
                         *active_haggle = None;
                         return;
@@ -350,7 +509,8 @@ pub fn handle_haggle_input(
                             return;
                         }
                         if bid > player.gold {
-                            haggle.comment = "You do not have enough gold for that offer!".to_string();
+                            haggle.comment =
+                                "You do not have enough gold for that offer!".to_string();
                             haggle.player_input.clear();
                             return;
                         }
@@ -370,8 +530,12 @@ pub fn handle_haggle_input(
                             bought_item.identified = true;
                             player.identify_item_kind(&bought_item.name);
                             player.add_item_to_inventory(bought_item);
-                            let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                            *status_msg = format!("{} You buy the {} for {} gp.", speech, haggle.item.name, final_price);
+                            let speech =
+                                SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                            *status_msg = format!(
+                                "{} You buy the {} for {} gp.",
+                                speech, haggle.item.name, final_price
+                            );
                             *screen_mode = ScreenMode::Shop;
                             *active_haggle = None;
                             return;
@@ -386,8 +550,10 @@ pub fn handle_haggle_input(
                             if bid < prev {
                                 haggle.insults += 1;
                                 if haggle.insults >= owner.max_insults {
-                                    let line1 = SPEECH_INSULTED_HAGGLED_DONE[rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
-                                    let line2 = SPEECH_GET_OUT_OF_MY_STORE[rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
+                                    let line1 = SPEECH_INSULTED_HAGGLED_DONE
+                                        [rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
+                                    let line2 = SPEECH_GET_OUT_OF_MY_STORE
+                                        [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                     *status_msg = format!("{} {}", line1, line2);
                                     if let Some(ref mut closed) = shop_closed_until {
                                         **closed = current_turn + rng.gen_range(2500..5000);
@@ -395,8 +561,10 @@ pub fn handle_haggle_input(
                                     *screen_mode = ScreenMode::Dungeon;
                                     *active_haggle = None;
                                 } else {
-                                    let try_again = SPEECH_HAGGLING_TRY_AGAIN[rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())];
-                                    haggle.comment = format!("{} (Offering less than before?!)", try_again);
+                                    let try_again = SPEECH_HAGGLING_TRY_AGAIN
+                                        [rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())];
+                                    haggle.comment =
+                                        format!("{} (Offering less than before?!)", try_again);
                                 }
                                 return;
                             }
@@ -407,8 +575,10 @@ pub fn handle_haggle_input(
                         if bid < insult_threshold {
                             haggle.insults += 1;
                             if haggle.insults >= owner.max_insults {
-                                let line1 = SPEECH_INSULTED_HAGGLED_DONE[rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
-                                let line2 = SPEECH_GET_OUT_OF_MY_STORE[rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
+                                let line1 = SPEECH_INSULTED_HAGGLED_DONE
+                                    [rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
+                                let line2 = SPEECH_GET_OUT_OF_MY_STORE
+                                    [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                 *status_msg = format!("{} {}", line1, line2);
                                 if let Some(ref mut closed) = shop_closed_until {
                                     **closed = current_turn + rng.gen_range(2500..5000);
@@ -416,7 +586,9 @@ pub fn handle_haggle_input(
                                 *screen_mode = ScreenMode::Dungeon;
                                 *active_haggle = None;
                             } else {
-                                haggle.comment = SPEECH_HAGGLING_TRY_AGAIN[rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())].to_string();
+                                haggle.comment = SPEECH_HAGGLING_TRY_AGAIN
+                                    [rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())]
+                                .to_string();
                             }
                             return;
                         }
@@ -425,15 +597,23 @@ pub fn handle_haggle_input(
                         if bid >= haggle.min_price && haggle.offers_count >= 1 {
                             let spread = haggle.current_asking.saturating_sub(haggle.min_price);
                             let margin = bid.saturating_sub(haggle.min_price);
-                            let accept_chance = if spread == 0 { 1.0 } else { 0.40 + 0.50 * (margin as f64 / spread as f64) };
+                            let accept_chance = if spread == 0 {
+                                1.0
+                            } else {
+                                0.40 + 0.50 * (margin as f64 / spread as f64)
+                            };
                             if rng.gen_bool(accept_chance.clamp(0.20, 0.95)) {
                                 player.gold -= bid;
                                 let mut bought_item = haggle.item.clone();
                                 bought_item.identified = true;
                                 player.identify_item_kind(&bought_item.name);
                                 player.add_item_to_inventory(bought_item);
-                                let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                                *status_msg = format!("{} You buy the {} for {} gp.", speech, haggle.item.name, bid);
+                                let speech = SPEECH_SALE_ACCEPTED
+                                    [rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                                *status_msg = format!(
+                                    "{} You buy the {} for {} gp.",
+                                    speech, haggle.item.name, bid
+                                );
                                 *screen_mode = ScreenMode::Shop;
                                 *active_haggle = None;
                                 return;
@@ -442,15 +622,19 @@ pub fn handle_haggle_input(
 
                         // Counter-offer: lower asking price toward player's bid
                         let gap = haggle.current_asking - bid;
-                        let drop = ((gap * owner.haggles_per.max(1) / 10) + rng.gen_range(1..=3)).max(1);
-                        let next_ask = (haggle.current_asking.saturating_sub(drop)).max(haggle.min_price);
+                        let drop =
+                            ((gap * owner.haggles_per.max(1) / 10) + rng.gen_range(1..=3)).max(1);
+                        let next_ask =
+                            (haggle.current_asking.saturating_sub(drop)).max(haggle.min_price);
                         haggle.current_asking = next_ask;
                         haggle.offers_count += 1;
                         if haggle.current_asking == haggle.min_price {
-                            let template = SPEECH_SELLING_HAGGLE_FINAL[rng.gen_range(0..SPEECH_SELLING_HAGGLE_FINAL.len())];
+                            let template = SPEECH_SELLING_HAGGLE_FINAL
+                                [rng.gen_range(0..SPEECH_SELLING_HAGGLE_FINAL.len())];
                             haggle.comment = format_speech(template, bid, haggle.current_asking);
                         } else {
-                            let template = SPEECH_SELLING_HAGGLE[rng.gen_range(0..SPEECH_SELLING_HAGGLE.len())];
+                            let template = SPEECH_SELLING_HAGGLE
+                                [rng.gen_range(0..SPEECH_SELLING_HAGGLE.len())];
                             haggle.comment = format_speech(template, bid, haggle.current_asking);
                         }
                     }
@@ -487,8 +671,12 @@ pub fn handle_haggle_input(
                                 player.inventory.remove(idx);
                             }
                         }
-                        let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                        *status_msg = format!("{} You sell the {} for {} gp.", speech, haggle.item.name, haggle.current_asking);
+                        let speech =
+                            SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                        *status_msg = format!(
+                            "{} You sell the {} for {} gp.",
+                            speech, haggle.item.name, haggle.current_asking
+                        );
                         *screen_mode = ScreenMode::Shop;
                         *active_haggle = None;
                         return;
@@ -521,8 +709,12 @@ pub fn handle_haggle_input(
                                     player.inventory.remove(idx);
                                 }
                             }
-                            let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                            *status_msg = format!("{} You sell the {} for {} gp.", speech, haggle.item.name, final_val);
+                            let speech =
+                                SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                            *status_msg = format!(
+                                "{} You sell the {} for {} gp.",
+                                speech, haggle.item.name, final_val
+                            );
                             *screen_mode = ScreenMode::Shop;
                             *active_haggle = None;
                             return;
@@ -537,8 +729,10 @@ pub fn handle_haggle_input(
                             if ask > prev {
                                 haggle.insults += 1;
                                 if haggle.insults >= owner.max_insults {
-                                    let line1 = SPEECH_INSULTED_HAGGLED_DONE[rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
-                                    let line2 = SPEECH_GET_OUT_OF_MY_STORE[rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
+                                    let line1 = SPEECH_INSULTED_HAGGLED_DONE
+                                        [rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
+                                    let line2 = SPEECH_GET_OUT_OF_MY_STORE
+                                        [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                     *status_msg = format!("{} {}", line1, line2);
                                     if let Some(ref mut closed) = shop_closed_until {
                                         **closed = current_turn + rng.gen_range(2500..5000);
@@ -546,8 +740,10 @@ pub fn handle_haggle_input(
                                     *screen_mode = ScreenMode::Dungeon;
                                     *active_haggle = None;
                                 } else {
-                                    let try_again = SPEECH_HAGGLING_TRY_AGAIN[rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())];
-                                    haggle.comment = format!("{} (Asking more than before?!)", try_again);
+                                    let try_again = SPEECH_HAGGLING_TRY_AGAIN
+                                        [rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())];
+                                    haggle.comment =
+                                        format!("{} (Asking more than before?!)", try_again);
                                 }
                                 return;
                             }
@@ -558,8 +754,10 @@ pub fn handle_haggle_input(
                         if ask > insult_threshold {
                             haggle.insults += 1;
                             if haggle.insults >= owner.max_insults {
-                                let line1 = SPEECH_INSULTED_HAGGLED_DONE[rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
-                                let line2 = SPEECH_GET_OUT_OF_MY_STORE[rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
+                                let line1 = SPEECH_INSULTED_HAGGLED_DONE
+                                    [rng.gen_range(0..SPEECH_INSULTED_HAGGLED_DONE.len())];
+                                let line2 = SPEECH_GET_OUT_OF_MY_STORE
+                                    [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                 *status_msg = format!("{} {}", line1, line2);
                                 if let Some(ref mut closed) = shop_closed_until {
                                     **closed = current_turn + rng.gen_range(2500..5000);
@@ -567,7 +765,9 @@ pub fn handle_haggle_input(
                                 *screen_mode = ScreenMode::Dungeon;
                                 *active_haggle = None;
                             } else {
-                                haggle.comment = SPEECH_HAGGLING_TRY_AGAIN[rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())].to_string();
+                                haggle.comment = SPEECH_HAGGLING_TRY_AGAIN
+                                    [rng.gen_range(0..SPEECH_HAGGLING_TRY_AGAIN.len())]
+                                .to_string();
                             }
                             return;
                         }
@@ -576,7 +776,11 @@ pub fn handle_haggle_input(
                         if ask <= haggle.max_price && haggle.offers_count >= 1 {
                             let spread = haggle.max_price.saturating_sub(haggle.current_asking);
                             let margin = haggle.max_price.saturating_sub(ask);
-                            let accept_chance = if spread == 0 { 1.0 } else { 0.40 + 0.50 * (margin as f64 / spread as f64) };
+                            let accept_chance = if spread == 0 {
+                                1.0
+                            } else {
+                                0.40 + 0.50 * (margin as f64 / spread as f64)
+                            };
                             if rng.gen_bool(accept_chance.clamp(0.20, 0.95)) {
                                 player.gold += ask;
                                 player.identify_item_kind(&haggle.item.name);
@@ -588,8 +792,12 @@ pub fn handle_haggle_input(
                                         player.inventory.remove(idx);
                                     }
                                 }
-                                let speech = SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
-                                *status_msg = format!("{} You sell the {} for {} gp.", speech, haggle.item.name, ask);
+                                let speech = SPEECH_SALE_ACCEPTED
+                                    [rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
+                                *status_msg = format!(
+                                    "{} You sell the {} for {} gp.",
+                                    speech, haggle.item.name, ask
+                                );
                                 *screen_mode = ScreenMode::Shop;
                                 *active_haggle = None;
                                 return;
@@ -598,15 +806,22 @@ pub fn handle_haggle_input(
 
                         // Counter-offer: raise offer toward player's ask
                         let gap = ask - haggle.current_asking;
-                        let bump = ((gap * owner.haggles_per.max(1) / 10) + rng.gen_range(1..=3)).max(1);
-                        let next_offer = (haggle.current_asking + bump).min(haggle.max_price).min(owner.max_cost);
+                        let bump =
+                            ((gap * owner.haggles_per.max(1) / 10) + rng.gen_range(1..=3)).max(1);
+                        let next_offer = (haggle.current_asking + bump)
+                            .min(haggle.max_price)
+                            .min(owner.max_cost);
                         haggle.current_asking = next_offer;
                         haggle.offers_count += 1;
-                        if haggle.current_asking == haggle.max_price || haggle.current_asking == owner.max_cost {
-                            let template = SPEECH_BUYING_HAGGLE_FINAL[rng.gen_range(0..SPEECH_BUYING_HAGGLE_FINAL.len())];
+                        if haggle.current_asking == haggle.max_price
+                            || haggle.current_asking == owner.max_cost
+                        {
+                            let template = SPEECH_BUYING_HAGGLE_FINAL
+                                [rng.gen_range(0..SPEECH_BUYING_HAGGLE_FINAL.len())];
                             haggle.comment = format_speech(template, haggle.current_asking, ask);
                         } else {
-                            let template = SPEECH_BUYING_HAGGLE[rng.gen_range(0..SPEECH_BUYING_HAGGLE.len())];
+                            let template =
+                                SPEECH_BUYING_HAGGLE[rng.gen_range(0..SPEECH_BUYING_HAGGLE.len())];
                             haggle.comment = format_speech(template, haggle.current_asking, ask);
                         }
                     }
@@ -623,8 +838,8 @@ pub fn handle_haggle_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
     use crate::player::{Class, Race};
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
     fn make_test_player() -> Player {
         let mut player = Player::new("Testy", Race::Human, Class::Warrior, 50, 10);
@@ -636,7 +851,12 @@ mod tests {
     }
 
     fn make_test_item() -> Item {
-        Item::new("Potion of Cure Light Wounds", 1, 5, ItemType::Potion { heal_amount: 10 })
+        Item::new(
+            "Potion of Cure Light Wounds",
+            1,
+            5,
+            ItemType::Potion { heal_amount: 10 },
+        )
     }
 
     fn key_enter() -> KeyEvent {
@@ -668,7 +888,10 @@ mod tests {
             assert!(owner.race <= 7);
         }
         // First owner: Erick the Honest
-        assert_eq!(STORE_OWNERS[0].name, "Erick the Honest       (Human)      General Store");
+        assert_eq!(
+            STORE_OWNERS[0].name,
+            "Erick the Honest       (Human)      General Store"
+        );
         assert_eq!(STORE_OWNERS[0].max_cost, 250);
         assert_eq!(STORE_OWNERS[0].max_inflate, 175);
         assert_eq!(STORE_OWNERS[0].min_inflate, 108);
@@ -739,7 +962,15 @@ mod tests {
             owner_index: 0,
         });
 
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
 
         assert_eq!(screen_mode, ScreenMode::Shop);
         assert!(haggle.is_none());
@@ -769,12 +1000,36 @@ mod tests {
         });
 
         // Type '2' and '0'
-        handle_haggle_input(key_char('2'), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
-        handle_haggle_input(key_char('0'), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_char('2'),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
+        handle_haggle_input(
+            key_char('0'),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
         assert_eq!(haggle.as_ref().unwrap().player_input, "20");
 
         // Submit offer 20
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
 
         // Offer is registered: last_bid is updated to Some(20)
         let state = haggle.as_ref().unwrap();
@@ -807,7 +1062,15 @@ mod tests {
             owner_index: 0,
         });
 
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
 
         assert_eq!(screen_mode, ScreenMode::Shop);
         assert!(haggle.is_none());
@@ -838,7 +1101,15 @@ mod tests {
             owner_index: 1,
         });
 
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 500, Some(&mut closed_turn));
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            500,
+            Some(&mut closed_turn),
+        );
 
         assert_eq!(screen_mode, ScreenMode::Dungeon);
         assert!(haggle.is_none());
@@ -868,7 +1139,15 @@ mod tests {
             owner_index: 0,
         });
 
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
         let state = haggle.as_ref().unwrap();
         assert!(SPEECH_SORRY.contains(&state.comment.as_str()));
         assert!(state.player_input.is_empty());
@@ -890,7 +1169,15 @@ mod tests {
             owner_index: 0,
         });
 
-        handle_haggle_input(key_enter(), &mut screen_mode, &mut haggle, &mut player, &mut status_msg, 100, None);
+        handle_haggle_input(
+            key_enter(),
+            &mut screen_mode,
+            &mut haggle,
+            &mut player,
+            &mut status_msg,
+            100,
+            None,
+        );
         let state = haggle.as_ref().unwrap();
         assert!(SPEECH_SORRY.contains(&state.comment.as_str()));
         assert!(state.player_input.is_empty());
@@ -899,7 +1186,8 @@ mod tests {
     #[test]
     fn test_shop_info_maintain() {
         let mut rng = rand::thread_rng();
-        let mut shop = crate::dungeon::ShopInfo::new(10, 10, crate::dungeon::ShopType::General, &mut rng);
+        let mut shop =
+            crate::dungeon::ShopInfo::new(10, 10, crate::dungeon::ShopType::General, &mut rng);
         shop.insults = 3;
         shop.closed_until_turn = 1000;
 

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Directions mapped to numeric keypad logic (1-9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,41 +18,41 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     Move(Direction),
-    Quaff,              // Drink potion
-    WearWield,          // Equip item
-    InventoryList,      // View inventory (i)
-    EquipmentList,      // View equipment (I)
-    AimWand,            // Aim a wand
-    SearchOneTurn,      // Search around player
-    DropItem,           // Drop inventory item
-    Disarm,             // Disarm a trap
-    CloseDoor,          // Close door/chest
-    CharacterStats,     // Display character sheet
-    ExchangeWeapon,     // Swap primary/secondary weapons
-    BrowseBook,         // Read spellbook
-    JamDoor,            // Jam/spike door
-    Look,               // Look/examine surroundings
-    Inscribe,           // Add inscription to item
-    OpenDoor,           // Open door/chest
-    CastSpell,          // Mage spellcasting
-    Pray,               // Cleric prayers
-    ReadScroll,         // Read scroll
-    TakeOff,            // Unequip item
-    Fire,               // Fire missile weapon (f)
-    MultiBlow,          // Multi-blow attack (M)
-    Throw,              // Throw an item (t)
-    UseStaff,           // Activate staff
-    Eat,                // Eat food (E)
-    Rest,               // Rest a while (R)
-    Bash,               // Bash door/chest/monster
-    Tunnel,             // Tunnel/Mine (T)
-    GoUpStairs,         // Go up stairs (<)
-    GoDownStairs,       // Go down stairs (>)
-    Quit,               // Save and quit or exit
-    Help,               // Display help screen
-    RefillLight,        // Refill lamp/lantern (F)
-    ToggleSearch,       // Toggle search mode (#)
-    GainSpells,         // Study/learn magic spells or prayers (G)
+    Quaff,          // Drink potion
+    WearWield,      // Equip item
+    InventoryList,  // View inventory (i)
+    EquipmentList,  // View equipment (I)
+    AimWand,        // Aim a wand
+    SearchOneTurn,  // Search around player
+    DropItem,       // Drop inventory item
+    Disarm,         // Disarm a trap
+    CloseDoor,      // Close door/chest
+    CharacterStats, // Display character sheet
+    ExchangeWeapon, // Swap primary/secondary weapons
+    BrowseBook,     // Read spellbook
+    JamDoor,        // Jam/spike door
+    Look,           // Look/examine surroundings
+    Inscribe,       // Add inscription to item
+    OpenDoor,       // Open door/chest
+    CastSpell,      // Mage spellcasting
+    Pray,           // Cleric prayers
+    ReadScroll,     // Read scroll
+    TakeOff,        // Unequip item
+    Fire,           // Fire missile weapon (f)
+    MultiBlow,      // Multi-blow attack (M)
+    Throw,          // Throw an item (t)
+    UseStaff,       // Activate staff
+    Eat,            // Eat food (E)
+    Rest,           // Rest a while (R)
+    Bash,           // Bash door/chest/monster
+    Tunnel,         // Tunnel/Mine (T)
+    GoUpStairs,     // Go up stairs (<)
+    GoDownStairs,   // Go down stairs (>)
+    Quit,           // Save and quit or exit
+    Help,           // Display help screen
+    RefillLight,    // Refill lamp/lantern (F)
+    ToggleSearch,   // Toggle search mode (#)
+    GainSpells,     // Study/learn magic spells or prayers (G)
     Unknown(char),
 }
 
@@ -95,35 +95,33 @@ impl InputMapper {
             'c' => Action::Move(Direction::SouthEast),
 
             // Remapped Actions (Standard mode conflicts resolved)
-            'h' => Action::Quaff,            // Relocated from 'q'
-            'W' => Action::WearWield,        // Relocated from 'w'
-            'I' => Action::EquipmentList,    // Relocated from 'e'
-            'y' => Action::AimWand,          // Relocated from 'a' / 'z'
-            'k' => Action::SearchOneTurn,    // Relocated from 's'
-            'D' => Action::DropItem,         // Relocated from 'd'
-            'n' => Action::Disarm,           // Relocated from 'D'
-            'C' => Action::CloseDoor,        // Relocated from 'c'
-            'H' => Action::CharacterStats,   // Relocated from 'C'
-            'X' => Action::ExchangeWeapon,   // Relocated from 'x'
-            'E' => Action::Eat,              // Eat food
-            'R' => Action::Rest,             // Rest a while
-            'f' => Action::Fire,             // Fire missile
+            'h' => Action::Quaff,          // Relocated from 'q'
+            'W' => Action::WearWield,      // Relocated from 'w'
+            'I' => Action::EquipmentList,  // Relocated from 'e'
+            'y' => Action::AimWand,        // Relocated from 'a' / 'z'
+            'k' => Action::SearchOneTurn,  // Relocated from 's'
+            'D' => Action::DropItem,       // Relocated from 'd'
+            'n' => Action::Disarm,         // Relocated from 'D'
+            'C' => Action::CloseDoor,      // Relocated from 'c'
+            'H' => Action::CharacterStats, // Relocated from 'C'
+            'X' => Action::ExchangeWeapon, // Relocated from 'x'
+            'E' => Action::Eat,            // Eat food
+            'R' => Action::Rest,           // Rest a while
+            'f' => Action::Fire,           // Fire missile
             'M' => Action::MultiBlow,
-            't' => Action::Throw,            // Throw item
-            'T' => Action::TakeOff,          // Take off equipment
-            'B' => Action::Bash,             // Bash
-            'g' => Action::Tunnel,           // Tunnel
-            'F' => Action::RefillLight,      // Refill light
-            '#' => Action::ToggleSearch,     // Toggle search
-
-
+            't' => Action::Throw,        // Throw item
+            'T' => Action::TakeOff,      // Take off equipment
+            'B' => Action::Bash,         // Bash
+            'g' => Action::Tunnel,       // Tunnel
+            'F' => Action::RefillLight,  // Refill light
+            '#' => Action::ToggleSearch, // Toggle search
 
             // Unchanged Standard Commands
             'b' => Action::BrowseBook,
             'j' => Action::JamDoor,
             'l' => Action::Look,
             'u' => Action::UseStaff,
-            'i' => Action::InventoryList,    // Inventory view remains 'i'
+            'i' => Action::InventoryList, // Inventory view remains 'i'
             'm' => Action::CastSpell,
             'o' => Action::OpenDoor,
             'p' => Action::Pray,
@@ -153,26 +151,26 @@ impl InputMapper {
             'c' => Action::Move(Direction::SouthEast),
 
             // Remapped Actions (Roguelike mode conflicts resolved)
-            'Q' => Action::Quit,             // Relocated from 'q'
-            'W' => Action::WearWield,        // Relocated from 'w'
-            'E' => Action::Eat,              // Eat food
-            'R' => Action::Rest,             // Rest a while
-            'f' => Action::Fire,             // Fire missile
+            'Q' => Action::Quit,      // Relocated from 'q'
+            'W' => Action::WearWield, // Relocated from 'w'
+            'E' => Action::Eat,       // Eat food
+            'R' => Action::Rest,      // Rest a while
+            'f' => Action::Fire,      // Fire missile
             'M' => Action::MultiBlow,
-            't' => Action::Throw,            // Throw item
-            'T' => Action::TakeOff,          // Take off equipment
-            'B' => Action::Bash,             // Bash
-            'g' => Action::Tunnel,           // Tunnel
-            'F' => Action::RefillLight,      // Refill light
-            '#' => Action::ToggleSearch,     // Toggle search
-            'h' => Action::Quaff,            // Quaff potion (same as standard)
-            'k' => Action::SearchOneTurn,    // Relocated from 's'
-            'D' => Action::DropItem,         // Relocated from 'd' (originally disarm)
-            'n' => Action::Disarm,           // Relocated from 'D'
-            'y' => Action::AimWand,          // Relocated from 'z'
-            'l' => Action::Look,             // Relocated from 'x'
-            'C' => Action::CloseDoor,        // Relocated from 'c'
-            'H' => Action::CharacterStats,   // Relocated from 'C'
+            't' => Action::Throw,          // Throw item
+            'T' => Action::TakeOff,        // Take off equipment
+            'B' => Action::Bash,           // Bash
+            'g' => Action::Tunnel,         // Tunnel
+            'F' => Action::RefillLight,    // Refill light
+            '#' => Action::ToggleSearch,   // Toggle search
+            'h' => Action::Quaff,          // Quaff potion (same as standard)
+            'k' => Action::SearchOneTurn,  // Relocated from 's'
+            'D' => Action::DropItem,       // Relocated from 'd' (originally disarm)
+            'n' => Action::Disarm,         // Relocated from 'D'
+            'y' => Action::AimWand,        // Relocated from 'z'
+            'l' => Action::Look,           // Relocated from 'x'
+            'C' => Action::CloseDoor,      // Relocated from 'c'
+            'H' => Action::CharacterStats, // Relocated from 'C'
 
             // Unchanged Roguelike Commands
             'i' => Action::InventoryList,

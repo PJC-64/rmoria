@@ -1,9 +1,9 @@
-use std::io::{self, Write};
-use crossterm::execute;
-use crate::{GUI_ACTIVE, GUI_STATE_TX, GuiState, ScreenMode};
-use crate::dungeon::{DungeonLevel, TileType, ShopType, get_shop_items, HaggleState};
-use crate::player::{Player, Item, ItemType, Class, InscribeState, format_stat};
+use crate::dungeon::{DungeonLevel, HaggleState, ShopType, TileType, get_shop_items};
 use crate::entity::monster::Monster;
+use crate::player::{Class, InscribeState, Item, ItemType, Player, format_stat};
+use crate::{GUI_ACTIVE, GUI_STATE_TX, GuiState, ScreenMode};
+use crossterm::execute;
+use std::io::{self, Write};
 
 fn get_food_status_str(food: i32) -> &'static str {
     if food < 0 {
@@ -96,7 +96,17 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
 
     format!(
         "{:<6} {:<5} {:<8} {:<6} {:<8} {:<6} {:<10} {:<9} {:<5} {:<6} {:>7}",
-        hunger_str, blind_str, confused_str, afraid_str, poisoned_str, halluc_str, movement_str, speed_str, study_str, recall_str, depth_str
+        hunger_str,
+        blind_str,
+        confused_str,
+        afraid_str,
+        poisoned_str,
+        halluc_str,
+        movement_str,
+        speed_str,
+        study_str,
+        recall_str,
+        depth_str
     )
 }
 
@@ -112,26 +122,55 @@ pub fn render_gui_screen(
     let mut screen = Vec::new();
     for map_y in 0..level.height {
         let mut map_part = String::new();
-        if mode == ScreenMode::Dungeon || mode == ScreenMode::SelectRestCount || mode == ScreenMode::SelectBashDirection || mode == ScreenMode::SelectTunnelDirection || mode == ScreenMode::GameOver {
+        if mode == ScreenMode::Dungeon
+            || mode == ScreenMode::SelectRestCount
+            || mode == ScreenMode::SelectBashDirection
+            || mode == ScreenMode::SelectTunnelDirection
+            || mode == ScreenMode::GameOver
+        {
             for map_x in 0..level.width {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
-                    } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
-                        let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
+                    } else if tile.visible
+                        && player.flags.blind == 0
+                        && monsters.iter().any(|m| m.x == map_x && m.y == map_y)
+                    {
+                        let monster = monsters
+                            .iter()
+                            .find(|m| m.x == map_x && m.y == map_y)
+                            .unwrap();
                         if player.flags.image > 0 {
                             let mut rng = rand::thread_rng();
                             let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                            map_part.push(
+                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                            );
                         } else {
                             map_part.push(monster.symbol);
                         }
-                    } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
-                        let floor_item = level.items.iter().find(|i| i.x == map_x && i.y == map_y).unwrap();
+                    } else if (tile.visible || tile.remembered)
+                        && level.items.iter().any(|i| i.x == map_x && i.y == map_y)
+                        && !matches!(
+                            tile.tile_type,
+                            TileType::Wall
+                                | TileType::SecretDoor
+                                | TileType::MagmaVein { .. }
+                                | TileType::QuartzVein { .. }
+                                | TileType::Rubble
+                        )
+                    {
+                        let floor_item = level
+                            .items
+                            .iter()
+                            .find(|i| i.x == map_x && i.y == map_y)
+                            .unwrap();
                         if player.flags.image > 0 {
                             let mut rng = rand::thread_rng();
                             let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                            map_part.push(
+                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                            );
                         } else {
                             map_part.push(get_item_symbol(&floor_item.item));
                         }
@@ -165,7 +204,10 @@ pub fn render_gui_screen(
                 }
             }
         } else {
-            map_part = format!("{:<66}", get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe));
+            map_part = format!(
+                "{:<66}",
+                get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe)
+            );
         }
         screen.push(map_part);
     }
@@ -255,14 +297,14 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
         }
         _ => "".to_string(),
     };
-    
+
     format!("{:<12}", text)
 }
 
 pub fn wrap_text(text: &str, limit: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current_line = String::new();
-    
+
     for word in text.split_whitespace() {
         if current_line.is_empty() {
             current_line.push_str(word);
@@ -280,7 +322,14 @@ pub fn wrap_text(text: &str, limit: usize) -> Vec<String> {
     lines
 }
 
-fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: ShopType, active_haggle: Option<&HaggleState>, active_inscribe: Option<&InscribeState>) -> String {
+fn get_overlay_row_text(
+    row: usize,
+    mode: ScreenMode,
+    player: &Player,
+    shop: ShopType,
+    active_haggle: Option<&HaggleState>,
+    active_inscribe: Option<&InscribeState>,
+) -> String {
     match mode {
         ScreenMode::InscribeMenu => {
             if row == 0 {
@@ -295,7 +344,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 0 && row <= player.inventory.len() {
                 let idx = row - 1;
                 let item = &player.inventory[idx];
-                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                return format!(
+                    "{}. {} x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    item.count
+                );
             }
             if player.inventory.is_empty() && row == 1 {
                 return "(Your inventory is empty)".to_string();
@@ -329,7 +383,10 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let w_rem = player.total_weight() % 10;
                 let cap_quot = player.carrying_capacity() / 10;
                 let cap_rem = player.carrying_capacity() % 10;
-                return format!("--- INVENTORY (Carrying {}.{} lbs / Capacity {}.{} lbs) ---", w_quot, w_rem, cap_quot, cap_rem);
+                return format!(
+                    "--- INVENTORY (Carrying {}.{} lbs / Capacity {}.{} lbs) ---",
+                    w_quot, w_rem, cap_quot, cap_rem
+                );
             }
             if row == player.inventory.len() + 2 {
                 return "----------------------".to_string();
@@ -341,11 +398,17 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let item = &player.inventory[idx];
                 let details = match &item.item_type {
-                    ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
+                    ItemType::Weapon { damage } => {
+                        format!("Weapon, {}d{} dmg", damage.num, damage.sides)
+                    }
                     ItemType::Bow { multiplier } => format!("Launcher, x{} dmg", multiplier),
-                    ItemType::Missile { damage } => format!("Missile, {}d{} dmg", damage.num, damage.sides),
+                    ItemType::Missile { damage } => {
+                        format!("Missile, {}d{} dmg", damage.num, damage.sides)
+                    }
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
-                    ItemType::Potion { heal_amount } => format!("Potion (heals {} HP)", heal_amount),
+                    ItemType::Potion { heal_amount } => {
+                        format!("Potion (heals {} HP)", heal_amount)
+                    }
                     ItemType::Scroll { .. } => {
                         if item.name.contains("Spellbook") || item.name.contains("Prayerbook") {
                             "Spell Book".to_string()
@@ -374,7 +437,13 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     ItemType::MagicBook { .. } => "Spell Book".to_string(),
                     ItemType::PrayerBook { .. } => "Holy Book".to_string(),
                 };
-                return format!("{}. {} ({}) x{}", (b'a' + idx as u8) as char, item.display_name(), details, item.count);
+                return format!(
+                    "{}. {} ({}) x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    details,
+                    item.count
+                );
             }
             "".to_string()
         }
@@ -392,7 +461,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let item = &player.equipment[idx];
                 let slot = item.get_equipment_slot();
-                return format!("{}. {}: {}", (b'a' + idx as u8) as char, slot, item.display_name());
+                return format!(
+                    "{}. {}: {}",
+                    (b'a' + idx as u8) as char,
+                    slot,
+                    item.display_name()
+                );
             }
             if player.equipment.is_empty() && row == 1 {
                 return "(Nothing equipped)".to_string();
@@ -403,10 +477,20 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- WEAR / WIELD SELECTION ---".to_string();
             }
-            let equippable: Vec<(usize, &Item)> = player.inventory.iter()
+            let equippable: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
                 .filter(|(_, item)| {
-                    matches!(item.item_type, ItemType::Weapon {..} | ItemType::Bow {..} | ItemType::Armor {..} | ItemType::Light {..} | ItemType::Ring {..} | ItemType::Amulet {..})
+                    matches!(
+                        item.item_type,
+                        ItemType::Weapon { .. }
+                            | ItemType::Bow { .. }
+                            | ItemType::Armor { .. }
+                            | ItemType::Light { .. }
+                            | ItemType::Ring { .. }
+                            | ItemType::Amulet { .. }
+                    )
                 })
                 .collect();
 
@@ -420,7 +504,9 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let (_, item) = equippable[idx];
                 let details = match &item.item_type {
-                    ItemType::Weapon { damage } => format!("Weapon, {}d{} dmg", damage.num, damage.sides),
+                    ItemType::Weapon { damage } => {
+                        format!("Weapon, {}d{} dmg", damage.num, damage.sides)
+                    }
                     ItemType::Bow { multiplier } => format!("Launcher, x{} dmg", multiplier),
                     ItemType::Armor { ac } => format!("Armor, +{} AC", ac),
                     ItemType::Light { fuel } => format!("Light Source ({} turns fuel)", fuel),
@@ -440,10 +526,16 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                     }
                     _ => "Accessory".to_string(),
                 };
-                return format!("{}. {} ({})", (b'a' + idx as u8) as char, item.display_name(), details);
+                return format!(
+                    "{}. {} ({})",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    details
+                );
             }
             if equippable.is_empty() && row == 1 {
-                return "(No equippable weapons, armors, rings, amulets or lights in inventory)".to_string();
+                return "(No equippable weapons, armors, rings, amulets or lights in inventory)"
+                    .to_string();
             }
             "".to_string()
         }
@@ -471,9 +563,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- QUAFF POTION SELECTION ---".to_string();
             }
-            let potions: Vec<(usize, &Item)> = player.inventory.iter()
+            let potions: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Potion {..}))
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Potion { .. }))
                 .collect();
 
             if row == potions.len() + 2 {
@@ -487,9 +581,20 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let (_, item) = potions[idx];
                 if let ItemType::Potion { heal_amount } = item.item_type {
                     if item.identified && heal_amount > 0 {
-                        return format!("{}. {} (heals {} HP) x{}", (b'a' + idx as u8) as char, item.display_name(), heal_amount, item.count);
+                        return format!(
+                            "{}. {} (heals {} HP) x{}",
+                            (b'a' + idx as u8) as char,
+                            item.display_name(),
+                            heal_amount,
+                            item.count
+                        );
                     } else {
-                        return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                        return format!(
+                            "{}. {} x{}",
+                            (b'a' + idx as u8) as char,
+                            item.display_name(),
+                            item.count
+                        );
                     }
                 }
             }
@@ -502,9 +607,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- EAT FOOD SELECTION ---".to_string();
             }
-            let foods: Vec<(usize, &Item)> = player.inventory.iter()
+            let foods: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Food {..}))
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Food { .. }))
                 .collect();
 
             if row == foods.len() + 2 {
@@ -517,7 +624,13 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let (_, item) = foods[idx];
                 if let ItemType::Food { nutrition } = item.item_type {
-                    return format!("{}. {} (nutrition {}) x{}", (b'a' + idx as u8) as char, item.display_name(), nutrition, item.count);
+                    return format!(
+                        "{}. {} (nutrition {}) x{}",
+                        (b'a' + idx as u8) as char,
+                        item.display_name(),
+                        nutrition,
+                        item.count
+                    );
                 }
             }
             if foods.is_empty() && row == 1 {
@@ -529,13 +642,15 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- READ SCROLL SELECTION ---".to_string();
             }
-            let scrolls: Vec<(usize, &Item)> = player.inventory.iter()
+            let scrolls: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
                 .filter(|(_, item)| {
-                    matches!(item.item_type, ItemType::Scroll {..}) &&
-                    !item.name.contains("Torch") &&
-                    !item.name.contains("Spellbook") &&
-                    !item.name.contains("Prayerbook")
+                    matches!(item.item_type, ItemType::Scroll { .. })
+                        && !item.name.contains("Torch")
+                        && !item.name.contains("Spellbook")
+                        && !item.name.contains("Prayerbook")
                 })
                 .collect();
 
@@ -548,7 +663,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 0 && row <= scrolls.len() {
                 let idx = row - 1;
                 let (_, item) = scrolls[idx];
-                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                return format!(
+                    "{}. {} x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    item.count
+                );
             }
             if scrolls.is_empty() && row == 1 {
                 return "(No scrolls in inventory)".to_string();
@@ -558,7 +678,14 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         ScreenMode::BrowseBookMenu => {
             let is_prayer = player.is_priest_caster();
             if row == 0 {
-                return format!("--- BROWSE {} ---", if is_prayer { "HOLY PRAYERS" } else { "MAGIC SPELLS" });
+                return format!(
+                    "--- BROWSE {} ---",
+                    if is_prayer {
+                        "HOLY PRAYERS"
+                    } else {
+                        "MAGIC SPELLS"
+                    }
+                );
             }
             if row == 1 {
                 return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
@@ -573,8 +700,18 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 2;
                 let spell_idx = spells[idx];
                 if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, is_prayer) {
-                    let stat_val = if is_prayer { player.stats.wisdom } else { player.stats.intelligence };
-                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, stat_val, player.mana, def);
+                    let stat_val = if is_prayer {
+                        player.stats.wisdom
+                    } else {
+                        player.stats.intelligence
+                    };
+                    let fail = crate::magic::spell_chance_of_success(
+                        player.level,
+                        player.class,
+                        stat_val,
+                        player.mana,
+                        def,
+                    );
                     let status = if !player.knows_spell(spell_idx) {
                         " unknown"
                     } else if (player.spells_worked & (1 << spell_idx)) == 0 {
@@ -583,7 +720,10 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                         ""
                     };
                     let letter = (b'a' + idx as u8) as char;
-                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%{}", letter, def.name, def.level_required, def.mana_required, fail, status);
+                    return format!(
+                        "  {}) {:<27} {:>2} {:>4} {:>3}%{}",
+                        letter, def.name, def.level_required, def.mana_required, fail, status
+                    );
                 }
             }
             if spells.is_empty() && row == 2 {
@@ -606,9 +746,18 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 2;
                 let spell_idx = known[idx];
                 if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, false) {
-                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.intelligence, player.mana, def);
+                    let fail = crate::magic::spell_chance_of_success(
+                        player.level,
+                        player.class,
+                        player.stats.intelligence,
+                        player.mana,
+                        def,
+                    );
                     let letter = (b'a' + idx as u8) as char;
-                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                    return format!(
+                        "  {}) {:<27} {:>2} {:>4} {:>3}%",
+                        letter, def.name, def.level_required, def.mana_required, fail
+                    );
                 }
             }
             if known.is_empty() && row == 2 {
@@ -631,9 +780,18 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 2;
                 let spell_idx = known[idx];
                 if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, true) {
-                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, player.stats.wisdom, player.mana, def);
+                    let fail = crate::magic::spell_chance_of_success(
+                        player.level,
+                        player.class,
+                        player.stats.wisdom,
+                        player.mana,
+                        def,
+                    );
                     let letter = (b'a' + idx as u8) as char;
-                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                    return format!(
+                        "  {}) {:<27} {:>2} {:>4} {:>3}%",
+                        letter, def.name, def.level_required, def.mana_required, fail
+                    );
                 }
             }
             if known.is_empty() && row == 2 {
@@ -647,7 +805,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         ScreenMode::StudyMenu => {
             let is_prayer = player.is_priest_caster();
             if row == 0 {
-                return format!("--- STUDY / GAIN {}S ({} to learn) ---", if is_prayer { "PRAYER" } else { "SPELL" }, player.new_spells_to_learn);
+                return format!(
+                    "--- STUDY / GAIN {}S ({} to learn) ---",
+                    if is_prayer { "PRAYER" } else { "SPELL" },
+                    player.new_spells_to_learn
+                );
             }
             if row == 1 {
                 return format!("  {:<30} {:>2} {:>4} {:>4}", "Name", "Lv", "Mana", "Fail");
@@ -657,10 +819,23 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 2;
                 let spell_idx = learnable[idx];
                 if let Some(def) = crate::magic::get_spell_def(player.class, spell_idx, is_prayer) {
-                    let stat_val = if is_prayer { player.stats.wisdom } else { player.stats.intelligence };
-                    let fail = crate::magic::spell_chance_of_success(player.level, player.class, stat_val, player.mana, def);
+                    let stat_val = if is_prayer {
+                        player.stats.wisdom
+                    } else {
+                        player.stats.intelligence
+                    };
+                    let fail = crate::magic::spell_chance_of_success(
+                        player.level,
+                        player.class,
+                        stat_val,
+                        player.mana,
+                        def,
+                    );
                     let letter = (b'a' + idx as u8) as char;
-                    return format!("  {}) {:<27} {:>2} {:>4} {:>3}%", letter, def.name, def.level_required, def.mana_required, fail);
+                    return format!(
+                        "  {}) {:<27} {:>2} {:>4} {:>3}%",
+                        letter, def.name, def.level_required, def.mana_required, fail
+                    );
                 }
             }
             if learnable.is_empty() && row == 2 {
@@ -693,15 +868,41 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             let split_history = wrap_text(&player.history, 62);
             match row {
                 0 => format!("--- CHARACTER SHEET: {} ---", player.name),
-                2 => format!("Race:      {:?}      Class:      {:?}", player.race, player.class),
+                2 => format!(
+                    "Race:      {:?}      Class:      {:?}",
+                    player.race, player.class
+                ),
                 4 => "Attributes:".to_string(),
-                5 => format!("  STR: {:>6}   INT: {:>6}   WIS: {:>6}", format_stat(player.stats.strength), format_stat(player.stats.intelligence), format_stat(player.stats.wisdom)),
-                6 => format!("  DEX: {:>6}   CON: {:>6}   CHR: {:>6}", format_stat(player.stats.dexterity), format_stat(player.stats.constitution), format_stat(player.stats.charisma)),
+                5 => format!(
+                    "  STR: {:>6}   INT: {:>6}   WIS: {:>6}",
+                    format_stat(player.stats.strength),
+                    format_stat(player.stats.intelligence),
+                    format_stat(player.stats.wisdom)
+                ),
+                6 => format!(
+                    "  DEX: {:>6}   CON: {:>6}   CHR: {:>6}",
+                    format_stat(player.stats.dexterity),
+                    format_stat(player.stats.constitution),
+                    format_stat(player.stats.charisma)
+                ),
                 8 => "Combat Stats:".to_string(),
-                9 => format!("  HP:   {}/{}       Mana: {}/{}", player.hp, player.max_hp, player.mana, player.max_mana),
-                10 => format!("  AC:   {:<10} Gold: {} gp", player.calculate_ac(), player.gold),
+                9 => format!(
+                    "  HP:   {}/{}       Mana: {}/{}",
+                    player.hp, player.max_hp, player.mana, player.max_mana
+                ),
+                10 => format!(
+                    "  AC:   {:<10} Gold: {} gp",
+                    player.calculate_ac(),
+                    player.gold
+                ),
                 11 => format!("  Level: {:<9} Exp:  {} exp", player.level, player.exp),
-                12 => format!("  Weight: {}.{} lbs   Capacity: {}.{} lbs", player.total_weight() / 10, player.total_weight() % 10, player.carrying_capacity() / 10, player.carrying_capacity() % 10),
+                12 => format!(
+                    "  Weight: {}.{} lbs   Capacity: {}.{} lbs",
+                    player.total_weight() / 10,
+                    player.total_weight() % 10,
+                    player.carrying_capacity() / 10,
+                    player.carrying_capacity() % 10
+                ),
                 13 => "Racial History & Background:".to_string(),
                 r if r >= 14 && r < 14 + split_history.len() => {
                     format!("  {}", split_history[r - 14])
@@ -717,7 +918,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         }
         ScreenMode::BarterBuyMenu => {
             if let Some(haggle) = active_haggle {
-                let owner = &crate::dungeon::STORE_OWNERS[haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
+                let owner = &crate::dungeon::STORE_OWNERS
+                    [haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
                 let owner_title = owner.name.split('(').next().unwrap_or("Shopkeeper").trim();
                 match row {
                     0 => format!("--- BARTERING (BUY): {} ---", haggle.item.name),
@@ -727,11 +929,16 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                         Some(bid) => format!("Your last offer:    {} gp", bid),
                         None => "Your last offer:    None".to_string(),
                     },
-                    6 => format!("Patience left:      {}", owner.max_insults.saturating_sub(haggle.insults)),
+                    6 => format!(
+                        "Patience left:      {}",
+                        owner.max_insults.saturating_sub(haggle.insults)
+                    ),
                     8 => format!("Enter your offer:   {}", haggle.player_input),
                     10 => "--------------------------------------------".to_string(),
                     11 => "Type your bid (digits) and press ENTER to submit.".to_string(),
-                    12 => "Press ENTER on blank input to accept the shopkeeper's price.".to_string(),
+                    12 => {
+                        "Press ENTER on blank input to accept the shopkeeper's price.".to_string()
+                    }
                     13 => "Press ESC to cancel and exit.".to_string(),
                     _ => "".to_string(),
                 }
@@ -741,7 +948,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
         }
         ScreenMode::BarterSellMenu => {
             if let Some(haggle) = active_haggle {
-                let owner = &crate::dungeon::STORE_OWNERS[haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
+                let owner = &crate::dungeon::STORE_OWNERS
+                    [haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)];
                 let owner_title = owner.name.split('(').next().unwrap_or("Shopkeeper").trim();
                 match row {
                     0 => format!("--- BARTERING (SELL): {} ---", haggle.item.name),
@@ -751,11 +959,16 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                         Some(ask) => format!("Your last ask:      {} gp", ask),
                         None => "Your last ask:      None".to_string(),
                     },
-                    6 => format!("Patience left:      {}", owner.max_insults.saturating_sub(haggle.insults)),
+                    6 => format!(
+                        "Patience left:      {}",
+                        owner.max_insults.saturating_sub(haggle.insults)
+                    ),
                     8 => format!("Enter your price:   {}", haggle.player_input),
                     10 => "--------------------------------------------".to_string(),
                     11 => "Type your price (digits) and press ENTER to submit.".to_string(),
-                    12 => "Press ENTER on blank input to accept the shopkeeper's price.".to_string(),
+                    12 => {
+                        "Press ENTER on blank input to accept the shopkeeper's price.".to_string()
+                    }
                     13 => "Press ESC to cancel and exit.".to_string(),
                     _ => "".to_string(),
                 }
@@ -803,7 +1016,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 0 && row <= player.inventory.len() {
                 let idx = row - 1;
                 let item = &player.inventory[idx];
-                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                return format!(
+                    "{}. {} x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    item.count
+                );
             }
             if player.inventory.is_empty() && row == 1 {
                 return "(Your inventory is empty)".to_string();
@@ -823,7 +1041,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 0 && row <= player.inventory.len() {
                 let idx = row - 1;
                 let item = &player.inventory[idx];
-                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                return format!(
+                    "{}. {} x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    item.count
+                );
             }
             if player.inventory.is_empty() && row == 1 {
                 return "(Your inventory is empty)".to_string();
@@ -843,7 +1066,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row > 0 && row <= player.inventory.len() {
                 let idx = row - 1;
                 let item = &player.inventory[idx];
-                return format!("{}. {} x{}", (b'a' + idx as u8) as char, item.display_name(), item.count);
+                return format!(
+                    "{}. {} x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    item.count
+                );
             }
             if player.inventory.is_empty() && row == 1 {
                 return "(Your inventory is empty)".to_string();
@@ -855,7 +1083,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return "--- THROW / FIRE TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):"
+                    .to_string();
             }
             "".to_string()
         }
@@ -880,7 +1109,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
                 "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
                 "",
-                "Press ESC or any key to return to the game."
+                "Press ESC or any key to return to the game.",
             ];
             if row < help_lines.len() {
                 help_lines[row].to_string()
@@ -892,9 +1121,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- AIM WAND SELECTION ---".to_string();
             }
-            let wands: Vec<(usize, &Item)> = player.inventory.iter()
+            let wands: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Wand {..}))
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Wand { .. }))
                 .collect();
 
             if row == wands.len() + 2 {
@@ -907,7 +1138,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let (_, item) = wands[idx];
                 if let ItemType::Wand { charges, .. } = item.item_type {
-                    return format!("{}. {} ({} charges)", (b'a' + idx as u8) as char, item.display_name(), charges);
+                    return format!(
+                        "{}. {} ({} charges)",
+                        (b'a' + idx as u8) as char,
+                        item.display_name(),
+                        charges
+                    );
                 }
             }
             if wands.is_empty() && row == 1 {
@@ -920,7 +1156,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return "--- AIM WAND TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):".to_string();
+                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):"
+                    .to_string();
             }
             "".to_string()
         }
@@ -929,7 +1166,8 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return "--- JAM DOOR ---".to_string();
             }
             if row == 2 {
-                return "Choose direction to jam using movement keys (q/w/e/a/d/z/x/c):".to_string();
+                return "Choose direction to jam using movement keys (q/w/e/a/d/z/x/c):"
+                    .to_string();
             }
             "".to_string()
         }
@@ -937,9 +1175,11 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 0 {
                 return "--- USE STAFF SELECTION ---".to_string();
             }
-            let staves: Vec<(usize, &Item)> = player.inventory.iter()
+            let staves: Vec<(usize, &Item)> = player
+                .inventory
+                .iter()
                 .enumerate()
-                .filter(|(_, item)| matches!(item.item_type, ItemType::Staff {..}))
+                .filter(|(_, item)| matches!(item.item_type, ItemType::Staff { .. }))
                 .collect();
 
             if row == staves.len() + 2 {
@@ -952,7 +1192,12 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 let idx = row - 1;
                 let (_, item) = staves[idx];
                 if let ItemType::Staff { charges, .. } = item.item_type {
-                    return format!("{}. {} ({} charges)", (b'a' + idx as u8) as char, item.display_name(), charges);
+                    return format!(
+                        "{}. {} ({} charges)",
+                        (b'a' + idx as u8) as char,
+                        item.display_name(),
+                        charges
+                    );
                 }
             }
             if staves.is_empty() && row == 1 {
@@ -971,20 +1216,34 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return format!("--- {} (BUY) ---", owner.name.trim());
             }
             if row == 1 {
-                return format!("Your Gold: {} gp    (Purse: {} gp)", player.gold, owner.max_cost);
+                return format!(
+                    "Your Gold: {} gp    (Purse: {} gp)",
+                    player.gold, owner.max_cost
+                );
             }
             let items = get_shop_items(shop);
             if row >= 3 && row < items.len() + 3 {
                 let idx = row - 3;
                 let (name, base_price, _) = &items[idx];
-                let (_, ask_price) = crate::dungeon::calculate_buy_price(*base_price, owner, player.race, player.stats.charisma);
-                return format!("{}. {:<32}  -  {} gp", (b'a' + idx as u8) as char, name, ask_price);
+                let (_, ask_price) = crate::dungeon::calculate_buy_price(
+                    *base_price,
+                    owner,
+                    player.race,
+                    player.stats.charisma,
+                );
+                return format!(
+                    "{}. {:<32}  -  {} gp",
+                    (b'a' + idx as u8) as char,
+                    name,
+                    ask_price
+                );
             }
             if row == items.len() + 4 {
                 return "--------------------------------".to_string();
             }
             if row == items.len() + 5 {
-                return "Press item letter (a-l) to buy/haggle, 's' to Sell, ESC to exit.".to_string();
+                return "Press item letter (a-l) to buy/haggle, 's' to Sell, ESC to exit."
+                    .to_string();
             }
             "".to_string()
         }
@@ -999,20 +1258,35 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
                 return format!("--- {} (SELL) ---", owner.name.trim());
             }
             if row == 1 {
-                return format!("Your Gold: {} gp    (Max Offer: {} gp)", player.gold, owner.max_cost);
+                return format!(
+                    "Your Gold: {} gp    (Max Offer: {} gp)",
+                    player.gold, owner.max_cost
+                );
             }
             if row == player.inventory.len() + 3 {
                 return "---------------------------------".to_string();
             }
             if row == player.inventory.len() + 4 {
-                return "Select item letter to sell, or press ESC to return to Buy menu.".to_string();
+                return "Select item letter to sell, or press ESC to return to Buy menu."
+                    .to_string();
             }
             if row > 1 && row <= player.inventory.len() + 1 {
                 let idx = row - 2;
                 let item = &player.inventory[idx];
                 let base_val = crate::dungeon::get_item_base_value(item);
-                let (_, offer) = crate::dungeon::calculate_sell_price(base_val, owner, player.race, player.stats.charisma);
-                return format!("{}. {} (offers ~{} gp) x{}", (b'a' + idx as u8) as char, item.display_name(), offer, item.count);
+                let (_, offer) = crate::dungeon::calculate_sell_price(
+                    base_val,
+                    owner,
+                    player.race,
+                    player.stats.charisma,
+                );
+                return format!(
+                    "{}. {} (offers ~{} gp) x{}",
+                    (b'a' + idx as u8) as char,
+                    item.display_name(),
+                    offer,
+                    item.count
+                );
             }
             if player.inventory.is_empty() && row == 2 {
                 return "(Your inventory is completely empty)".to_string();
@@ -1031,7 +1305,7 @@ fn get_overlay_row_text(row: usize, mode: ScreenMode, player: &Player, shop: Sho
             if row == 22 {
                 return "[Press ESC to return]".to_string();
             }
-            if row >= 2 && row <= 21 {
+            if (2..=21).contains(&row) {
                 let start_idx = player.message_history.len().saturating_sub(20);
                 let current_idx = start_idx + (row - 2);
                 if current_idx < player.message_history.len() {
@@ -1112,7 +1386,15 @@ pub fn draw_map(
     level.update_fov(player);
 
     if GUI_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
-        let screen = render_gui_screen(level, player, monsters, mode, shop, active_haggle, active_inscribe);
+        let screen = render_gui_screen(
+            level,
+            player,
+            monsters,
+            mode,
+            shop,
+            active_haggle,
+            active_inscribe,
+        );
         let player_json = serde_json::json!({
             "name": player.name,
             "race": format!("{:?}", player.race),
@@ -1184,26 +1466,55 @@ pub fn draw_map(
         let stats_part = get_lhs_stat_line(map_y + 1, player, level);
         let mut map_part = String::new();
 
-        if mode == ScreenMode::Dungeon || mode == ScreenMode::SelectRestCount || mode == ScreenMode::SelectBashDirection || mode == ScreenMode::SelectTunnelDirection || mode == ScreenMode::GameOver {
+        if mode == ScreenMode::Dungeon
+            || mode == ScreenMode::SelectRestCount
+            || mode == ScreenMode::SelectBashDirection
+            || mode == ScreenMode::SelectTunnelDirection
+            || mode == ScreenMode::GameOver
+        {
             for map_x in 0..level.width {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
-                    } else if tile.visible && player.flags.blind == 0 && monsters.iter().any(|m| m.x == map_x && m.y == map_y) {
-                        let monster = monsters.iter().find(|m| m.x == map_x && m.y == map_y).unwrap();
+                    } else if tile.visible
+                        && player.flags.blind == 0
+                        && monsters.iter().any(|m| m.x == map_x && m.y == map_y)
+                    {
+                        let monster = monsters
+                            .iter()
+                            .find(|m| m.x == map_x && m.y == map_y)
+                            .unwrap();
                         if player.flags.image > 0 {
                             let mut rng = rand::thread_rng();
                             let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                            map_part.push(
+                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                            );
                         } else {
                             map_part.push(monster.symbol);
                         }
-                    } else if (tile.visible || tile.remembered) && level.items.iter().any(|i| i.x == map_x && i.y == map_y) && !matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble) {
-                        let floor_item = level.items.iter().find(|i| i.x == map_x && i.y == map_y).unwrap();
+                    } else if (tile.visible || tile.remembered)
+                        && level.items.iter().any(|i| i.x == map_x && i.y == map_y)
+                        && !matches!(
+                            tile.tile_type,
+                            TileType::Wall
+                                | TileType::SecretDoor
+                                | TileType::MagmaVein { .. }
+                                | TileType::QuartzVein { .. }
+                                | TileType::Rubble
+                        )
+                    {
+                        let floor_item = level
+                            .items
+                            .iter()
+                            .find(|i| i.x == map_x && i.y == map_y)
+                            .unwrap();
                         if player.flags.image > 0 {
                             let mut rng = rand::thread_rng();
                             let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-                            map_part.push(chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char);
+                            map_part.push(
+                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                            );
                         } else {
                             map_part.push(get_item_symbol(&floor_item.item));
                         }
@@ -1237,18 +1548,27 @@ pub fn draw_map(
                 }
             }
         } else {
-            map_part = format!("{:<66}", get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe));
+            map_part = format!(
+                "{:<66}",
+                get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe)
+            );
         }
 
         let row_line = format!("{} {}\x1b[K", stats_part, map_part);
-        let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 1 + map_y as u16));
+        let _ = execute!(
+            io::stdout(),
+            crossterm::cursor::MoveTo(offset_x, offset_y + 1 + map_y as u16)
+        );
         print!("{}", row_line);
     }
-    
+
     let status_bar = get_bottom_status_line(player, level.depth, false);
-    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 23));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::cursor::MoveTo(offset_x, offset_y + 23)
+    );
     print!("{}\x1b[K", status_bar);
-    
+
     io::stdout().flush()?;
     Ok(())
 }

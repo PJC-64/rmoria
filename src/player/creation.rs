@@ -1,7 +1,12 @@
+use crossterm::{
+    cursor::{Hide, Show},
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use std::io::{self, Write};
-use crossterm::{execute, event::{self, Event, KeyCode}, cursor::{Show, Hide}, terminal::{enable_raw_mode, disable_raw_mode}};
 
-use crate::player::{Player, Race, Class, Attributes, PlayerFlags, format_stat, generate_history};
+use crate::player::{Attributes, Class, Player, PlayerFlags, Race, format_stat, generate_history};
 use crate::rendering::wrap_text;
 
 fn print_creation_screen(title: &str, options: &[&str]) {
@@ -9,11 +14,17 @@ fn print_creation_screen(title: &str, options: &[&str]) {
     let offset_x = ((cols as isize - 58) / 2).max(0) as u16;
     let offset_y = ((rows as isize - 22) / 2).max(0) as u16;
 
-    let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+    );
     let mut row_idx = 0;
-    
+
     let mut print_line = |text: &str| {
-        let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + row_idx));
+        let _ = execute!(
+            io::stdout(),
+            crossterm::cursor::MoveTo(offset_x, offset_y + row_idx)
+        );
         print!("{}", text);
         row_idx += 1;
     };
@@ -43,7 +54,7 @@ pub fn run_character_creation(
         let name = val["name"].as_str().unwrap_or("Warrior").to_string();
         let race_str = val["race"].as_str().unwrap_or("Human");
         let class_str = val["class"].as_str().unwrap_or("Warrior");
-        
+
         let race = match race_str {
             "Human" => Race::Human,
             "HalfElf" => Race::HalfElf,
@@ -83,59 +94,67 @@ pub fn run_character_creation(
         final_player.update_max_hp_and_mana();
         final_player.hp = final_player.max_hp;
         final_player.mana = final_player.max_mana;
-        
+
         return Ok(final_player);
     }
     let race = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
-        print_creation_screen("CHOOSE CHARACTER RACE", &[
-            "a) Human",
-            "b) Half-Elf",
-            "c) Elf",
-            "d) Halfling",
-            "e) Gnome",
-            "f) Dwarf",
-            "g) Half-Orc",
-            "h) Half-Troll",
-        ]);
+        print_creation_screen(
+            "CHOOSE CHARACTER RACE",
+            &[
+                "a) Human",
+                "b) Half-Elf",
+                "c) Elf",
+                "d) Halfling",
+                "e) Gnome",
+                "f) Dwarf",
+                "g) Half-Orc",
+                "h) Half-Troll",
+            ],
+        );
         if let Event::Key(key_event) = event::read()?
-            && let KeyCode::Char(c) = key_event.code {
-                match c {
-                    'a' => break Race::Human,
-                    'b' => break Race::HalfElf,
-                    'c' => break Race::Elf,
-                    'd' => break Race::Halfling,
-                    'e' => break Race::Gnome,
-                    'f' => break Race::Dwarf,
-                    'g' => break Race::HalfOrc,
-                    'h' => break Race::HalfTroll,
-                    _ => {}
-                }
+            && let KeyCode::Char(c) = key_event.code
+        {
+            match c {
+                'a' => break Race::Human,
+                'b' => break Race::HalfElf,
+                'c' => break Race::Elf,
+                'd' => break Race::Halfling,
+                'e' => break Race::Gnome,
+                'f' => break Race::Dwarf,
+                'g' => break Race::HalfOrc,
+                'h' => break Race::HalfTroll,
+                _ => {}
             }
+        }
     };
 
     let class = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
-        print_creation_screen("CHOOSE CHARACTER CLASS", &[
-            "a) Warrior",
-            "b) Mage",
-            "c) Priest",
-            "d) Rogue",
-            "e) Ranger",
-            "f) Paladin",
-        ]);
+        print_creation_screen(
+            "CHOOSE CHARACTER CLASS",
+            &[
+                "a) Warrior",
+                "b) Mage",
+                "c) Priest",
+                "d) Rogue",
+                "e) Ranger",
+                "f) Paladin",
+            ],
+        );
         if let Event::Key(key_event) = event::read()?
-            && let KeyCode::Char(c) = key_event.code {
-                match c {
-                    'a' => break Class::Warrior,
-                    'b' => break Class::Mage,
-                    'c' => break Class::Priest,
-                    'd' => break Class::Rogue,
-                    'e' => break Class::Ranger,
-                    'f' => break Class::Paladin,
-                    _ => {}
-                }
+            && let KeyCode::Char(c) = key_event.code
+        {
+            match c {
+                'a' => break Class::Warrior,
+                'b' => break Class::Mage,
+                'c' => break Class::Priest,
+                'd' => break Class::Rogue,
+                'e' => break Class::Ranger,
+                'f' => break Class::Paladin,
+                _ => {}
             }
+        }
     };
 
     let (stats, history) = loop {
@@ -154,9 +173,12 @@ pub fn run_character_creation(
             level: 1,
             exp: 0,
             gold: 150,
-            x: 0, y: 0,
-            max_hp: 15, hp: 15,
-            max_mana: 0, mana: 0,
+            x: 0,
+            y: 0,
+            max_hp: 15,
+            hp: 15,
+            max_mana: 0,
+            mana: 0,
             food: 7500,
             stats: rolled.clone(),
             base_stats: rolled.clone(),
@@ -190,8 +212,18 @@ pub fn run_character_creation(
         let split_history = wrap_text(&history, 54);
 
         let mut options = vec![
-            format!("STR: {:>6}     INT: {:>6}     WIS: {:>6}", format_stat(temp_player.stats.strength), format_stat(temp_player.stats.intelligence), format_stat(temp_player.stats.wisdom)),
-            format!("DEX: {:>6}     CON: {:>6}     CHR: {:>6}", format_stat(temp_player.stats.dexterity), format_stat(temp_player.stats.constitution), format_stat(temp_player.stats.charisma)),
+            format!(
+                "STR: {:>6}     INT: {:>6}     WIS: {:>6}",
+                format_stat(temp_player.stats.strength),
+                format_stat(temp_player.stats.intelligence),
+                format_stat(temp_player.stats.wisdom)
+            ),
+            format!(
+                "DEX: {:>6}     CON: {:>6}     CHR: {:>6}",
+                format_stat(temp_player.stats.dexterity),
+                format_stat(temp_player.stats.constitution),
+                format_stat(temp_player.stats.charisma)
+            ),
             "".to_string(),
             "Racial History:".to_string(),
         ];
@@ -208,33 +240,50 @@ pub fn run_character_creation(
         print_creation_screen("ROLL CHARACTER ATTRIBUTES", &options_refs);
 
         if let Event::Key(key_event) = event::read()?
-            && key_event.code == KeyCode::Enter {
-                break (rolled, history);
-            }
+            && key_event.code == KeyCode::Enter
+        {
+            break (rolled, history);
+        }
     };
 
     disable_raw_mode()?;
     execute!(io::stdout(), Show)?;
-    
+
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     let offset_x = ((cols as isize - 58) / 2).max(0) as u16;
     let offset_y = ((rows as isize - 8) / 2).max(0) as u16;
 
-    let _ = execute!(io::stdout(), crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+    );
     let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
     println!("==========================================================");
-    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 1));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::cursor::MoveTo(offset_x, offset_y + 1)
+    );
     println!("              ENTER CHARACTER NAME                        ");
-    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 2));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::cursor::MoveTo(offset_x, offset_y + 2)
+    );
     println!("==========================================================");
-    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y + 4));
+    let _ = execute!(
+        io::stdout(),
+        crossterm::cursor::MoveTo(offset_x, offset_y + 4)
+    );
     print!("Name: ");
     let _ = io::stdout().flush();
-    
+
     let mut name = String::new();
     let _ = io::stdin().read_line(&mut name);
     let trimmed_name = name.trim();
-    let name_str = if trimmed_name.is_empty() { "Hero" } else { trimmed_name };
+    let name_str = if trimmed_name.is_empty() {
+        "Hero"
+    } else {
+        trimmed_name
+    };
 
     enable_raw_mode()?;
     execute!(io::stdout(), Hide)?;

@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use crate::player::{Class, Item, ItemType, Player};
+use crate::dice::Dice;
 use crate::dungeon::DungeonLevel;
 use crate::dungeon::tile::TileType;
 use crate::entity::monster::Monster;
-use crate::dice::Dice;
+use crate::player::{Class, Item, ItemType, Player};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpellDef {
@@ -15,200 +15,1176 @@ pub struct SpellDef {
 }
 
 pub const MAGE_SPELL_NAMES: [&str; 31] = [
-    "Magic Missile", "Detect Monsters", "Phase Door", "Light Area",
-    "Cure Light Wounds", "Find Hidden Traps/Doors", "Stinking Cloud",
-    "Confusion", "Lightning Bolt", "Trap/Door Destruction", "Sleep I",
-    "Cure Poison", "Teleport Self", "Remove Curse", "Frost Bolt",
-    "Turn Stone to Mud", "Create Food", "Recharge Item I", "Sleep II",
-    "Polymorph Other", "Identify", "Sleep III", "Fire Bolt", "Slow Monster",
-    "Frost Ball", "Recharge Item II", "Teleport Other", "Haste Self",
-    "Fire Ball", "Word of Destruction", "Genocide",
+    "Magic Missile",
+    "Detect Monsters",
+    "Phase Door",
+    "Light Area",
+    "Cure Light Wounds",
+    "Find Hidden Traps/Doors",
+    "Stinking Cloud",
+    "Confusion",
+    "Lightning Bolt",
+    "Trap/Door Destruction",
+    "Sleep I",
+    "Cure Poison",
+    "Teleport Self",
+    "Remove Curse",
+    "Frost Bolt",
+    "Turn Stone to Mud",
+    "Create Food",
+    "Recharge Item I",
+    "Sleep II",
+    "Polymorph Other",
+    "Identify",
+    "Sleep III",
+    "Fire Bolt",
+    "Slow Monster",
+    "Frost Ball",
+    "Recharge Item II",
+    "Teleport Other",
+    "Haste Self",
+    "Fire Ball",
+    "Word of Destruction",
+    "Genocide",
 ];
 
 pub const PRIEST_PRAYER_NAMES: [&str; 31] = [
-    "Detect Evil", "Cure Light Wounds", "Bless", "Remove Fear", "Call Light",
-    "Find Traps", "Detect Doors/Stairs", "Slow Poison", "Blind Creature",
-    "Portal", "Cure Medium Wounds", "Chant", "Sanctuary", "Create Food",
-    "Remove Curse", "Resist Heat and Cold", "Neutralize Poison",
-    "Orb of Draining", "Cure Serious Wounds", "Sense Invisible",
-    "Protection from Evil", "Earthquake", "Sense Surroundings",
-    "Cure Critical Wounds", "Turn Undead", "Prayer", "Dispel Undead", "Heal",
-    "Dispel Evil", "Glyph of Warding", "Holy Word",
+    "Detect Evil",
+    "Cure Light Wounds",
+    "Bless",
+    "Remove Fear",
+    "Call Light",
+    "Find Traps",
+    "Detect Doors/Stairs",
+    "Slow Poison",
+    "Blind Creature",
+    "Portal",
+    "Cure Medium Wounds",
+    "Chant",
+    "Sanctuary",
+    "Create Food",
+    "Remove Curse",
+    "Resist Heat and Cold",
+    "Neutralize Poison",
+    "Orb of Draining",
+    "Cure Serious Wounds",
+    "Sense Invisible",
+    "Protection from Evil",
+    "Earthquake",
+    "Sense Surroundings",
+    "Cure Critical Wounds",
+    "Turn Undead",
+    "Prayer",
+    "Dispel Undead",
+    "Heal",
+    "Dispel Evil",
+    "Glyph of Warding",
+    "Holy Word",
 ];
 
 // Mage spells table for Mage class (canonical data_player.cpp)
 pub const MAGE_CLASS_SPELLS: [SpellDef; 31] = [
-    SpellDef { name: "Magic Missile", level_required: 1, mana_required: 1, failure_chance: 22, exp_gain: 1 },
-    SpellDef { name: "Detect Monsters", level_required: 1, mana_required: 1, failure_chance: 23, exp_gain: 1 },
-    SpellDef { name: "Phase Door", level_required: 1, mana_required: 2, failure_chance: 24, exp_gain: 1 },
-    SpellDef { name: "Light Area", level_required: 1, mana_required: 2, failure_chance: 26, exp_gain: 1 },
-    SpellDef { name: "Cure Light Wounds", level_required: 3, mana_required: 3, failure_chance: 25, exp_gain: 2 },
-    SpellDef { name: "Find Hidden Traps/Doors", level_required: 3, mana_required: 3, failure_chance: 25, exp_gain: 1 },
-    SpellDef { name: "Stinking Cloud", level_required: 3, mana_required: 3, failure_chance: 27, exp_gain: 2 },
-    SpellDef { name: "Confusion", level_required: 3, mana_required: 4, failure_chance: 30, exp_gain: 1 },
-    SpellDef { name: "Lightning Bolt", level_required: 5, mana_required: 4, failure_chance: 30, exp_gain: 6 },
-    SpellDef { name: "Trap/Door Destruction", level_required: 5, mana_required: 5, failure_chance: 30, exp_gain: 8 },
-    SpellDef { name: "Sleep I", level_required: 5, mana_required: 5, failure_chance: 30, exp_gain: 5 },
-    SpellDef { name: "Cure Poison", level_required: 5, mana_required: 5, failure_chance: 35, exp_gain: 6 },
-    SpellDef { name: "Teleport Self", level_required: 7, mana_required: 6, failure_chance: 35, exp_gain: 9 },
-    SpellDef { name: "Remove Curse", level_required: 7, mana_required: 6, failure_chance: 50, exp_gain: 10 },
-    SpellDef { name: "Frost Bolt", level_required: 7, mana_required: 6, failure_chance: 40, exp_gain: 12 },
-    SpellDef { name: "Turn Stone to Mud", level_required: 9, mana_required: 7, failure_chance: 44, exp_gain: 19 },
-    SpellDef { name: "Create Food", level_required: 9, mana_required: 7, failure_chance: 45, exp_gain: 19 },
-    SpellDef { name: "Recharge Item I", level_required: 9, mana_required: 7, failure_chance: 75, exp_gain: 22 },
-    SpellDef { name: "Sleep II", level_required: 9, mana_required: 7, failure_chance: 45, exp_gain: 19 },
-    SpellDef { name: "Polymorph Other", level_required: 11, mana_required: 7, failure_chance: 45, exp_gain: 25 },
-    SpellDef { name: "Identify", level_required: 11, mana_required: 7, failure_chance: 99, exp_gain: 19 },
-    SpellDef { name: "Sleep III", level_required: 13, mana_required: 7, failure_chance: 50, exp_gain: 22 },
-    SpellDef { name: "Fire Bolt", level_required: 15, mana_required: 9, failure_chance: 50, exp_gain: 25 },
-    SpellDef { name: "Slow Monster", level_required: 17, mana_required: 9, failure_chance: 50, exp_gain: 31 },
-    SpellDef { name: "Frost Ball", level_required: 19, mana_required: 12, failure_chance: 55, exp_gain: 38 },
-    SpellDef { name: "Recharge Item II", level_required: 21, mana_required: 12, failure_chance: 90, exp_gain: 44 },
-    SpellDef { name: "Teleport Other", level_required: 23, mana_required: 12, failure_chance: 60, exp_gain: 50 },
-    SpellDef { name: "Haste Self", level_required: 25, mana_required: 12, failure_chance: 65, exp_gain: 63 },
-    SpellDef { name: "Fire Ball", level_required: 29, mana_required: 18, failure_chance: 65, exp_gain: 88 },
-    SpellDef { name: "Word of Destruction", level_required: 33, mana_required: 21, failure_chance: 80, exp_gain: 125 },
-    SpellDef { name: "Genocide", level_required: 37, mana_required: 25, failure_chance: 95, exp_gain: 200 },
+    SpellDef {
+        name: "Magic Missile",
+        level_required: 1,
+        mana_required: 1,
+        failure_chance: 22,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Detect Monsters",
+        level_required: 1,
+        mana_required: 1,
+        failure_chance: 23,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Phase Door",
+        level_required: 1,
+        mana_required: 2,
+        failure_chance: 24,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Light Area",
+        level_required: 1,
+        mana_required: 2,
+        failure_chance: 26,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Cure Light Wounds",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 25,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Find Hidden Traps/Doors",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 25,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Stinking Cloud",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 27,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Confusion",
+        level_required: 3,
+        mana_required: 4,
+        failure_chance: 30,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Lightning Bolt",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 30,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Trap/Door Destruction",
+        level_required: 5,
+        mana_required: 5,
+        failure_chance: 30,
+        exp_gain: 8,
+    },
+    SpellDef {
+        name: "Sleep I",
+        level_required: 5,
+        mana_required: 5,
+        failure_chance: 30,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Cure Poison",
+        level_required: 5,
+        mana_required: 5,
+        failure_chance: 35,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Teleport Self",
+        level_required: 7,
+        mana_required: 6,
+        failure_chance: 35,
+        exp_gain: 9,
+    },
+    SpellDef {
+        name: "Remove Curse",
+        level_required: 7,
+        mana_required: 6,
+        failure_chance: 50,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Frost Bolt",
+        level_required: 7,
+        mana_required: 6,
+        failure_chance: 40,
+        exp_gain: 12,
+    },
+    SpellDef {
+        name: "Turn Stone to Mud",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 44,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Create Food",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 45,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Recharge Item I",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 75,
+        exp_gain: 22,
+    },
+    SpellDef {
+        name: "Sleep II",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 45,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Polymorph Other",
+        level_required: 11,
+        mana_required: 7,
+        failure_chance: 45,
+        exp_gain: 25,
+    },
+    SpellDef {
+        name: "Identify",
+        level_required: 11,
+        mana_required: 7,
+        failure_chance: 99,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Sleep III",
+        level_required: 13,
+        mana_required: 7,
+        failure_chance: 50,
+        exp_gain: 22,
+    },
+    SpellDef {
+        name: "Fire Bolt",
+        level_required: 15,
+        mana_required: 9,
+        failure_chance: 50,
+        exp_gain: 25,
+    },
+    SpellDef {
+        name: "Slow Monster",
+        level_required: 17,
+        mana_required: 9,
+        failure_chance: 50,
+        exp_gain: 31,
+    },
+    SpellDef {
+        name: "Frost Ball",
+        level_required: 19,
+        mana_required: 12,
+        failure_chance: 55,
+        exp_gain: 38,
+    },
+    SpellDef {
+        name: "Recharge Item II",
+        level_required: 21,
+        mana_required: 12,
+        failure_chance: 90,
+        exp_gain: 44,
+    },
+    SpellDef {
+        name: "Teleport Other",
+        level_required: 23,
+        mana_required: 12,
+        failure_chance: 60,
+        exp_gain: 50,
+    },
+    SpellDef {
+        name: "Haste Self",
+        level_required: 25,
+        mana_required: 12,
+        failure_chance: 65,
+        exp_gain: 63,
+    },
+    SpellDef {
+        name: "Fire Ball",
+        level_required: 29,
+        mana_required: 18,
+        failure_chance: 65,
+        exp_gain: 88,
+    },
+    SpellDef {
+        name: "Word of Destruction",
+        level_required: 33,
+        mana_required: 21,
+        failure_chance: 80,
+        exp_gain: 125,
+    },
+    SpellDef {
+        name: "Genocide",
+        level_required: 37,
+        mana_required: 25,
+        failure_chance: 95,
+        exp_gain: 200,
+    },
 ];
 
 // Mage spells table for Rogue class (canonical data_player.cpp)
 pub const ROGUE_CLASS_SPELLS: [SpellDef; 31] = [
-    SpellDef { name: "Magic Missile", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Detect Monsters", level_required: 5, mana_required: 1, failure_chance: 50, exp_gain: 1 },
-    SpellDef { name: "Phase Door", level_required: 7, mana_required: 2, failure_chance: 55, exp_gain: 1 },
-    SpellDef { name: "Light Area", level_required: 9, mana_required: 3, failure_chance: 60, exp_gain: 2 },
-    SpellDef { name: "Cure Light Wounds", level_required: 11, mana_required: 4, failure_chance: 65, exp_gain: 2 },
-    SpellDef { name: "Find Hidden Traps/Doors", level_required: 13, mana_required: 5, failure_chance: 70, exp_gain: 3 },
-    SpellDef { name: "Stinking Cloud", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Confusion", level_required: 15, mana_required: 6, failure_chance: 75, exp_gain: 3 },
-    SpellDef { name: "Lightning Bolt", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Trap/Door Destruction", level_required: 17, mana_required: 7, failure_chance: 80, exp_gain: 4 },
-    SpellDef { name: "Sleep I", level_required: 19, mana_required: 8, failure_chance: 85, exp_gain: 5 },
-    SpellDef { name: "Cure Poison", level_required: 21, mana_required: 9, failure_chance: 90, exp_gain: 6 },
-    SpellDef { name: "Teleport Self", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Remove Curse", level_required: 23, mana_required: 10, failure_chance: 95, exp_gain: 7 },
-    SpellDef { name: "Frost Bolt", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Turn Stone to Mud", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Create Food", level_required: 25, mana_required: 12, failure_chance: 95, exp_gain: 9 },
-    SpellDef { name: "Recharge Item I", level_required: 27, mana_required: 15, failure_chance: 99, exp_gain: 11 },
-    SpellDef { name: "Sleep II", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Polymorph Other", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Identify", level_required: 29, mana_required: 18, failure_chance: 99, exp_gain: 19 },
-    SpellDef { name: "Sleep III", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Fire Bolt", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Slow Monster", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Frost Ball", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Recharge Item II", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Teleport Other", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Haste Self", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Fire Ball", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Word of Destruction", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
-    SpellDef { name: "Genocide", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
+    SpellDef {
+        name: "Magic Missile",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Detect Monsters",
+        level_required: 5,
+        mana_required: 1,
+        failure_chance: 50,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Phase Door",
+        level_required: 7,
+        mana_required: 2,
+        failure_chance: 55,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Light Area",
+        level_required: 9,
+        mana_required: 3,
+        failure_chance: 60,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Cure Light Wounds",
+        level_required: 11,
+        mana_required: 4,
+        failure_chance: 65,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Find Hidden Traps/Doors",
+        level_required: 13,
+        mana_required: 5,
+        failure_chance: 70,
+        exp_gain: 3,
+    },
+    SpellDef {
+        name: "Stinking Cloud",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Confusion",
+        level_required: 15,
+        mana_required: 6,
+        failure_chance: 75,
+        exp_gain: 3,
+    },
+    SpellDef {
+        name: "Lightning Bolt",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Trap/Door Destruction",
+        level_required: 17,
+        mana_required: 7,
+        failure_chance: 80,
+        exp_gain: 4,
+    },
+    SpellDef {
+        name: "Sleep I",
+        level_required: 19,
+        mana_required: 8,
+        failure_chance: 85,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Cure Poison",
+        level_required: 21,
+        mana_required: 9,
+        failure_chance: 90,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Teleport Self",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Remove Curse",
+        level_required: 23,
+        mana_required: 10,
+        failure_chance: 95,
+        exp_gain: 7,
+    },
+    SpellDef {
+        name: "Frost Bolt",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Turn Stone to Mud",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Create Food",
+        level_required: 25,
+        mana_required: 12,
+        failure_chance: 95,
+        exp_gain: 9,
+    },
+    SpellDef {
+        name: "Recharge Item I",
+        level_required: 27,
+        mana_required: 15,
+        failure_chance: 99,
+        exp_gain: 11,
+    },
+    SpellDef {
+        name: "Sleep II",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Polymorph Other",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Identify",
+        level_required: 29,
+        mana_required: 18,
+        failure_chance: 99,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Sleep III",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Fire Bolt",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Slow Monster",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Frost Ball",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Recharge Item II",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Teleport Other",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Haste Self",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Fire Ball",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Word of Destruction",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
+    SpellDef {
+        name: "Genocide",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
 ];
 
 // Mage spells table for Ranger class (canonical data_player.cpp)
 pub const RANGER_CLASS_SPELLS: [SpellDef; 31] = [
-    SpellDef { name: "Magic Missile", level_required: 3, mana_required: 1, failure_chance: 30, exp_gain: 1 },
-    SpellDef { name: "Detect Monsters", level_required: 3, mana_required: 2, failure_chance: 35, exp_gain: 2 },
-    SpellDef { name: "Phase Door", level_required: 3, mana_required: 2, failure_chance: 35, exp_gain: 2 },
-    SpellDef { name: "Light Area", level_required: 5, mana_required: 3, failure_chance: 35, exp_gain: 2 },
-    SpellDef { name: "Cure Light Wounds", level_required: 5, mana_required: 3, failure_chance: 40, exp_gain: 2 },
-    SpellDef { name: "Find Hidden Traps/Doors", level_required: 5, mana_required: 4, failure_chance: 45, exp_gain: 3 },
-    SpellDef { name: "Stinking Cloud", level_required: 7, mana_required: 5, failure_chance: 40, exp_gain: 6 },
-    SpellDef { name: "Confusion", level_required: 7, mana_required: 6, failure_chance: 40, exp_gain: 5 },
-    SpellDef { name: "Lightning Bolt", level_required: 9, mana_required: 7, failure_chance: 40, exp_gain: 7 },
-    SpellDef { name: "Trap/Door Destruction", level_required: 9, mana_required: 8, failure_chance: 45, exp_gain: 8 },
-    SpellDef { name: "Sleep I", level_required: 11, mana_required: 8, failure_chance: 40, exp_gain: 10 },
-    SpellDef { name: "Cure Poison", level_required: 11, mana_required: 9, failure_chance: 45, exp_gain: 10 },
-    SpellDef { name: "Teleport Self", level_required: 13, mana_required: 10, failure_chance: 45, exp_gain: 12 },
-    SpellDef { name: "Remove Curse", level_required: 13, mana_required: 11, failure_chance: 55, exp_gain: 13 },
-    SpellDef { name: "Frost Bolt", level_required: 15, mana_required: 12, failure_chance: 50, exp_gain: 15 },
-    SpellDef { name: "Turn Stone to Mud", level_required: 15, mana_required: 13, failure_chance: 50, exp_gain: 15 },
-    SpellDef { name: "Create Food", level_required: 17, mana_required: 17, failure_chance: 55, exp_gain: 15 },
-    SpellDef { name: "Recharge Item I", level_required: 17, mana_required: 17, failure_chance: 90, exp_gain: 17 },
-    SpellDef { name: "Sleep II", level_required: 21, mana_required: 17, failure_chance: 55, exp_gain: 17 },
-    SpellDef { name: "Polymorph Other", level_required: 21, mana_required: 19, failure_chance: 60, exp_gain: 18 },
-    SpellDef { name: "Identify", level_required: 23, mana_required: 25, failure_chance: 95, exp_gain: 20 },
-    SpellDef { name: "Sleep III", level_required: 23, mana_required: 20, failure_chance: 60, exp_gain: 20 },
-    SpellDef { name: "Fire Bolt", level_required: 25, mana_required: 20, failure_chance: 60, exp_gain: 20 },
-    SpellDef { name: "Slow Monster", level_required: 25, mana_required: 21, failure_chance: 65, exp_gain: 20 },
-    SpellDef { name: "Frost Ball", level_required: 27, mana_required: 21, failure_chance: 65, exp_gain: 22 },
-    SpellDef { name: "Recharge Item II", level_required: 29, mana_required: 23, failure_chance: 95, exp_gain: 23 },
-    SpellDef { name: "Teleport Other", level_required: 31, mana_required: 25, failure_chance: 70, exp_gain: 25 },
-    SpellDef { name: "Haste Self", level_required: 33, mana_required: 25, failure_chance: 75, exp_gain: 38 },
-    SpellDef { name: "Fire Ball", level_required: 35, mana_required: 25, failure_chance: 80, exp_gain: 50 },
-    SpellDef { name: "Word of Destruction", level_required: 37, mana_required: 30, failure_chance: 95, exp_gain: 100 },
-    SpellDef { name: "Genocide", level_required: 99, mana_required: 99, failure_chance: 0, exp_gain: 0 },
+    SpellDef {
+        name: "Magic Missile",
+        level_required: 3,
+        mana_required: 1,
+        failure_chance: 30,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Detect Monsters",
+        level_required: 3,
+        mana_required: 2,
+        failure_chance: 35,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Phase Door",
+        level_required: 3,
+        mana_required: 2,
+        failure_chance: 35,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Light Area",
+        level_required: 5,
+        mana_required: 3,
+        failure_chance: 35,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Cure Light Wounds",
+        level_required: 5,
+        mana_required: 3,
+        failure_chance: 40,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Find Hidden Traps/Doors",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 45,
+        exp_gain: 3,
+    },
+    SpellDef {
+        name: "Stinking Cloud",
+        level_required: 7,
+        mana_required: 5,
+        failure_chance: 40,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Confusion",
+        level_required: 7,
+        mana_required: 6,
+        failure_chance: 40,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Lightning Bolt",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 40,
+        exp_gain: 7,
+    },
+    SpellDef {
+        name: "Trap/Door Destruction",
+        level_required: 9,
+        mana_required: 8,
+        failure_chance: 45,
+        exp_gain: 8,
+    },
+    SpellDef {
+        name: "Sleep I",
+        level_required: 11,
+        mana_required: 8,
+        failure_chance: 40,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Cure Poison",
+        level_required: 11,
+        mana_required: 9,
+        failure_chance: 45,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Teleport Self",
+        level_required: 13,
+        mana_required: 10,
+        failure_chance: 45,
+        exp_gain: 12,
+    },
+    SpellDef {
+        name: "Remove Curse",
+        level_required: 13,
+        mana_required: 11,
+        failure_chance: 55,
+        exp_gain: 13,
+    },
+    SpellDef {
+        name: "Frost Bolt",
+        level_required: 15,
+        mana_required: 12,
+        failure_chance: 50,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Turn Stone to Mud",
+        level_required: 15,
+        mana_required: 13,
+        failure_chance: 50,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Create Food",
+        level_required: 17,
+        mana_required: 17,
+        failure_chance: 55,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Recharge Item I",
+        level_required: 17,
+        mana_required: 17,
+        failure_chance: 90,
+        exp_gain: 17,
+    },
+    SpellDef {
+        name: "Sleep II",
+        level_required: 21,
+        mana_required: 17,
+        failure_chance: 55,
+        exp_gain: 17,
+    },
+    SpellDef {
+        name: "Polymorph Other",
+        level_required: 21,
+        mana_required: 19,
+        failure_chance: 60,
+        exp_gain: 18,
+    },
+    SpellDef {
+        name: "Identify",
+        level_required: 23,
+        mana_required: 25,
+        failure_chance: 95,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Sleep III",
+        level_required: 23,
+        mana_required: 20,
+        failure_chance: 60,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Fire Bolt",
+        level_required: 25,
+        mana_required: 20,
+        failure_chance: 60,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Slow Monster",
+        level_required: 25,
+        mana_required: 21,
+        failure_chance: 65,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Frost Ball",
+        level_required: 27,
+        mana_required: 21,
+        failure_chance: 65,
+        exp_gain: 22,
+    },
+    SpellDef {
+        name: "Recharge Item II",
+        level_required: 29,
+        mana_required: 23,
+        failure_chance: 95,
+        exp_gain: 23,
+    },
+    SpellDef {
+        name: "Teleport Other",
+        level_required: 31,
+        mana_required: 25,
+        failure_chance: 70,
+        exp_gain: 25,
+    },
+    SpellDef {
+        name: "Haste Self",
+        level_required: 33,
+        mana_required: 25,
+        failure_chance: 75,
+        exp_gain: 38,
+    },
+    SpellDef {
+        name: "Fire Ball",
+        level_required: 35,
+        mana_required: 25,
+        failure_chance: 80,
+        exp_gain: 50,
+    },
+    SpellDef {
+        name: "Word of Destruction",
+        level_required: 37,
+        mana_required: 30,
+        failure_chance: 95,
+        exp_gain: 100,
+    },
+    SpellDef {
+        name: "Genocide",
+        level_required: 99,
+        mana_required: 99,
+        failure_chance: 0,
+        exp_gain: 0,
+    },
 ];
 
 // Priest prayers table for Priest class (canonical data_player.cpp)
 pub const PRIEST_CLASS_PRAYERS: [SpellDef; 31] = [
-    SpellDef { name: "Detect Evil", level_required: 1, mana_required: 1, failure_chance: 10, exp_gain: 1 },
-    SpellDef { name: "Cure Light Wounds", level_required: 1, mana_required: 2, failure_chance: 15, exp_gain: 1 },
-    SpellDef { name: "Bless", level_required: 1, mana_required: 2, failure_chance: 20, exp_gain: 1 },
-    SpellDef { name: "Remove Fear", level_required: 1, mana_required: 2, failure_chance: 25, exp_gain: 1 },
-    SpellDef { name: "Call Light", level_required: 3, mana_required: 2, failure_chance: 25, exp_gain: 1 },
-    SpellDef { name: "Find Traps", level_required: 3, mana_required: 3, failure_chance: 27, exp_gain: 2 },
-    SpellDef { name: "Detect Doors/Stairs", level_required: 3, mana_required: 3, failure_chance: 27, exp_gain: 2 },
-    SpellDef { name: "Slow Poison", level_required: 3, mana_required: 3, failure_chance: 28, exp_gain: 3 },
-    SpellDef { name: "Blind Creature", level_required: 5, mana_required: 4, failure_chance: 29, exp_gain: 4 },
-    SpellDef { name: "Portal", level_required: 5, mana_required: 4, failure_chance: 30, exp_gain: 5 },
-    SpellDef { name: "Cure Medium Wounds", level_required: 5, mana_required: 4, failure_chance: 32, exp_gain: 5 },
-    SpellDef { name: "Chant", level_required: 5, mana_required: 5, failure_chance: 34, exp_gain: 5 },
-    SpellDef { name: "Sanctuary", level_required: 7, mana_required: 5, failure_chance: 36, exp_gain: 6 },
-    SpellDef { name: "Create Food", level_required: 7, mana_required: 5, failure_chance: 38, exp_gain: 7 },
-    SpellDef { name: "Remove Curse", level_required: 7, mana_required: 6, failure_chance: 38, exp_gain: 9 },
-    SpellDef { name: "Resist Heat and Cold", level_required: 7, mana_required: 7, failure_chance: 38, exp_gain: 9 },
-    SpellDef { name: "Neutralize Poison", level_required: 9, mana_required: 6, failure_chance: 38, exp_gain: 10 },
-    SpellDef { name: "Orb of Draining", level_required: 9, mana_required: 7, failure_chance: 38, exp_gain: 10 },
-    SpellDef { name: "Cure Serious Wounds", level_required: 9, mana_required: 7, failure_chance: 40, exp_gain: 10 },
-    SpellDef { name: "Sense Invisible", level_required: 11, mana_required: 8, failure_chance: 42, exp_gain: 10 },
-    SpellDef { name: "Protection from Evil", level_required: 11, mana_required: 8, failure_chance: 42, exp_gain: 12 },
-    SpellDef { name: "Earthquake", level_required: 11, mana_required: 9, failure_chance: 55, exp_gain: 15 },
-    SpellDef { name: "Sense Surroundings", level_required: 13, mana_required: 10, failure_chance: 45, exp_gain: 15 },
-    SpellDef { name: "Cure Critical Wounds", level_required: 13, mana_required: 11, failure_chance: 45, exp_gain: 16 },
-    SpellDef { name: "Turn Undead", level_required: 15, mana_required: 12, failure_chance: 50, exp_gain: 20 },
-    SpellDef { name: "Prayer", level_required: 15, mana_required: 14, failure_chance: 50, exp_gain: 22 },
-    SpellDef { name: "Dispel Undead", level_required: 17, mana_required: 14, failure_chance: 55, exp_gain: 32 },
-    SpellDef { name: "Heal", level_required: 21, mana_required: 16, failure_chance: 60, exp_gain: 38 },
-    SpellDef { name: "Dispel Evil", level_required: 25, mana_required: 20, failure_chance: 70, exp_gain: 75 },
-    SpellDef { name: "Glyph of Warding", level_required: 33, mana_required: 24, failure_chance: 90, exp_gain: 125 },
-    SpellDef { name: "Holy Word", level_required: 39, mana_required: 32, failure_chance: 80, exp_gain: 200 },
+    SpellDef {
+        name: "Detect Evil",
+        level_required: 1,
+        mana_required: 1,
+        failure_chance: 10,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Cure Light Wounds",
+        level_required: 1,
+        mana_required: 2,
+        failure_chance: 15,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Bless",
+        level_required: 1,
+        mana_required: 2,
+        failure_chance: 20,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Remove Fear",
+        level_required: 1,
+        mana_required: 2,
+        failure_chance: 25,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Call Light",
+        level_required: 3,
+        mana_required: 2,
+        failure_chance: 25,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Find Traps",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 27,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Detect Doors/Stairs",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 27,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Slow Poison",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 28,
+        exp_gain: 3,
+    },
+    SpellDef {
+        name: "Blind Creature",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 29,
+        exp_gain: 4,
+    },
+    SpellDef {
+        name: "Portal",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 30,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Cure Medium Wounds",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 32,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Chant",
+        level_required: 5,
+        mana_required: 5,
+        failure_chance: 34,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Sanctuary",
+        level_required: 7,
+        mana_required: 5,
+        failure_chance: 36,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Create Food",
+        level_required: 7,
+        mana_required: 5,
+        failure_chance: 38,
+        exp_gain: 7,
+    },
+    SpellDef {
+        name: "Remove Curse",
+        level_required: 7,
+        mana_required: 6,
+        failure_chance: 38,
+        exp_gain: 9,
+    },
+    SpellDef {
+        name: "Resist Heat and Cold",
+        level_required: 7,
+        mana_required: 7,
+        failure_chance: 38,
+        exp_gain: 9,
+    },
+    SpellDef {
+        name: "Neutralize Poison",
+        level_required: 9,
+        mana_required: 6,
+        failure_chance: 38,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Orb of Draining",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 38,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Cure Serious Wounds",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 40,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Sense Invisible",
+        level_required: 11,
+        mana_required: 8,
+        failure_chance: 42,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Protection from Evil",
+        level_required: 11,
+        mana_required: 8,
+        failure_chance: 42,
+        exp_gain: 12,
+    },
+    SpellDef {
+        name: "Earthquake",
+        level_required: 11,
+        mana_required: 9,
+        failure_chance: 55,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Sense Surroundings",
+        level_required: 13,
+        mana_required: 10,
+        failure_chance: 45,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Cure Critical Wounds",
+        level_required: 13,
+        mana_required: 11,
+        failure_chance: 45,
+        exp_gain: 16,
+    },
+    SpellDef {
+        name: "Turn Undead",
+        level_required: 15,
+        mana_required: 12,
+        failure_chance: 50,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Prayer",
+        level_required: 15,
+        mana_required: 14,
+        failure_chance: 50,
+        exp_gain: 22,
+    },
+    SpellDef {
+        name: "Dispel Undead",
+        level_required: 17,
+        mana_required: 14,
+        failure_chance: 55,
+        exp_gain: 32,
+    },
+    SpellDef {
+        name: "Heal",
+        level_required: 21,
+        mana_required: 16,
+        failure_chance: 60,
+        exp_gain: 38,
+    },
+    SpellDef {
+        name: "Dispel Evil",
+        level_required: 25,
+        mana_required: 20,
+        failure_chance: 70,
+        exp_gain: 75,
+    },
+    SpellDef {
+        name: "Glyph of Warding",
+        level_required: 33,
+        mana_required: 24,
+        failure_chance: 90,
+        exp_gain: 125,
+    },
+    SpellDef {
+        name: "Holy Word",
+        level_required: 39,
+        mana_required: 32,
+        failure_chance: 80,
+        exp_gain: 200,
+    },
 ];
 
 // Priest prayers table for Paladin class (canonical data_player.cpp)
 pub const PALADIN_CLASS_PRAYERS: [SpellDef; 31] = [
-    SpellDef { name: "Detect Evil", level_required: 1, mana_required: 1, failure_chance: 30, exp_gain: 1 },
-    SpellDef { name: "Cure Light Wounds", level_required: 2, mana_required: 2, failure_chance: 35, exp_gain: 2 },
-    SpellDef { name: "Bless", level_required: 3, mana_required: 3, failure_chance: 35, exp_gain: 3 },
-    SpellDef { name: "Remove Fear", level_required: 5, mana_required: 3, failure_chance: 35, exp_gain: 5 },
-    SpellDef { name: "Call Light", level_required: 5, mana_required: 4, failure_chance: 35, exp_gain: 5 },
-    SpellDef { name: "Find Traps", level_required: 7, mana_required: 5, failure_chance: 40, exp_gain: 6 },
-    SpellDef { name: "Detect Doors/Stairs", level_required: 7, mana_required: 5, failure_chance: 40, exp_gain: 6 },
-    SpellDef { name: "Slow Poison", level_required: 9, mana_required: 7, failure_chance: 40, exp_gain: 7 },
-    SpellDef { name: "Blind Creature", level_required: 9, mana_required: 7, failure_chance: 40, exp_gain: 8 },
-    SpellDef { name: "Portal", level_required: 9, mana_required: 8, failure_chance: 40, exp_gain: 8 },
-    SpellDef { name: "Cure Medium Wounds", level_required: 11, mana_required: 9, failure_chance: 40, exp_gain: 10 },
-    SpellDef { name: "Chant", level_required: 11, mana_required: 10, failure_chance: 45, exp_gain: 10 },
-    SpellDef { name: "Sanctuary", level_required: 11, mana_required: 10, failure_chance: 45, exp_gain: 10 },
-    SpellDef { name: "Create Food", level_required: 13, mana_required: 10, failure_chance: 45, exp_gain: 12 },
-    SpellDef { name: "Remove Curse", level_required: 13, mana_required: 11, failure_chance: 45, exp_gain: 13 },
-    SpellDef { name: "Resist Heat and Cold", level_required: 15, mana_required: 13, failure_chance: 45, exp_gain: 15 },
-    SpellDef { name: "Neutralize Poison", level_required: 15, mana_required: 15, failure_chance: 50, exp_gain: 15 },
-    SpellDef { name: "Orb of Draining", level_required: 17, mana_required: 15, failure_chance: 50, exp_gain: 17 },
-    SpellDef { name: "Cure Serious Wounds", level_required: 17, mana_required: 15, failure_chance: 50, exp_gain: 18 },
-    SpellDef { name: "Sense Invisible", level_required: 19, mana_required: 15, failure_chance: 50, exp_gain: 19 },
-    SpellDef { name: "Protection from Evil", level_required: 19, mana_required: 15, failure_chance: 50, exp_gain: 19 },
-    SpellDef { name: "Earthquake", level_required: 21, mana_required: 17, failure_chance: 50, exp_gain: 20 },
-    SpellDef { name: "Sense Surroundings", level_required: 23, mana_required: 17, failure_chance: 50, exp_gain: 20 },
-    SpellDef { name: "Cure Critical Wounds", level_required: 25, mana_required: 20, failure_chance: 50, exp_gain: 20 },
-    SpellDef { name: "Turn Undead", level_required: 27, mana_required: 21, failure_chance: 50, exp_gain: 22 },
-    SpellDef { name: "Prayer", level_required: 29, mana_required: 22, failure_chance: 50, exp_gain: 24 },
-    SpellDef { name: "Dispel Undead", level_required: 31, mana_required: 24, failure_chance: 60, exp_gain: 25 },
-    SpellDef { name: "Heal", level_required: 33, mana_required: 28, failure_chance: 60, exp_gain: 31 },
-    SpellDef { name: "Dispel Evil", level_required: 35, mana_required: 32, failure_chance: 70, exp_gain: 38 },
-    SpellDef { name: "Glyph of Warding", level_required: 37, mana_required: 36, failure_chance: 90, exp_gain: 50 },
-    SpellDef { name: "Holy Word", level_required: 39, mana_required: 38, failure_chance: 90, exp_gain: 100 },
+    SpellDef {
+        name: "Detect Evil",
+        level_required: 1,
+        mana_required: 1,
+        failure_chance: 30,
+        exp_gain: 1,
+    },
+    SpellDef {
+        name: "Cure Light Wounds",
+        level_required: 2,
+        mana_required: 2,
+        failure_chance: 35,
+        exp_gain: 2,
+    },
+    SpellDef {
+        name: "Bless",
+        level_required: 3,
+        mana_required: 3,
+        failure_chance: 35,
+        exp_gain: 3,
+    },
+    SpellDef {
+        name: "Remove Fear",
+        level_required: 5,
+        mana_required: 3,
+        failure_chance: 35,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Call Light",
+        level_required: 5,
+        mana_required: 4,
+        failure_chance: 35,
+        exp_gain: 5,
+    },
+    SpellDef {
+        name: "Find Traps",
+        level_required: 7,
+        mana_required: 5,
+        failure_chance: 40,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Detect Doors/Stairs",
+        level_required: 7,
+        mana_required: 5,
+        failure_chance: 40,
+        exp_gain: 6,
+    },
+    SpellDef {
+        name: "Slow Poison",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 40,
+        exp_gain: 7,
+    },
+    SpellDef {
+        name: "Blind Creature",
+        level_required: 9,
+        mana_required: 7,
+        failure_chance: 40,
+        exp_gain: 8,
+    },
+    SpellDef {
+        name: "Portal",
+        level_required: 9,
+        mana_required: 8,
+        failure_chance: 40,
+        exp_gain: 8,
+    },
+    SpellDef {
+        name: "Cure Medium Wounds",
+        level_required: 11,
+        mana_required: 9,
+        failure_chance: 40,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Chant",
+        level_required: 11,
+        mana_required: 10,
+        failure_chance: 45,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Sanctuary",
+        level_required: 11,
+        mana_required: 10,
+        failure_chance: 45,
+        exp_gain: 10,
+    },
+    SpellDef {
+        name: "Create Food",
+        level_required: 13,
+        mana_required: 10,
+        failure_chance: 45,
+        exp_gain: 12,
+    },
+    SpellDef {
+        name: "Remove Curse",
+        level_required: 13,
+        mana_required: 11,
+        failure_chance: 45,
+        exp_gain: 13,
+    },
+    SpellDef {
+        name: "Resist Heat and Cold",
+        level_required: 15,
+        mana_required: 13,
+        failure_chance: 45,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Neutralize Poison",
+        level_required: 15,
+        mana_required: 15,
+        failure_chance: 50,
+        exp_gain: 15,
+    },
+    SpellDef {
+        name: "Orb of Draining",
+        level_required: 17,
+        mana_required: 15,
+        failure_chance: 50,
+        exp_gain: 17,
+    },
+    SpellDef {
+        name: "Cure Serious Wounds",
+        level_required: 17,
+        mana_required: 15,
+        failure_chance: 50,
+        exp_gain: 18,
+    },
+    SpellDef {
+        name: "Sense Invisible",
+        level_required: 19,
+        mana_required: 15,
+        failure_chance: 50,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Protection from Evil",
+        level_required: 19,
+        mana_required: 15,
+        failure_chance: 50,
+        exp_gain: 19,
+    },
+    SpellDef {
+        name: "Earthquake",
+        level_required: 21,
+        mana_required: 17,
+        failure_chance: 50,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Sense Surroundings",
+        level_required: 23,
+        mana_required: 17,
+        failure_chance: 50,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Cure Critical Wounds",
+        level_required: 25,
+        mana_required: 20,
+        failure_chance: 50,
+        exp_gain: 20,
+    },
+    SpellDef {
+        name: "Turn Undead",
+        level_required: 27,
+        mana_required: 21,
+        failure_chance: 50,
+        exp_gain: 22,
+    },
+    SpellDef {
+        name: "Prayer",
+        level_required: 29,
+        mana_required: 22,
+        failure_chance: 50,
+        exp_gain: 24,
+    },
+    SpellDef {
+        name: "Dispel Undead",
+        level_required: 31,
+        mana_required: 24,
+        failure_chance: 60,
+        exp_gain: 25,
+    },
+    SpellDef {
+        name: "Heal",
+        level_required: 33,
+        mana_required: 28,
+        failure_chance: 60,
+        exp_gain: 31,
+    },
+    SpellDef {
+        name: "Dispel Evil",
+        level_required: 35,
+        mana_required: 32,
+        failure_chance: 70,
+        exp_gain: 38,
+    },
+    SpellDef {
+        name: "Glyph of Warding",
+        level_required: 37,
+        mana_required: 36,
+        failure_chance: 90,
+        exp_gain: 50,
+    },
+    SpellDef {
+        name: "Holy Word",
+        level_required: 39,
+        mana_required: 38,
+        failure_chance: 90,
+        exp_gain: 100,
+    },
 ];
 
 pub fn get_mage_spells(class: Class) -> &'static [SpellDef; 31] {
@@ -325,7 +1301,8 @@ pub fn spell_chance_of_success(
     current_mana: i32,
     spell: &SpellDef,
 ) -> u32 {
-    let mut chance = spell.failure_chance as i32 - 3 * (player_level as i32 - spell.level_required as i32);
+    let mut chance =
+        spell.failure_chance as i32 - 3 * (player_level as i32 - spell.level_required as i32);
     let stat_adj = stat_adjustment(stat_val);
     chance -= 3 * (stat_adj - 1);
     if spell.mana_required as i32 > current_mana {
@@ -343,7 +1320,10 @@ pub fn is_directional_spell(spell_idx: usize, is_prayer: bool) -> bool {
         // Magic Missile (0), Stinking Cloud (6), Confusion (7), Lightning Bolt (8),
         // Sleep I (10), Frost Bolt (14), Wall to Mud (15), Polymorph Other (19),
         // Fire Bolt (22), Slow Monster (23), Frost Ball (24), Teleport Other (26), Fire Ball (28)
-        matches!(spell_idx, 0 | 6 | 7 | 8 | 10 | 14 | 15 | 19 | 22 | 23 | 24 | 26 | 28)
+        matches!(
+            spell_idx,
+            0 | 6 | 7 | 8 | 10 | 14 | 15 | 19 | 22 | 23 | 24 | 26 | 28
+        )
     }
 }
 
@@ -358,17 +1338,65 @@ pub struct BookDef {
 }
 
 pub const MAGE_BOOKS: [BookDef; 4] = [
-    BookDef { name: "Mage Spellbook [Beginners-Magick]", flags: 0x0000007F, cost: 25, weight: 30, is_prayer: false },
-    BookDef { name: "Mage Spellbook [Magick I]", flags: 0x0000FF80, cost: 100, weight: 30, is_prayer: false },
-    BookDef { name: "Mage Spellbook [Magick II]", flags: 0x00FF0000, cost: 400, weight: 30, is_prayer: false },
-    BookDef { name: "Mage Spellbook [The Mages' Guide to Power]", flags: 0x7F000000, cost: 800, weight: 30, is_prayer: false },
+    BookDef {
+        name: "Mage Spellbook [Beginners-Magick]",
+        flags: 0x0000007F,
+        cost: 25,
+        weight: 30,
+        is_prayer: false,
+    },
+    BookDef {
+        name: "Mage Spellbook [Magick I]",
+        flags: 0x0000FF80,
+        cost: 100,
+        weight: 30,
+        is_prayer: false,
+    },
+    BookDef {
+        name: "Mage Spellbook [Magick II]",
+        flags: 0x00FF0000,
+        cost: 400,
+        weight: 30,
+        is_prayer: false,
+    },
+    BookDef {
+        name: "Mage Spellbook [The Mages' Guide to Power]",
+        flags: 0x7F000000,
+        cost: 800,
+        weight: 30,
+        is_prayer: false,
+    },
 ];
 
 pub const PRAYER_BOOKS: [BookDef; 4] = [
-    BookDef { name: "Priest Prayerbook [Beginners Handbook]", flags: 0x000000FF, cost: 25, weight: 30, is_prayer: true },
-    BookDef { name: "Priest Prayerbook [Words of Wisdom]", flags: 0x0000FF00, cost: 100, weight: 30, is_prayer: true },
-    BookDef { name: "Priest Prayerbook [Chants and Blessings]", flags: 0x01FF0000, cost: 400, weight: 30, is_prayer: true },
-    BookDef { name: "Priest Prayerbook [Exorcisms and Dispellings]", flags: 0x7E000000, cost: 800, weight: 30, is_prayer: true },
+    BookDef {
+        name: "Priest Prayerbook [Beginners Handbook]",
+        flags: 0x000000FF,
+        cost: 25,
+        weight: 30,
+        is_prayer: true,
+    },
+    BookDef {
+        name: "Priest Prayerbook [Words of Wisdom]",
+        flags: 0x0000FF00,
+        cost: 100,
+        weight: 30,
+        is_prayer: true,
+    },
+    BookDef {
+        name: "Priest Prayerbook [Chants and Blessings]",
+        flags: 0x01FF0000,
+        cost: 400,
+        weight: 30,
+        is_prayer: true,
+    },
+    BookDef {
+        name: "Priest Prayerbook [Exorcisms and Dispellings]",
+        flags: 0x7E000000,
+        cost: 800,
+        weight: 30,
+        is_prayer: true,
+    },
 ];
 
 pub fn create_book(book_idx: usize, is_prayer: bool) -> Item {
@@ -378,9 +1406,13 @@ pub fn create_book(book_idx: usize, is_prayer: bool) -> Item {
         &MAGE_BOOKS[book_idx.min(3)]
     };
     let item_type = if is_prayer {
-        ItemType::PrayerBook { spell_flags: def.flags }
+        ItemType::PrayerBook {
+            spell_flags: def.flags,
+        }
     } else {
-        ItemType::MagicBook { spell_flags: def.flags }
+        ItemType::MagicBook {
+            spell_flags: def.flags,
+        }
     };
     Item::new(def.name, 1, def.weight, item_type)
 }
@@ -441,12 +1473,24 @@ pub fn cast_spell_bolt(
     for _ in 0..20 {
         cx += dx;
         cy += dy;
-        if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+        if cx <= 0
+            || cx >= (level.width - 1) as isize
+            || cy <= 0
+            || cy >= (level.height - 1) as isize
+        {
             break;
         }
         let (ux, uy) = (cx as usize, cy as usize);
         if let Some(tile) = level.get_tile(ux, uy)
-            && matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::DoorClosed { .. } | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble)
+            && matches!(
+                tile.tile_type,
+                TileType::Wall
+                    | TileType::SecretDoor
+                    | TileType::DoorClosed { .. }
+                    | TileType::MagmaVein { .. }
+                    | TileType::QuartzVein { .. }
+                    | TileType::Rubble
+            )
         {
             *status_msg = format!("Your {} strikes a wall!", spell_name);
             hit = true;
@@ -493,13 +1537,25 @@ pub fn cast_spell_ball(
     for _ in 0..20 {
         cx += dx;
         cy += dy;
-        if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+        if cx <= 0
+            || cx >= (level.width - 1) as isize
+            || cy <= 0
+            || cy >= (level.height - 1) as isize
+        {
             break;
         }
         let (ux, uy) = (cx as usize, cy as usize);
         impact = (ux, uy);
         if let Some(tile) = level.get_tile(ux, uy)
-            && matches!(tile.tile_type, TileType::Wall | TileType::SecretDoor | TileType::DoorClosed { .. } | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble)
+            && matches!(
+                tile.tile_type,
+                TileType::Wall
+                    | TileType::SecretDoor
+                    | TileType::DoorClosed { .. }
+                    | TileType::MagmaVein { .. }
+                    | TileType::QuartzVein { .. }
+                    | TileType::Rubble
+            )
         {
             break;
         }
@@ -513,7 +1569,9 @@ pub fn cast_spell_ball(
     let mut killed = Vec::new();
     let mut hit_count = 0;
     for (m_idx, m) in monsters.iter_mut().enumerate() {
-        let dist = (m.x as isize - impact.0 as isize).abs().max((m.y as isize - impact.1 as isize).abs());
+        let dist = (m.x as isize - impact.0 as isize)
+            .abs()
+            .max((m.y as isize - impact.1 as isize).abs());
         if dist <= radius as isize {
             hit_count += 1;
             m.was_attacked = true;
@@ -532,12 +1590,20 @@ pub fn cast_spell_ball(
         monsters.remove(idx);
     }
     if !killed.is_empty() {
-        status_msg.push_str(&format!(" {} creatures perished in the blast!", killed.len()));
+        status_msg.push_str(&format!(
+            " {} creatures perished in the blast!",
+            killed.len()
+        ));
     } else if hit_count > 0 {
-        status_msg.push_str(&format!(" {} creatures were caught in the blast!", hit_count));
+        status_msg.push_str(&format!(
+            " {} creatures were caught in the blast!",
+            hit_count
+        ));
     }
 
-    let p_dist = (player.x as isize - impact.0 as isize).abs().max((player.y as isize - impact.1 as isize).abs());
+    let p_dist = (player.x as isize - impact.0 as isize)
+        .abs()
+        .max((player.y as isize - impact.1 as isize).abs());
     if p_dist <= radius as isize {
         player.hp -= damage / 2;
         status_msg.push_str(" You are caught in your own blast!");
@@ -566,7 +1632,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -586,7 +1656,17 @@ pub fn execute_directional_spell<R: rand::Rng>(
             17 => {
                 // Orb of Draining
                 let dmg = (Dice::new(3, 6).roll(rng) + player.level) as i32;
-                cast_spell_ball("Orb of Draining", dx, dy, 2, dmg, player, level, monsters, status_msg);
+                cast_spell_ball(
+                    "Orb of Draining",
+                    dx,
+                    dy,
+                    2,
+                    dmg,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             _ => {
                 *status_msg = "Nothing happens.".to_string();
@@ -597,11 +1677,30 @@ pub fn execute_directional_spell<R: rand::Rng>(
             0 => {
                 // Magic Missile (2d6)
                 let dmg = Dice::new(2, 6).roll(rng) as i32;
-                cast_spell_bolt("Magic Missile", dx, dy, dmg, player, level, monsters, status_msg);
+                cast_spell_bolt(
+                    "Magic Missile",
+                    dx,
+                    dy,
+                    dmg,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             6 => {
                 // Stinking Cloud (12 dmg ball)
-                cast_spell_ball("Stinking Cloud", dx, dy, 2, 12, player, level, monsters, status_msg);
+                cast_spell_ball(
+                    "Stinking Cloud",
+                    dx,
+                    dy,
+                    2,
+                    12,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             7 => {
                 // Confusion
@@ -611,7 +1710,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -631,7 +1734,16 @@ pub fn execute_directional_spell<R: rand::Rng>(
             8 => {
                 // Lightning Bolt (4d8)
                 let dmg = Dice::new(4, 8).roll(rng) as i32;
-                cast_spell_bolt("Lightning Bolt", dx, dy, dmg, player, level, monsters, status_msg);
+                cast_spell_bolt(
+                    "Lightning Bolt",
+                    dx,
+                    dy,
+                    dmg,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             10 => {
                 // Sleep I
@@ -641,7 +1753,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -659,7 +1775,16 @@ pub fn execute_directional_spell<R: rand::Rng>(
             14 => {
                 // Frost Bolt (6d8)
                 let dmg = Dice::new(6, 8).roll(rng) as i32;
-                cast_spell_bolt("Frost Bolt", dx, dy, dmg, player, level, monsters, status_msg);
+                cast_spell_bolt(
+                    "Frost Bolt",
+                    dx,
+                    dy,
+                    dmg,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             15 => {
                 // Turn Stone to Mud
@@ -669,12 +1794,22 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
                     if let Some(tile) = level.get_tile_mut(ux, uy)
-                        && matches!(tile.tile_type, TileType::Wall | TileType::MagmaVein { .. } | TileType::QuartzVein { .. } | TileType::Rubble)
+                        && matches!(
+                            tile.tile_type,
+                            TileType::Wall
+                                | TileType::MagmaVein { .. }
+                                | TileType::QuartzVein { .. }
+                                | TileType::Rubble
+                        )
                     {
                         tile.tile_type = TileType::Floor;
                         *status_msg = "The stone dissolves into mud and flows away!".to_string();
@@ -706,7 +1841,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -729,7 +1868,16 @@ pub fn execute_directional_spell<R: rand::Rng>(
             22 => {
                 // Fire Bolt (9d8)
                 let dmg = Dice::new(9, 8).roll(rng) as i32;
-                cast_spell_bolt("Fire Bolt", dx, dy, dmg, player, level, monsters, status_msg);
+                cast_spell_bolt(
+                    "Fire Bolt",
+                    dx,
+                    dy,
+                    dmg,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             23 => {
                 // Slow Monster
@@ -739,7 +1887,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -757,7 +1909,17 @@ pub fn execute_directional_spell<R: rand::Rng>(
             }
             24 => {
                 // Frost Ball (48 dmg ball)
-                cast_spell_ball("Frost Ball", dx, dy, 2, 48, player, level, monsters, status_msg);
+                cast_spell_ball(
+                    "Frost Ball",
+                    dx,
+                    dy,
+                    2,
+                    48,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             26 => {
                 // Teleport Other
@@ -767,7 +1929,11 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 for _ in 0..20 {
                     cx += dx;
                     cy += dy;
-                    if cx <= 0 || cx >= (level.width - 1) as isize || cy <= 0 || cy >= (level.height - 1) as isize {
+                    if cx <= 0
+                        || cx >= (level.width - 1) as isize
+                        || cy <= 0
+                        || cy >= (level.height - 1) as isize
+                    {
                         break;
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
@@ -787,7 +1953,17 @@ pub fn execute_directional_spell<R: rand::Rng>(
             }
             28 => {
                 // Fire Ball (72 dmg ball)
-                cast_spell_ball("Fire Ball", dx, dy, 2, 72, player, level, monsters, status_msg);
+                cast_spell_ball(
+                    "Fire Ball",
+                    dx,
+                    dy,
+                    2,
+                    72,
+                    player,
+                    level,
+                    monsters,
+                    status_msg,
+                );
             }
             _ => {
                 *status_msg = "Nothing happens.".to_string();
@@ -869,13 +2045,16 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             11 => {
                 // Chant
                 player.flags.blessed += rng.gen_range(24..=48);
-                *status_msg = "You chant sacred verses and feel divine favor descend upon you!".to_string();
+                *status_msg =
+                    "You chant sacred verses and feel divine favor descend upon you!".to_string();
             }
             12 => {
                 // Sanctuary
                 let mut count = 0;
                 for m in monsters.iter_mut() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 5 {
                         m.asleep += rng.gen_range(5..=15);
                         count += 1;
@@ -885,7 +2064,12 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             13 => {
                 // Create Food
-                player.inventory.push(Item::new("Ration of Food", 1, 20, ItemType::Food { nutrition: 5000 }));
+                player.inventory.push(Item::new(
+                    "Ration of Food",
+                    1,
+                    20,
+                    ItemType::Food { nutrition: 5000 },
+                ));
                 *status_msg = "Manna falls from heaven into your pack!".to_string();
             }
             14 => {
@@ -937,13 +2121,18 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 // Cure Critical Wounds (16d4)
                 let heal = Dice::new(16, 4).roll(rng) as i32;
                 player.hp = (player.hp + heal).min(player.max_hp);
-                *status_msg = format!("Miraculous healing surges through you! Restored {} HP.", heal);
+                *status_msg = format!(
+                    "Miraculous healing surges through you! Restored {} HP.",
+                    heal
+                );
             }
             24 => {
                 // Turn Undead
                 let mut count = 0;
                 for m in monsters.iter_mut() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 10 {
                         m.stunned += rng.gen_range(10..=20);
                         count += 1;
@@ -954,14 +2143,17 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             25 => {
                 // Prayer
                 player.flags.blessed += rng.gen_range(48..=96);
-                *status_msg = "Your prayers resonate across the heavens; blessing surges!".to_string();
+                *status_msg =
+                    "Your prayers resonate across the heavens; blessing surges!".to_string();
             }
             26 => {
                 // Dispel Undead
                 let dmg = (3 * player.level) as i32;
                 let mut killed = Vec::new();
                 for (idx, m) in monsters.iter_mut().enumerate() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 10 {
                         m.was_attacked = true;
                         m.asleep = 0;
@@ -973,7 +2165,9 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 for &idx in killed.iter().rev() {
                     let exp = monsters[idx].experience_reward;
                     player.add_experience(exp);
-                    if level.depth == 0 { player.killed_town_npcs += 1; }
+                    if level.depth == 0 {
+                        player.killed_town_npcs += 1;
+                    }
                     monsters.remove(idx);
                 }
                 *status_msg = format!("Holy light scours the undead! {} destroyed.", killed.len());
@@ -988,7 +2182,9 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 let dmg = (3 * player.level) as i32;
                 let mut killed = Vec::new();
                 for (idx, m) in monsters.iter_mut().enumerate() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 10 {
                         m.was_attacked = true;
                         m.asleep = 0;
@@ -1000,15 +2196,21 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 for &idx in killed.iter().rev() {
                     let exp = monsters[idx].experience_reward;
                     player.add_experience(exp);
-                    if level.depth == 0 { player.killed_town_npcs += 1; }
+                    if level.depth == 0 {
+                        player.killed_town_npcs += 1;
+                    }
                     monsters.remove(idx);
                 }
-                *status_msg = format!("Holy wrath burns into the darkness! {} evil foes destroyed.", killed.len());
+                *status_msg = format!(
+                    "Holy wrath burns into the darkness! {} evil foes destroyed.",
+                    killed.len()
+                );
             }
             29 => {
                 // Glyph of Warding
                 level.place_glyph_of_warding(player.x, player.y);
-                *status_msg = "You trace a glowing holy Glyph of Warding upon the floor!".to_string();
+                *status_msg =
+                    "You trace a glowing holy Glyph of Warding upon the floor!".to_string();
             }
             30 => {
                 // Holy Word
@@ -1020,7 +2222,9 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 let dmg = (4 * player.level) as i32;
                 let mut killed = Vec::new();
                 for (idx, m) in monsters.iter_mut().enumerate() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 10 {
                         m.was_attacked = true;
                         m.asleep = 0;
@@ -1032,10 +2236,15 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 for &idx in killed.iter().rev() {
                     let exp = monsters[idx].experience_reward;
                     player.add_experience(exp);
-                    if level.depth == 0 { player.killed_town_npcs += 1; }
+                    if level.depth == 0 {
+                        player.killed_town_npcs += 1;
+                    }
                     monsters.remove(idx);
                 }
-                *status_msg = format!("You utter a Word of divine power! Foes perish and your body is restored! ({} destroyed)", killed.len());
+                *status_msg = format!(
+                    "You utter a Word of divine power! Foes perish and your body is restored! ({} destroyed)",
+                    killed.len()
+                );
             }
             _ => {
                 *status_msg = "Nothing happens.".to_string();
@@ -1073,12 +2282,18 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 // Find Hidden Traps/Doors
                 let traps = level.detect_traps_near(player.x, player.y, 15);
                 let doors = level.detect_doors_and_stairs_near(player.x, player.y, 15);
-                *status_msg = format!("You sense {} traps and {} secret doors nearby.", traps, doors);
+                *status_msg = format!(
+                    "You sense {} traps and {} secret doors nearby.",
+                    traps, doors
+                );
             }
             9 => {
                 // Trap/Door Destruction
                 let count = level.destroy_adjacent_doors_and_traps(player.x, player.y);
-                *status_msg = format!("There is a sudden burst of energy! Destroyed {} doors/traps.", count);
+                *status_msg = format!(
+                    "There is a sudden burst of energy! Destroyed {} doors/traps.",
+                    count
+                );
             }
             11 => {
                 // Cure Poison
@@ -1096,11 +2311,17 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 for item in &mut player.equipment {
                     item.is_cursed = false;
                 }
-                *status_msg = "You feel a malignant aura dissipate from your equipment.".to_string();
+                *status_msg =
+                    "You feel a malignant aura dissipate from your equipment.".to_string();
             }
             16 => {
                 // Create Food
-                player.inventory.push(Item::new("Ration of Food", 1, 20, ItemType::Food { nutrition: 5000 }));
+                player.inventory.push(Item::new(
+                    "Ration of Food",
+                    1,
+                    20,
+                    ItemType::Food { nutrition: 5000 },
+                ));
                 *status_msg = "A nutritious ration of food appears in your pack!".to_string();
             }
             17 => {
@@ -1126,7 +2347,9 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 // Sleep II
                 let mut count = 0;
                 for m in monsters.iter_mut() {
-                    let dist = (m.x as isize - player.x as isize).abs().max((m.y as isize - player.y as isize).abs());
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
                     if dist <= 10 {
                         m.asleep += rng.gen_range(5..=15);
                         count += 1;
@@ -1156,7 +2379,10 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 for m in monsters.iter_mut() {
                     m.asleep += rng.gen_range(10..=25);
                 }
-                *status_msg = format!("A deep magical slumber falls across {} monsters on this level!", count);
+                *status_msg = format!(
+                    "A deep magical slumber falls across {} monsters on this level!",
+                    count
+                );
             }
             25 => {
                 // Recharge Item II
@@ -1185,7 +2411,8 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             29 => {
                 // Word of Destruction
                 level.destroy_area(player.x, player.y, 12);
-                *status_msg = "The dungeon violently dissolves into raw stone around you!".to_string();
+                *status_msg =
+                    "The dungeon violently dissolves into raw stone around you!".to_string();
             }
             30 => {
                 // Genocide
@@ -1193,7 +2420,10 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
                 player.add_experience(exp_sum);
                 let count = monsters.len();
                 monsters.clear();
-                *status_msg = format!("A cosmic power annihilates {} monsters across the entire level!", count);
+                *status_msg = format!(
+                    "A cosmic power annihilates {} monsters across the entire level!",
+                    count
+                );
             }
             _ => {
                 *status_msg = "Nothing happens.".to_string();
@@ -1331,13 +2561,20 @@ mod tests {
                 tile.tile_type = TileType::Floor;
             }
         }
-        let mut monsters = vec![
-            Monster::new("Goblin", 'o', 8, 5, 10, Dice::new(1, 4), 15),
-        ];
+        let mut monsters = vec![Monster::new("Goblin", 'o', 8, 5, 10, Dice::new(1, 4), 15)];
         let mut msg = String::new();
 
         // Bolt towards East (dx=1, dy=0)
-        cast_spell_bolt("Magic Missile", 1, 0, 15, &mut player, &mut level, &mut monsters, &mut msg);
+        cast_spell_bolt(
+            "Magic Missile",
+            1,
+            0,
+            15,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut msg,
+        );
         assert!(monsters.is_empty(), "Monster should be killed by 15 damage");
         assert!(msg.contains("destroyed it"));
     }
@@ -1420,10 +2657,23 @@ mod tests {
         let mut msg = String::new();
 
         // Fire ball towards East at radius 2, damage 30
-        cast_spell_ball("Fire Ball", 1, 0, 2, 30, &mut player, &mut level, &mut monsters, &mut msg);
+        cast_spell_ball(
+            "Fire Ball",
+            1,
+            0,
+            2,
+            30,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut msg,
+        );
 
         // Both goblins within radius 2 of impact at (7, 5) should take 30 dmg and die
-        assert!(monsters.is_empty(), "Both goblins should be killed by area blast");
+        assert!(
+            monsters.is_empty(),
+            "Both goblins should be killed by area blast"
+        );
         assert!(msg.contains("perished in the blast"));
     }
 
@@ -1443,7 +2693,17 @@ mod tests {
         let mut msg = String::new();
 
         // Cast Wall to Mud (Mage spell 15) East towards (6, 5)
-        execute_directional_spell(15, false, 1, 0, &mut player, &mut level, &mut monsters, &mut rng, &mut msg);
+        execute_directional_spell(
+            15,
+            false,
+            1,
+            0,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
 
         assert_eq!(level.get_tile(6, 5).unwrap().tile_type, TileType::Floor);
         assert!(msg.contains("dissolves into mud"));
@@ -1459,11 +2719,20 @@ mod tests {
         let mut msg = String::new();
 
         // Cast Glyph of Warding (Priest prayer 29)
-        execute_non_directional_spell(29, true, &mut player, &mut level, &mut monsters, &mut rng, &mut msg);
+        execute_non_directional_spell(
+            29,
+            true,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
 
-        assert_eq!(level.get_tile(5, 5).unwrap().tile_type, TileType::GlyphOfWarding);
+        assert_eq!(
+            level.get_tile(5, 5).unwrap().tile_type,
+            TileType::GlyphOfWarding
+        );
         assert!(msg.contains("Glyph of Warding"));
     }
 }
-
-

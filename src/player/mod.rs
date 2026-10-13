@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
 use crate::dice::Dice;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 pub mod creation;
 pub use creation::run_character_creation;
@@ -315,7 +315,11 @@ impl Item {
                 let name = self.name.to_lowercase();
                 if name.contains("shield") {
                     "Shield"
-                } else if name.contains("helm") || name.contains("hat") || name.contains("crown") || name.contains("cap") {
+                } else if name.contains("helm")
+                    || name.contains("hat")
+                    || name.contains("crown")
+                    || name.contains("cap")
+                {
                     "Headwear"
                 } else if name.contains("gloves") || name.contains("gauntlets") {
                     "Gloves"
@@ -333,10 +337,9 @@ impl Item {
 }
 
 pub const BASE_EXP_LEVELS: &[u32] = &[
-    10,   25,   45,    70,    100,   140,   200,    280,    380,    500,
-    650,     850,     1100,    1400,    1800,    2300,    2900,     3600,     4400,     5400,
-    6800, 8400, 10200, 12500, 17500, 25000, 35000, 50000, 75000, 100000,
-    150000, 200000, 300000, 400000, 500000, 750000, 1500000, 2500000, 5000000, 10000000
+    10, 25, 45, 70, 100, 140, 200, 280, 380, 500, 650, 850, 1100, 1400, 1800, 2300, 2900, 3600,
+    4400, 5400, 6800, 8400, 10200, 12500, 17500, 25000, 35000, 50000, 75000, 100000, 150000,
+    200000, 300000, 400000, 500000, 750000, 1500000, 2500000, 5000000, 10000000,
 ];
 
 fn default_food() -> i32 {
@@ -364,17 +367,17 @@ pub struct Player {
     pub level: u32,
     pub exp: u32,
     pub gold: u32,
-    
+
     pub x: usize,
     pub y: usize,
-    
+
     pub max_hp: i32,
     pub hp: i32,
     pub max_mana: i32,
     pub mana: i32,
     #[serde(default = "default_food")]
     pub food: i32,
-    
+
     pub stats: Attributes,
     #[serde(default)]
     pub base_stats: Attributes,
@@ -434,139 +437,248 @@ pub fn generate_history(race: Race) -> String {
         let roll = rng.gen_range(1..=100);
         let (text, next_chart) = match chart {
             1 => {
-                if roll <= 10 { ("You are the illegitimate and unacknowledged child ", 2) }
-                else if roll <= 20 { ("You are the illegitimate but acknowledged child ", 2) }
-                else if roll <= 95 { ("You are one of several children ", 2) }
-                else { ("You are the first child ", 2) }
+                if roll <= 10 {
+                    ("You are the illegitimate and unacknowledged child ", 2)
+                } else if roll <= 20 {
+                    ("You are the illegitimate but acknowledged child ", 2)
+                } else if roll <= 95 {
+                    ("You are one of several children ", 2)
+                } else {
+                    ("You are the first child ", 2)
+                }
             }
             2 => {
-                if roll <= 40 { ("of a Serf. ", 3) }
-                else if roll <= 65 { ("of a Yeoman. ", 3) }
-                else if roll <= 80 { ("of a Townsman. ", 3) }
-                else if roll <= 90 { ("of a Guildsman. ", 3) }
-                else if roll <= 96 { ("of a Landed Knight. ", 3) }
-                else if roll <= 99 { ("of a Titled Noble. ", 3) }
-                else { ("of a Royal Blood Line. ", 3) }
+                if roll <= 40 {
+                    ("of a Serf. ", 3)
+                } else if roll <= 65 {
+                    ("of a Yeoman. ", 3)
+                } else if roll <= 80 {
+                    ("of a Townsman. ", 3)
+                } else if roll <= 90 {
+                    ("of a Guildsman. ", 3)
+                } else if roll <= 96 {
+                    ("of a Landed Knight. ", 3)
+                } else if roll <= 99 {
+                    ("of a Titled Noble. ", 3)
+                } else {
+                    ("of a Royal Blood Line. ", 3)
+                }
             }
             3 => {
-                if roll <= 20 { ("You are the black sheep of the family. ", 50) }
-                else if roll <= 80 { ("You are a credit to the family. ", 50) }
-                else { ("You are a well liked child. ", 50) }
+                if roll <= 20 {
+                    ("You are the black sheep of the family. ", 50)
+                } else if roll <= 80 {
+                    ("You are a credit to the family. ", 50)
+                } else {
+                    ("You are a well liked child. ", 50)
+                }
             }
             4 => {
-                if roll <= 40 { ("Your mother was a Green-Elf. ", 1) }
-                else if roll <= 75 { ("Your father was a Green-Elf. ", 1) }
-                else if roll <= 90 { ("Your mother was a Grey-Elf. ", 1) }
-                else if roll <= 95 { ("Your father was a Grey-Elf. ", 1) }
-                else if roll <= 98 { ("Your mother was a High-Elf. ", 1) }
-                else { ("Your father was a High-Elf. ", 1) }
+                if roll <= 40 {
+                    ("Your mother was a Green-Elf. ", 1)
+                } else if roll <= 75 {
+                    ("Your father was a Green-Elf. ", 1)
+                } else if roll <= 90 {
+                    ("Your mother was a Grey-Elf. ", 1)
+                } else if roll <= 95 {
+                    ("Your father was a Grey-Elf. ", 1)
+                } else if roll <= 98 {
+                    ("Your mother was a High-Elf. ", 1)
+                } else {
+                    ("Your father was a High-Elf. ", 1)
+                }
             }
             7 => {
-                if roll <= 60 { ("You are one of several children ", 8) }
-                else { ("You are the only child ", 8) }
+                if roll <= 60 {
+                    ("You are one of several children ", 8)
+                } else {
+                    ("You are the only child ", 8)
+                }
             }
             8 => {
-                if roll <= 75 { ("of a Green-Elf ", 9) }
-                else if roll <= 95 { ("of a Grey-Elf ", 9) }
-                else { ("of a High-Elf ", 9) }
+                if roll <= 75 {
+                    ("of a Green-Elf ", 9)
+                } else if roll <= 95 {
+                    ("of a Grey-Elf ", 9)
+                } else {
+                    ("of a High-Elf ", 9)
+                }
             }
             9 => {
-                if roll <= 40 { ("Ranger. ", 50) }
-                else if roll <= 70 { ("Archer. ", 50) }
-                else if roll <= 87 { ("Warrior. ", 50) }
-                else if roll <= 95 { ("Mage. ", 50) }
-                else if roll <= 99 { ("Prince. ", 50) }
-                else { ("King. ", 50) }
+                if roll <= 40 {
+                    ("Ranger. ", 50)
+                } else if roll <= 70 {
+                    ("Archer. ", 50)
+                } else if roll <= 87 {
+                    ("Warrior. ", 50)
+                } else if roll <= 95 {
+                    ("Mage. ", 50)
+                } else if roll <= 99 {
+                    ("Prince. ", 50)
+                } else {
+                    ("King. ", 50)
+                }
             }
             10 => {
-                if roll <= 85 { ("You are one of several children of a Halfling ", 11) }
-                else { ("You are the only child of a Halfling ", 11) }
+                if roll <= 85 {
+                    ("You are one of several children of a Halfling ", 11)
+                } else {
+                    ("You are the only child of a Halfling ", 11)
+                }
             }
             11 => {
-                if roll <= 20 { ("Bum. ", 3) }
-                else if roll <= 30 { ("Tavern Owner. ", 3) }
-                else if roll <= 40 { ("Miller. ", 3) }
-                else if roll <= 50 { ("Home Owner. ", 3) }
-                else if roll <= 80 { ("Burglar. ", 3) }
-                else if roll <= 95 { ("Warrior. ", 3) }
-                else if roll <= 99 { ("Mage. ", 3) }
-                else { ("Clan Elder. ", 3) }
+                if roll <= 20 {
+                    ("Bum. ", 3)
+                } else if roll <= 30 {
+                    ("Tavern Owner. ", 3)
+                } else if roll <= 40 {
+                    ("Miller. ", 3)
+                } else if roll <= 50 {
+                    ("Home Owner. ", 3)
+                } else if roll <= 80 {
+                    ("Burglar. ", 3)
+                } else if roll <= 95 {
+                    ("Warrior. ", 3)
+                } else if roll <= 99 {
+                    ("Mage. ", 3)
+                } else {
+                    ("Clan Elder. ", 3)
+                }
             }
             13 => {
-                if roll <= 85 { ("You are one of several children of a Gnome ", 14) }
-                else { ("You are the only child of a Gnome ", 14) }
+                if roll <= 85 {
+                    ("You are one of several children of a Gnome ", 14)
+                } else {
+                    ("You are the only child of a Gnome ", 14)
+                }
             }
             14 => {
-                if roll <= 20 { ("Beggar. ", 3) }
-                else if roll <= 50 { ("Braggart. ", 3) }
-                else if roll <= 75 { ("Prankster. ", 3) }
-                else if roll <= 95 { ("Warrior. ", 3) }
-                else { ("Mage. ", 3) }
+                if roll <= 20 {
+                    ("Beggar. ", 3)
+                } else if roll <= 50 {
+                    ("Braggart. ", 3)
+                } else if roll <= 75 {
+                    ("Prankster. ", 3)
+                } else if roll <= 95 {
+                    ("Warrior. ", 3)
+                } else {
+                    ("Mage. ", 3)
+                }
             }
             16 => {
-                if roll <= 25 { ("You are one of two children of a Dwarven ", 17) }
-                else { ("You are the only child of a Dwarven ", 17) }
+                if roll <= 25 {
+                    ("You are one of two children of a Dwarven ", 17)
+                } else {
+                    ("You are the only child of a Dwarven ", 17)
+                }
             }
             17 => {
-                if roll <= 10 { ("Thief. ", 18) }
-                else if roll <= 25 { ("Prison Guard. ", 18) }
-                else if roll <= 75 { ("Miner. ", 18) }
-                else if roll <= 90 { ("Warrior. ", 18) }
-                else if roll <= 99 { ("Priest. ", 18) }
-                else { ("King. ", 18) }
+                if roll <= 10 {
+                    ("Thief. ", 18)
+                } else if roll <= 25 {
+                    ("Prison Guard. ", 18)
+                } else if roll <= 75 {
+                    ("Miner. ", 18)
+                } else if roll <= 90 {
+                    ("Warrior. ", 18)
+                } else if roll <= 99 {
+                    ("Priest. ", 18)
+                } else {
+                    ("King. ", 18)
+                }
             }
             18 => {
-                if roll <= 15 { ("You are the black sheep of the family. ", 50) }
-                else if roll <= 85 { ("You are a credit to the family. ", 50) }
-                else { ("You are a well liked child. ", 50) }
+                if roll <= 15 {
+                    ("You are the black sheep of the family. ", 50)
+                } else if roll <= 85 {
+                    ("You are a credit to the family. ", 50)
+                } else {
+                    ("You are a well liked child. ", 50)
+                }
             }
             19 => {
-                if roll <= 25 { ("Your mother was an Orc, but it is unacknowledged. ", 20) }
-                else { ("Your father was an Orc, but it is unacknowledged. ", 20) }
+                if roll <= 25 {
+                    ("Your mother was an Orc, but it is unacknowledged. ", 20)
+                } else {
+                    ("Your father was an Orc, but it is unacknowledged. ", 20)
+                }
             }
-            20 => {
-                ("You are the adopted child ", 2)
-            }
+            20 => ("You are the adopted child ", 2),
             22 => {
-                if roll <= 30 { ("Your mother was a Cave-Troll ", 23) }
-                else if roll <= 60 { ("Your father was a Cave-Troll ", 23) }
-                else if roll <= 75 { ("Your mother was a Hill-Troll ", 23) }
-                else if roll <= 90 { ("Your father was a Hill-Troll ", 23) }
-                else if roll <= 95 { ("Your mother was a Water-Troll ", 23) }
-                else { ("Your father was a Water-Troll ", 23) }
+                if roll <= 30 {
+                    ("Your mother was a Cave-Troll ", 23)
+                } else if roll <= 60 {
+                    ("Your father was a Cave-Troll ", 23)
+                } else if roll <= 75 {
+                    ("Your mother was a Hill-Troll ", 23)
+                } else if roll <= 90 {
+                    ("Your father was a Hill-Troll ", 23)
+                } else if roll <= 95 {
+                    ("Your mother was a Water-Troll ", 23)
+                } else {
+                    ("Your father was a Water-Troll ", 23)
+                }
             }
             23 => {
-                if roll <= 5 { ("Cook. ", 50) }
-                else if roll <= 95 { ("Warrior. ", 50) }
-                else if roll <= 99 { ("Shaman. ", 50) }
-                else { ("Clan Chief. ", 50) }
+                if roll <= 5 {
+                    ("Cook. ", 50)
+                } else if roll <= 95 {
+                    ("Warrior. ", 50)
+                } else if roll <= 99 {
+                    ("Shaman. ", 50)
+                } else {
+                    ("Clan Chief. ", 50)
+                }
             }
             50 => {
-                if roll <= 20 { ("You have dark brown eyes, ", 51) }
-                else if roll <= 60 { ("You have brown eyes, ", 51) }
-                else if roll <= 70 { ("You have hazel eyes, ", 51) }
-                else if roll <= 80 { ("You have green eyes, ", 51) }
-                else if roll <= 90 { ("You have blue eyes, ", 51) }
-                else { ("You have blue-gray eyes, ", 51) }
+                if roll <= 20 {
+                    ("You have dark brown eyes, ", 51)
+                } else if roll <= 60 {
+                    ("You have brown eyes, ", 51)
+                } else if roll <= 70 {
+                    ("You have hazel eyes, ", 51)
+                } else if roll <= 80 {
+                    ("You have green eyes, ", 51)
+                } else if roll <= 90 {
+                    ("You have blue eyes, ", 51)
+                } else {
+                    ("You have blue-gray eyes, ", 51)
+                }
             }
             51 => {
-                if roll <= 70 { ("straight ", 52) }
-                else if roll <= 90 { ("wavy ", 52) }
-                else { ("curly ", 52) }
+                if roll <= 70 {
+                    ("straight ", 52)
+                } else if roll <= 90 {
+                    ("wavy ", 52)
+                } else {
+                    ("curly ", 52)
+                }
             }
             52 => {
-                if roll <= 30 { ("black hair, ", 53) }
-                else if roll <= 70 { ("brown hair, ", 53) }
-                else if roll <= 80 { ("auburn hair, ", 53) }
-                else if roll <= 90 { ("red hair, ", 53) }
-                else { ("blond hair, ", 53) }
+                if roll <= 30 {
+                    ("black hair, ", 53)
+                } else if roll <= 70 {
+                    ("brown hair, ", 53)
+                } else if roll <= 80 {
+                    ("auburn hair, ", 53)
+                } else if roll <= 90 {
+                    ("red hair, ", 53)
+                } else {
+                    ("blond hair, ", 53)
+                }
             }
             53 => {
-                if roll <= 10 { ("and a very dark complexion.", 0) }
-                else if roll <= 30 { ("and a dark complexion.", 0) }
-                else if roll <= 80 { ("and an average complexion.", 0) }
-                else if roll <= 90 { ("and a fair complexion.", 0) }
-                else { ("and a very fair complexion.", 0) }
+                if roll <= 10 {
+                    ("and a very dark complexion.", 0)
+                } else if roll <= 30 {
+                    ("and a dark complexion.", 0)
+                } else if roll <= 80 {
+                    ("and an average complexion.", 0)
+                } else if roll <= 90 {
+                    ("and a fair complexion.", 0)
+                } else {
+                    ("and a very fair complexion.", 0)
+                }
             }
             _ => ("", 0),
         };
@@ -584,7 +696,7 @@ pub fn generate_history(race: Race) -> String {
 impl Player {
     pub fn new(name: &str, race: Race, class: Class, x: usize, y: usize) -> Self {
         let base_stats = Attributes::new(10, 10, 10, 10, 10, 10);
-        
+
         let race_hp = match race {
             Race::Human => 10,
             Race::HalfElf => 9,
@@ -666,11 +778,28 @@ impl Player {
             flavors: crate::flavor::FlavorRegistry::new(&mut temp_rng),
             inventory: {
                 let mut starter = vec![
-                    Item::new("Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) }),
+                    Item::new(
+                        "Dagger",
+                        1,
+                        10,
+                        ItemType::Weapon {
+                            damage: Dice::new(1, 4),
+                        },
+                    ),
                     Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
                     Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 }),
-                    Item::new("Potion of Cure Light Wounds", 2, 5, ItemType::Potion { heal_amount: 10 }),
-                    Item::new("Scroll of Phase Door", 1, 2, ItemType::Scroll { teleport: true }),
+                    Item::new(
+                        "Potion of Cure Light Wounds",
+                        2,
+                        5,
+                        ItemType::Potion { heal_amount: 10 },
+                    ),
+                    Item::new(
+                        "Scroll of Phase Door",
+                        1,
+                        2,
+                        ItemType::Scroll { teleport: true },
+                    ),
                     Item::new("Iron Spike", 5, 2, ItemType::Scroll { teleport: false }),
                     Item::new("Ration of Food", 2, 10, ItemType::Food { nutrition: 5000 }),
                 ];
@@ -680,8 +809,20 @@ impl Player {
                     starter.push(crate::magic::create_book(0, true));
                 }
                 if matches!(class, Class::Ranger) {
-                    starter.push(Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 }));
-                    starter.push(Item::new("Arrow", 25, 2, ItemType::Missile { damage: Dice::new(1, 4) }));
+                    starter.push(Item::new(
+                        "Short Bow",
+                        1,
+                        30,
+                        ItemType::Bow { multiplier: 2 },
+                    ));
+                    starter.push(Item::new(
+                        "Arrow",
+                        25,
+                        2,
+                        ItemType::Missile {
+                            damage: Dice::new(1, 4),
+                        },
+                    ));
                 }
                 starter
             },
@@ -704,7 +845,7 @@ impl Player {
 
         player.flavors.identify("Potion of Cure Light Wounds");
         player.flavors.identify("Scroll of Phase Door");
-        
+
         player.apply_race_and_class_modifiers();
         player.base_stats = player.stats.clone();
         player.max_stats = player.stats.clone();
@@ -732,7 +873,11 @@ impl Player {
     }
 
     pub fn add_item_to_inventory(&mut self, item: Item) {
-        if let Some(existing) = self.inventory.iter_mut().find(|i| i.name == item.name && i.item_type == item.item_type) {
+        if let Some(existing) = self
+            .inventory
+            .iter_mut()
+            .find(|i| i.name == item.name && i.item_type == item.item_type)
+        {
             existing.count += item.count;
         } else {
             self.inventory.push(item);
@@ -745,16 +890,19 @@ impl Player {
     }
 
     pub fn get_light_radius(&self) -> usize {
-        if let Some(light_item) = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Light { .. })) {
+        if let Some(light_item) = self
+            .equipment
+            .iter()
+            .find(|i| matches!(i.item_type, ItemType::Light { .. }))
+        {
             match &light_item.item_type {
-                ItemType::Light { fuel }
-                    if *fuel > 0 => {
-                        if light_item.name.contains("Lantern") {
-                            3
-                        } else {
-                            2
-                        }
+                ItemType::Light { fuel } if *fuel > 0 => {
+                    if light_item.name.contains("Lantern") {
+                        3
+                    } else {
+                        2
                     }
+                }
                 _ => 1,
             }
         } else {
@@ -890,9 +1038,11 @@ impl Player {
                         str_mod += bonus;
                     } else if name_lower.contains("dexterity") && !name_lower.contains("sustain") {
                         dex_mod += bonus;
-                    } else if name_lower.contains("constitution") && !name_lower.contains("sustain") {
+                    } else if name_lower.contains("constitution") && !name_lower.contains("sustain")
+                    {
                         con_mod += bonus;
-                    } else if name_lower.contains("intelligence") && !name_lower.contains("sustain") {
+                    } else if name_lower.contains("intelligence") && !name_lower.contains("sustain")
+                    {
                         int_mod += bonus;
                     } else if name_lower.contains("weakness") {
                         str_mod -= bonus.abs().max(1);
@@ -916,10 +1066,14 @@ impl Player {
                     if name_lower.contains("feather falling") {
                         self.flags.free_fall = true;
                     }
-                    if name_lower.contains("resist fire") || name_lower.contains("lordly protection (fire)") {
+                    if name_lower.contains("resist fire")
+                        || name_lower.contains("lordly protection (fire)")
+                    {
                         self.flags.resistant_to_fire = true;
                     }
-                    if name_lower.contains("resist cold") || name_lower.contains("lordly protection (cold)") {
+                    if name_lower.contains("resist cold")
+                        || name_lower.contains("lordly protection (cold)")
+                    {
                         self.flags.resistant_to_cold = true;
                     }
                     if name_lower.contains("lordly protection (acid)") {
@@ -1008,7 +1162,9 @@ impl Player {
             return false;
         }
 
-        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+        if self.equipment.is_empty()
+            || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0)
+        {
             self.base_stats = self.stats.clone();
         }
 
@@ -1050,7 +1206,9 @@ impl Player {
 
     /// Restores a single stat back to its natural maximum.
     pub fn restore_stat(&mut self, stat_idx: usize) -> bool {
-        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+        if self.equipment.is_empty()
+            || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0)
+        {
             self.base_stats = self.stats.clone();
         }
 
@@ -1095,7 +1253,9 @@ impl Player {
 
     /// Increases a stat (e.g. via stat gain potion) up to 118 (18/100).
     pub fn increase_stat<R: rand::Rng>(&mut self, stat_idx: usize, rng: &mut R) -> bool {
-        if self.equipment.is_empty() || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0) {
+        if self.equipment.is_empty()
+            || (self.base_stats.strength == 0 && self.base_stats.intelligence == 0)
+        {
             self.base_stats = self.stats.clone();
         }
 
@@ -1124,27 +1284,39 @@ impl Player {
         match stat_idx {
             0 => {
                 self.base_stats.strength = new_stat;
-                if new_stat > self.max_stats.strength { self.max_stats.strength = new_stat; }
+                if new_stat > self.max_stats.strength {
+                    self.max_stats.strength = new_stat;
+                }
             }
             1 => {
                 self.base_stats.intelligence = new_stat;
-                if new_stat > self.max_stats.intelligence { self.max_stats.intelligence = new_stat; }
+                if new_stat > self.max_stats.intelligence {
+                    self.max_stats.intelligence = new_stat;
+                }
             }
             2 => {
                 self.base_stats.wisdom = new_stat;
-                if new_stat > self.max_stats.wisdom { self.max_stats.wisdom = new_stat; }
+                if new_stat > self.max_stats.wisdom {
+                    self.max_stats.wisdom = new_stat;
+                }
             }
             3 => {
                 self.base_stats.dexterity = new_stat;
-                if new_stat > self.max_stats.dexterity { self.max_stats.dexterity = new_stat; }
+                if new_stat > self.max_stats.dexterity {
+                    self.max_stats.dexterity = new_stat;
+                }
             }
             4 => {
                 self.base_stats.constitution = new_stat;
-                if new_stat > self.max_stats.constitution { self.max_stats.constitution = new_stat; }
+                if new_stat > self.max_stats.constitution {
+                    self.max_stats.constitution = new_stat;
+                }
             }
             5 => {
                 self.base_stats.charisma = new_stat;
-                if new_stat > self.max_stats.charisma { self.max_stats.charisma = new_stat; }
+                if new_stat > self.max_stats.charisma {
+                    self.max_stats.charisma = new_stat;
+                }
             }
             _ => {}
         }
@@ -1161,7 +1333,9 @@ impl Player {
         if self.flags.blind > 0 {
             self.flags.blind -= 1;
             if self.flags.blind == 0 {
-                result.messages.push("The veil of darkness lifts.".to_string());
+                result
+                    .messages
+                    .push("The veil of darkness lifts.".to_string());
             }
         }
 
@@ -1169,7 +1343,9 @@ impl Player {
         if self.flags.confused > 0 {
             self.flags.confused -= 1;
             if self.flags.confused == 0 {
-                result.messages.push("You feel less confused now.".to_string());
+                result
+                    .messages
+                    .push("You feel less confused now.".to_string());
             }
         }
 
@@ -1198,9 +1374,27 @@ impl Player {
                     -3 | -2 => 3,
                     -1 => 2,
                     0 => 1,
-                    1..=3 => if turn.is_multiple_of(2) { 1 } else { 0 },
-                    4..=5 => if turn.is_multiple_of(3) { 1 } else { 0 },
-                    _ => if turn.is_multiple_of(4) { 1 } else { 0 },
+                    1..=3 => {
+                        if turn.is_multiple_of(2) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    4..=5 => {
+                        if turn.is_multiple_of(3) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    _ => {
+                        if turn.is_multiple_of(4) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
                 };
                 if damage > 0 {
                     self.hp -= damage;
@@ -1216,13 +1410,17 @@ impl Player {
         if self.flags.fast > 0 {
             self.flags.fast -= 1;
             if self.flags.fast == 0 {
-                result.messages.push("You feel yourself slow down.".to_string());
+                result
+                    .messages
+                    .push("You feel yourself slow down.".to_string());
             }
         }
         if self.flags.slow > 0 {
             self.flags.slow -= 1;
             if self.flags.slow == 0 {
-                result.messages.push("You feel yourself speed up.".to_string());
+                result
+                    .messages
+                    .push("You feel yourself speed up.".to_string());
             }
         }
 
@@ -1230,7 +1428,9 @@ impl Player {
         if self.flags.protect_evil > 0 {
             self.flags.protect_evil -= 1;
             if self.flags.protect_evil == 0 {
-                result.messages.push("You no longer feel safe from evil.".to_string());
+                result
+                    .messages
+                    .push("You no longer feel safe from evil.".to_string());
             }
         }
 
@@ -1238,7 +1438,9 @@ impl Player {
         if self.flags.invulnerability > 0 {
             self.flags.invulnerability -= 1;
             if self.flags.invulnerability == 0 {
-                result.messages.push("Your skin returns to normal.".to_string());
+                result
+                    .messages
+                    .push("Your skin returns to normal.".to_string());
             }
         }
 
@@ -1258,7 +1460,9 @@ impl Player {
             if self.flags.super_heroism == 0 {
                 self.max_hp = (self.max_hp - 20).max(1);
                 self.hp = self.hp.min(self.max_hp);
-                result.messages.push("The super heroism wears off.".to_string());
+                result
+                    .messages
+                    .push("The super heroism wears off.".to_string());
             }
         }
 
@@ -1274,13 +1478,17 @@ impl Player {
         if self.flags.heat_resistance > 0 {
             self.flags.heat_resistance -= 1;
             if self.flags.heat_resistance == 0 {
-                result.messages.push("You no longer feel safe from flame.".to_string());
+                result
+                    .messages
+                    .push("You no longer feel safe from flame.".to_string());
             }
         }
         if self.flags.cold_resistance > 0 {
             self.flags.cold_resistance -= 1;
             if self.flags.cold_resistance == 0 {
-                result.messages.push("You no longer feel safe from cold.".to_string());
+                result
+                    .messages
+                    .push("You no longer feel safe from cold.".to_string());
             }
         }
 
@@ -1333,7 +1541,12 @@ impl Player {
             } else {
                 self.spells_learnt
             };
-            self.max_mana = crate::magic::calculate_max_mana(self.level, self.class, stat_val, effective_learnt);
+            self.max_mana = crate::magic::calculate_max_mana(
+                self.level,
+                self.class,
+                stat_val,
+                effective_learnt,
+            );
         } else {
             self.max_mana = 0;
         }
@@ -1393,9 +1606,11 @@ impl Player {
             .iter()
             .filter(|item| {
                 if is_prayer {
-                    matches!(item.item_type, ItemType::PrayerBook { .. }) || item.name.contains("Prayerbook")
+                    matches!(item.item_type, ItemType::PrayerBook { .. })
+                        || item.name.contains("Prayerbook")
                 } else {
-                    matches!(item.item_type, ItemType::MagicBook { .. }) || item.name.contains("Spellbook")
+                    matches!(item.item_type, ItemType::MagicBook { .. })
+                        || item.name.contains("Spellbook")
                 }
             })
             .collect()
@@ -1410,11 +1625,21 @@ impl Player {
                 _ => {
                     if item.name.contains("Beginner") {
                         flags |= if is_prayer { 0x000000FF } else { 0x0000007F };
-                    } else if item.name.contains("Incantation") || item.name.contains("Words") || item.name.contains("Magick I") {
+                    } else if item.name.contains("Incantation")
+                        || item.name.contains("Words")
+                        || item.name.contains("Magick I")
+                    {
                         flags |= if is_prayer { 0x0000FF00 } else { 0x0000FF80 };
-                    } else if item.name.contains("Sorcery") || item.name.contains("Chants") || item.name.contains("Magick II") {
+                    } else if item.name.contains("Sorcery")
+                        || item.name.contains("Chants")
+                        || item.name.contains("Magick II")
+                    {
                         flags |= if is_prayer { 0x01FF0000 } else { 0x00FF0000 };
-                    } else if item.name.contains("Arcana") || item.name.contains("Power") || item.name.contains("Holy") || item.name.contains("Exorcism") {
+                    } else if item.name.contains("Arcana")
+                        || item.name.contains("Power")
+                        || item.name.contains("Holy")
+                        || item.name.contains("Exorcism")
+                    {
                         flags |= if is_prayer { 0x7E000000 } else { 0x7F000000 };
                     }
                 }
@@ -1469,7 +1694,7 @@ impl Player {
             return false;
         }
         self.exp += amount;
-        
+
         let mut leveled_up = false;
         while self.level < 40 {
             let req = self.get_exp_to_next_level();
@@ -1493,14 +1718,16 @@ impl Player {
     }
 
     pub fn equipped_weapon(&self) -> Option<&Item> {
-        self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }))
+        self.equipment
+            .iter()
+            .find(|i| matches!(i.item_type, ItemType::Weapon { .. }))
     }
 
     pub fn calculate_blows(&self, weapon: &Option<&Item>) -> u32 {
         let weight = weapon.map(|w| w.weight).unwrap_or(10);
         let weight = if weight == 0 { 10 } else { weight };
         let str_dex = (self.stats.strength as u32 + self.stats.dexterity as u32) * 10;
-        let blows = str_dex / weight as u32;
+        let blows = str_dex / weight;
         blows.clamp(1, 5)
     }
 
@@ -1511,12 +1738,21 @@ impl Player {
         }
         let hit_chance = (self.stats.strength as i32 / 2) + self.level as i32 + to_hit_bonus;
         let roll = rng.gen_range(1..=20);
-        if roll == 1 { return false; }
-        if roll == 20 { return true; }
+        if roll == 1 {
+            return false;
+        }
+        if roll == 20 {
+            return true;
+        }
         roll + hit_chance >= target_ac
     }
 
-    pub fn single_blown_damage<R: rand::Rng>(&self, rng: &mut R, weapon: Option<&Item>, target_creature_id: Option<usize>) -> i32 {
+    pub fn single_blown_damage<R: rand::Rng>(
+        &self,
+        rng: &mut R,
+        weapon: Option<&Item>,
+        target_creature_id: Option<usize>,
+    ) -> i32 {
         let (base_dice, weapon_flags, weapon_to_dam) = if let Some(weapon) = weapon {
             let dice = match &weapon.item_type {
                 ItemType::Weapon { damage } => *damage,
@@ -1534,7 +1770,8 @@ impl Player {
 
         let mut dice_roll = base_dice.roll(rng) as i32;
         if let Some(c_id) = target_creature_id.filter(|_| weapon_flags != 0) {
-            let multiplier = crate::entity::treasure_data::calculate_slaying_multiplier(weapon_flags, c_id);
+            let multiplier =
+                crate::entity::treasure_data::calculate_slaying_multiplier(weapon_flags, c_id);
             dice_roll *= multiplier as i32;
         }
 
@@ -1547,35 +1784,44 @@ impl Player {
                 }
             }
         }
-        if self.flags.heroism > 0 { damage += 2; }
-        if self.flags.super_heroism > 0 { damage += 4; }
+        if self.flags.heroism > 0 {
+            damage += 2;
+        }
+        if self.flags.super_heroism > 0 {
+            damage += 4;
+        }
         if damage < 1 { 1 } else { damage }
     }
 
-    pub fn roll_melee_damage_against<R: rand::Rng>(&self, rng: &mut R, target_creature_id: Option<usize>) -> i32 {
+    pub fn roll_melee_damage_against<R: rand::Rng>(
+        &self,
+        rng: &mut R,
+        target_creature_id: Option<usize>,
+    ) -> i32 {
         let weapon = self.equipped_weapon();
         let blows = self.calculate_blows(&weapon);
         let mut total_damage = 0;
         let target_ac = 10; // For now, we assume a default target AC of 10 if not provided
-        
+
         for _ in 0..blows {
             if self.test_hit(rng, target_ac) {
                 total_damage += self.single_blown_damage(rng, weapon, target_creature_id);
             }
         }
-        
-        if total_damage == 0 {
-            0
-        } else {
-            total_damage
-        }
+
+        if total_damage == 0 { 0 } else { total_damage }
     }
 
     pub fn digging_ability(&self) -> i32 {
-        let wielded = self.equipment.iter().find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
+        let wielded = self
+            .equipment
+            .iter()
+            .find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
         match wielded {
             Some(weapon) => {
-                let is_digging_tool = weapon.name.contains("Shovel") || weapon.name.contains("Pick") || weapon.name.contains("Mattock");
+                let is_digging_tool = weapon.name.contains("Shovel")
+                    || weapon.name.contains("Pick")
+                    || weapon.name.contains("Mattock");
                 let base_ability = self.stats.strength as i32;
                 if is_digging_tool {
                     let tool_bonus = if weapon.name.contains("Pick") { 50 } else { 25 };
@@ -1595,15 +1841,19 @@ impl Player {
     pub fn calculate_ac(&self) -> i32 {
         let mut ac = 10;
         ac += (self.stats.dexterity as i32 - 10) / 2;
-        
+
         for item in &self.equipment {
             match &item.item_type {
                 ItemType::Armor { ac: item_ac } => {
                     ac += item_ac;
                     ac += item.to_ac as i32;
                 }
-                ItemType::Ring { bonus } if item.name.to_lowercase().contains("protection") => ac += bonus,
-                ItemType::Amulet { bonus } if item.name.to_lowercase().contains("the magi") => ac += bonus,
+                ItemType::Ring { bonus } if item.name.to_lowercase().contains("protection") => {
+                    ac += bonus
+                }
+                ItemType::Amulet { bonus } if item.name.to_lowercase().contains("the magi") => {
+                    ac += bonus
+                }
                 _ => {
                     ac += item.to_ac as i32;
                 }
@@ -1616,7 +1866,7 @@ impl Player {
         if self.flags.blessed > 0 {
             ac += 2;
         }
-        
+
         ac
     }
 
@@ -1694,13 +1944,20 @@ impl Player {
     }
 
     pub fn take_damage(&mut self, damage: i32) {
-        let actual_damage = if self.flags.invulnerability > 0 { 0 } else { damage.max(0) };
+        let actual_damage = if self.flags.invulnerability > 0 {
+            0
+        } else {
+            damage.max(0)
+        };
         self.hp -= actual_damage;
     }
 
     /// Total weight of items carried in inventory (in 1/10th lbs).
     pub fn total_weight(&self) -> u32 {
-        self.inventory.iter().map(|item| item.weight * item.count).sum()
+        self.inventory
+            .iter()
+            .map(|item| item.weight * item.count)
+            .sum()
     }
 
     /// Maximum carrying capacity (in 1/10th lbs) according to canonical Umoria formula:
@@ -1720,11 +1977,7 @@ impl Player {
     pub fn encumbrance_penalty(&self) -> u32 {
         let cap = self.carrying_capacity();
         let total = self.total_weight();
-        if total > cap {
-            total / (cap + 1)
-        } else {
-            0
-        }
+        if total > cap { total / (cap + 1) } else { 0 }
     }
 
     /// Returns the relative speed modifier of the player (0 = normal, <0 = faster, >0 = slower).
@@ -1827,12 +2080,22 @@ mod tests {
         assert_eq!(player.get_light_radius(), 1);
 
         // Equip a torch with 4000 fuel -> radius should be 2
-        player.equipment.push(Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 }));
+        player.equipment.push(Item::new(
+            "Wooden Torch",
+            1,
+            15,
+            ItemType::Light { fuel: 4000 },
+        ));
         assert_eq!(player.get_light_radius(), 2);
 
         // Discard the torch and equip a lantern with 7500 fuel -> radius should be 3
         player.equipment.clear();
-        player.equipment.push(Item::new("Brass Lantern", 1, 35, ItemType::Light { fuel: 7500 }));
+        player.equipment.push(Item::new(
+            "Brass Lantern",
+            1,
+            35,
+            ItemType::Light { fuel: 7500 },
+        ));
         assert_eq!(player.get_light_radius(), 3);
 
         // Drain the fuel to 0 -> radius should be 1
@@ -1844,7 +2107,14 @@ mod tests {
 
     #[test]
     fn test_equipment_slots() {
-        let dagger = Item::new("Iron Dagger", 1, 10, ItemType::Weapon { damage: Dice::new(1, 4) });
+        let dagger = Item::new(
+            "Iron Dagger",
+            1,
+            10,
+            ItemType::Weapon {
+                damage: Dice::new(1, 4),
+            },
+        );
         let shield = Item::new("Iron Shield", 1, 150, ItemType::Armor { ac: 3 });
         let mail = Item::new("Chain Mail", 1, 250, ItemType::Armor { ac: 7 });
         let boots = Item::new("Leather Boots", 1, 30, ItemType::Armor { ac: 1 });
@@ -1864,30 +2134,55 @@ mod tests {
     #[test]
     fn test_town_npc_pacifism() {
         let player = Player::new("TestPlayer", Race::Human, Class::Warrior, 10, 10);
-        let mut monster = crate::entity::monster::Monster::new("Filthy Street Urchin", 'p', 11, 11, 6, crate::dice::Dice::new(1, 2), 0);
+        let mut monster = crate::entity::monster::Monster::new(
+            "Filthy Street Urchin",
+            'p',
+            11,
+            11,
+            6,
+            crate::dice::Dice::new(1, 2),
+            0,
+        );
 
         // Initially on town level (depth 0), the monster should not be hostile to player
         let depth = 0;
-        let is_hostile = depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
-        assert!(!is_hostile, "Monster should be peaceful initially on town level");
+        let is_hostile = depth > 0
+            || monster.was_attacked
+            || player.killed_town_npcs > player.town_npc_attack_threshold;
+        assert!(
+            !is_hostile,
+            "Monster should be peaceful initially on town level"
+        );
 
         // If the depth > 0, the monster is always hostile
-        let deep_hostile = 1 > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
+        let deep_hostile = 1 > 0
+            || monster.was_attacked
+            || player.killed_town_npcs > player.town_npc_attack_threshold;
         assert!(deep_hostile, "Monster should be hostile in the dungeon");
 
         // If the monster is attacked, it becomes hostile
         monster.was_attacked = true;
-        let attacked_hostile = depth > 0 || monster.was_attacked || player.killed_town_npcs > player.town_npc_attack_threshold;
-        assert!(attacked_hostile, "Monster should be hostile after being attacked");
-        
+        let attacked_hostile = depth > 0
+            || monster.was_attacked
+            || player.killed_town_npcs > player.town_npc_attack_threshold;
+        assert!(
+            attacked_hostile,
+            "Monster should be hostile after being attacked"
+        );
+
         // Reset monster attacked flag
         monster.was_attacked = false;
 
         // If player has killed more than the threshold NPCs, the monster becomes hostile
         let mut player_aggro = player.clone();
         player_aggro.killed_town_npcs = player_aggro.town_npc_attack_threshold + 1;
-        let threshold_hostile = depth > 0 || monster.was_attacked || player_aggro.killed_town_npcs > player_aggro.town_npc_attack_threshold;
-        assert!(threshold_hostile, "Monster should be hostile if player exceeded kill threshold");
+        let threshold_hostile = depth > 0
+            || monster.was_attacked
+            || player_aggro.killed_town_npcs > player_aggro.town_npc_attack_threshold;
+        assert!(
+            threshold_hostile,
+            "Monster should be hostile if player exceeded kill threshold"
+        );
     }
 
     #[test]
@@ -1897,12 +2192,30 @@ mod tests {
         player.stats = stats;
         player.apply_race_and_class_modifiers();
 
-        assert!(player.stats.strength >= 2, "Strength was not clamped to minimum 2");
-        assert!(player.stats.intelligence >= 2, "Intelligence was not clamped to minimum 2");
-        assert!(player.stats.wisdom >= 2, "Wisdom was not clamped to minimum 2");
-        assert!(player.stats.dexterity >= 2, "Dexterity was not clamped to minimum 2");
-        assert!(player.stats.constitution >= 2, "Constitution was not clamped to minimum 2");
-        assert!(player.stats.charisma >= 2, "Charisma was not clamped to minimum 2");
+        assert!(
+            player.stats.strength >= 2,
+            "Strength was not clamped to minimum 2"
+        );
+        assert!(
+            player.stats.intelligence >= 2,
+            "Intelligence was not clamped to minimum 2"
+        );
+        assert!(
+            player.stats.wisdom >= 2,
+            "Wisdom was not clamped to minimum 2"
+        );
+        assert!(
+            player.stats.dexterity >= 2,
+            "Dexterity was not clamped to minimum 2"
+        );
+        assert!(
+            player.stats.constitution >= 2,
+            "Constitution was not clamped to minimum 2"
+        );
+        assert!(
+            player.stats.charisma >= 2,
+            "Charisma was not clamped to minimum 2"
+        );
     }
 
     #[test]
@@ -1918,7 +2231,15 @@ mod tests {
         let mut player = Player::new("TestLook", Race::Human, Class::Warrior, 10, 10);
         player.move_to(1, 1);
 
-        let monster = crate::entity::monster::Monster::new("TestMonster", 'm', 5, 1, 10, crate::dice::Dice::new(1, 1), 0);
+        let monster = crate::entity::monster::Monster::new(
+            "TestMonster",
+            'm',
+            5,
+            1,
+            10,
+            crate::dice::Dice::new(1, 1),
+            0,
+        );
         let monsters = [monster];
 
         let dx = 1;
@@ -1939,10 +2260,11 @@ mod tests {
                     break;
                 }
                 if tile.visible
-                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u) {
-                        npc_found = Some(m.name.clone());
-                        break;
-                    }
+                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u)
+                {
+                    npc_found = Some(m.name.clone());
+                    break;
+                }
             } else {
                 break;
             }
@@ -1969,10 +2291,11 @@ mod tests {
                     break;
                 }
                 if tile.visible
-                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u) {
-                        npc_found = Some(m.name.clone());
-                        break;
-                    }
+                    && let Some(m) = monsters.iter().find(|m| m.x == x_u && m.y == y_u)
+                {
+                    npc_found = Some(m.name.clone());
+                    break;
+                }
             } else {
                 break;
             }
@@ -1982,7 +2305,14 @@ mod tests {
 
     #[test]
     fn test_item_inscription() {
-        let mut item = Item::new("Short Sword", 1, 10, ItemType::Weapon { damage: crate::dice::Dice::new(1, 6) });
+        let mut item = Item::new(
+            "Short Sword",
+            1,
+            10,
+            ItemType::Weapon {
+                damage: crate::dice::Dice::new(1, 6),
+            },
+        );
         assert_eq!(item.display_name(), "Short Sword");
 
         item.inscription = Some("sharp".to_string());
@@ -2004,7 +2334,10 @@ mod tests {
         // Turn 1: 7500 is divisible by 20 and 15 -> natural regen ticks
         let (_msg, starved) = player.tick_digestion_and_regen(false);
         assert!(!starved);
-        assert_eq!(player.food, 7499, "Digestion must consume exactly 1 food per turn");
+        assert_eq!(
+            player.food, 7499,
+            "Digestion must consume exactly 1 food per turn"
+        );
         assert_eq!(player.hp, 11, "HP regenerates +1 on div 20 turn");
         assert_eq!(player.mana, 6, "Mana regenerates +1 on div 15 turn");
 
@@ -2027,7 +2360,10 @@ mod tests {
         let (msg, starved) = player.tick_digestion_and_regen(false);
         assert!(!starved);
         assert_eq!(player.food, -1);
-        assert_eq!(player.hp, 10, "Starvation must not deal damage immediately on step 1");
+        assert_eq!(
+            player.hp, 10,
+            "Starvation must not deal damage immediately on step 1"
+        );
         assert_eq!(msg, Some(" You are starving!"));
 
         // Steps -2 to -14: NO damage taken
@@ -2051,7 +2387,10 @@ mod tests {
             let (_msg, starved) = player.tick_digestion_and_regen(false);
             assert!(!starved, "Player should survive gradual starvation");
         }
-        assert_eq!(player.hp, 1, "Player should have 1 HP remaining after 8 more damage ticks");
+        assert_eq!(
+            player.hp, 1,
+            "Player should have 1 HP remaining after 8 more damage ticks"
+        );
 
         // Run until lethal starvation
         let mut died = false;
@@ -2142,13 +2481,22 @@ mod tests {
         assert_eq!(player.flags.blind, 1);
         assert_eq!(player.flags.confused, 0);
         assert_eq!(player.flags.heroism, 0);
-        assert!(res1.messages.contains(&"You feel less confused now.".to_string()));
-        assert!(res1.messages.contains(&"The heroism wears off.".to_string()));
+        assert!(
+            res1.messages
+                .contains(&"You feel less confused now.".to_string())
+        );
+        assert!(
+            res1.messages
+                .contains(&"The heroism wears off.".to_string())
+        );
 
         // Turn 2: blindness expires
         let res2 = player.tick_conditions(2);
         assert_eq!(player.flags.blind, 0);
-        assert!(res2.messages.contains(&"The veil of darkness lifts.".to_string()));
+        assert!(
+            res2.messages
+                .contains(&"The veil of darkness lifts.".to_string())
+        );
     }
 
     #[test]
@@ -2230,7 +2578,9 @@ mod tests {
             ItemType::Potion { heal_amount: 25 },
         );
         let mut rng = rand::thread_rng();
-        player.flavors.assign_flavor(&mut unidentified_potion, &mut rng);
+        player
+            .flavors
+            .assign_flavor(&mut unidentified_potion, &mut rng);
         assert!(!unidentified_potion.identified);
         assert!(unidentified_potion.flavor.is_some());
         assert!(!unidentified_potion.display_name().contains("Healing"));
@@ -2242,7 +2592,10 @@ mod tests {
         let res = player.identify_item_kind("Potion of Healing");
         assert!(res);
         assert!(player.inventory.last().unwrap().identified);
-        assert_eq!(player.inventory.last().unwrap().display_name(), "Potion of Healing");
+        assert_eq!(
+            player.inventory.last().unwrap().display_name(),
+            "Potion of Healing"
+        );
         assert!(player.flavors.is_identified("Potion of Healing"));
     }
 
@@ -2263,8 +2616,13 @@ mod tests {
     #[test]
     fn test_ranger_starting_equipment() {
         let ranger = Player::new("Strider", Race::Elf, Class::Ranger, 10, 10);
-        let has_bow = ranger.inventory.iter().any(|i| i.name == "Short Bow" && matches!(i.item_type, ItemType::Bow { multiplier: 2 }));
-        let has_arrows = ranger.inventory.iter().any(|i| i.name == "Arrow" && matches!(i.item_type, ItemType::Missile { .. }));
+        let has_bow = ranger.inventory.iter().any(|i| {
+            i.name == "Short Bow" && matches!(i.item_type, ItemType::Bow { multiplier: 2 })
+        });
+        let has_arrows = ranger
+            .inventory
+            .iter()
+            .any(|i| i.name == "Arrow" && matches!(i.item_type, ItemType::Missile { .. }));
         assert!(has_bow, "Ranger must start with a Short Bow");
         assert!(has_arrows, "Ranger must start with Arrows");
     }
@@ -2274,7 +2632,14 @@ mod tests {
         let bow = Item::new("Heavy Crossbow", 1, 200, ItemType::Bow { multiplier: 4 });
         assert_eq!(bow.get_equipment_slot(), "Ranged Weapon");
 
-        let bolt = Item::new("Bolt", 20, 3, ItemType::Missile { damage: Dice::new(1, 5) });
+        let bolt = Item::new(
+            "Bolt",
+            20,
+            3,
+            ItemType::Missile {
+                damage: Dice::new(1, 5),
+            },
+        );
         assert_eq!(bolt.count, 20);
         assert_eq!(bolt.get_equipment_slot(), "Accessory");
     }
@@ -2282,7 +2647,7 @@ mod tests {
     #[test]
     fn test_rings_and_amulets_equipment_slots() {
         let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
-        
+
         let mut ring1 = Item::new("Ring of Protection", 1, 2, ItemType::Ring { bonus: 2 });
         assert_eq!(ring1.get_equipment_slot(), "On right hand");
         ring1.equipped_slot = Some("On right hand".to_string());
@@ -2318,20 +2683,52 @@ mod tests {
         assert!(!player.flags.sustain_str);
 
         // Equip Ring of Free Action
-        player.equipment.push(Item::new("Ring of Free Action", 1, 2, ItemType::Ring { bonus: 0 }));
+        player.equipment.push(Item::new(
+            "Ring of Free Action",
+            1,
+            2,
+            ItemType::Ring { bonus: 0 },
+        ));
         // Equip Ring of Lordly Protection (FIRE)
-        player.equipment.push(Item::new("Ring of Lordly Protection (FIRE)", 1, 2, ItemType::Ring { bonus: 5 }));
+        player.equipment.push(Item::new(
+            "Ring of Lordly Protection (FIRE)",
+            1,
+            2,
+            ItemType::Ring { bonus: 5 },
+        ));
         // Equip Ring of Sustain Strength
-        player.equipment.push(Item::new("Ring of Sustain Strength", 1, 2, ItemType::Ring { bonus: 0 }));
+        player.equipment.push(Item::new(
+            "Ring of Sustain Strength",
+            1,
+            2,
+            ItemType::Ring { bonus: 0 },
+        ));
         // Equip Amulet of the Magi
-        player.equipment.push(Item::new("Amulet of the Magi", 1, 3, ItemType::Amulet { bonus: 3 }));
+        player.equipment.push(Item::new(
+            "Amulet of the Magi",
+            1,
+            3,
+            ItemType::Amulet { bonus: 3 },
+        ));
 
         player.update_equipment_bonuses();
 
-        assert!(player.flags.free_action, "Must have free action from ring/amulet");
-        assert!(player.flags.resistant_to_fire, "Must have fire resistance from lordly ring");
-        assert!(player.flags.sustain_str, "Must have sustain strength from ring");
-        assert!(player.flags.see_invisible, "Must have see invisible from Amulet of the Magi");
+        assert!(
+            player.flags.free_action,
+            "Must have free action from ring/amulet"
+        );
+        assert!(
+            player.flags.resistant_to_fire,
+            "Must have fire resistance from lordly ring"
+        );
+        assert!(
+            player.flags.sustain_str,
+            "Must have sustain strength from ring"
+        );
+        assert!(
+            player.flags.see_invisible,
+            "Must have see invisible from Amulet of the Magi"
+        );
 
         // Calculate AC with bonuses: 10 base + DEX mod + 5 (ring) + 3 (amulet)
         let ac = player.calculate_ac();
@@ -2359,7 +2756,12 @@ mod tests {
         assert_eq!(player.stats.strength, 18);
 
         // Equip Ring of Strength (+2)
-        player.equipment.push(Item::new("Ring of Strength", 1, 2, ItemType::Ring { bonus: 2 }));
+        player.equipment.push(Item::new(
+            "Ring of Strength",
+            1,
+            2,
+            ItemType::Ring { bonus: 2 },
+        ));
         player.update_equipment_bonuses();
 
         // 18 boosted by +2 becomes 18/20 (stat value 38)
@@ -2389,12 +2791,22 @@ mod tests {
         assert_eq!(player.encumbrance_penalty(), 0);
 
         // Add 100 lbs (1000 tenths) of iron spikes
-        player.inventory.push(Item::new("Iron Spike", 500, 2, ItemType::Scroll { teleport: false }));
+        player.inventory.push(Item::new(
+            "Iron Spike",
+            500,
+            2,
+            ItemType::Scroll { teleport: false },
+        ));
         assert_eq!(player.total_weight(), 1000);
         assert!(!player.is_encumbered());
 
         // Add another 50 lbs (500 tenths) -> total 1500 > 1480 -> encumbered!
-        player.inventory.push(Item::new("Iron Spike", 250, 2, ItemType::Scroll { teleport: false }));
+        player.inventory.push(Item::new(
+            "Iron Spike",
+            250,
+            2,
+            ItemType::Scroll { teleport: false },
+        ));
         assert_eq!(player.total_weight(), 1500);
         assert!(player.is_encumbered());
         assert_eq!(player.encumbrance_penalty(), 1500 / 1481); // 1
@@ -2436,7 +2848,12 @@ mod tests {
         assert_eq!(player.speed_modifier(), 0);
 
         // 6. Ring of Speed (+2)
-        player.equipment.push(Item::new("Ring of Speed", 1, 2, ItemType::Ring { bonus: 2 }));
+        player.equipment.push(Item::new(
+            "Ring of Speed",
+            1,
+            2,
+            ItemType::Ring { bonus: 2 },
+        ));
         assert_eq!(player.speed_modifier(), -2);
         assert_eq!(player.speed_status_string(), "Very Fast");
     }
@@ -2457,7 +2874,12 @@ mod tests {
         assert_eq!(player.food, 997);
 
         // Sped up (-2 speed): 1 base + (-2)^2 = 5 food consumed
-        player.equipment.push(Item::new("Ring of Speed", 1, 2, ItemType::Ring { bonus: 1 }));
+        player.equipment.push(Item::new(
+            "Ring of Speed",
+            1,
+            2,
+            ItemType::Ring { bonus: 1 },
+        ));
         assert_eq!(player.speed_modifier(), -2);
         player.tick_digestion_and_regen(false);
         assert_eq!(player.food, 992);

@@ -60,7 +60,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(InputSender(std::sync::Mutex::new(input_tx)))
         .manage(SetupSender(std::sync::Mutex::new(setup_tx)))
-        .invoke_handler(tauri::generate_handler![gui_send_key, gui_send_setup, gui_check_save, gui_activate_cheat])
+        .invoke_handler(tauri::generate_handler![
+            gui_send_key,
+            gui_send_setup,
+            gui_check_save,
+            gui_activate_cheat
+        ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 let _ = app.handle().plugin(
