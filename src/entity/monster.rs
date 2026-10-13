@@ -869,11 +869,28 @@ pub fn try_monster_multiply<R: rand::Rng>(
         return None;
     }
 
-    if rng.gen_range(0..15) != 0 {
+    if occupied.len() >= 75 {
         return None;
     }
 
-    if occupied.len() >= 75 {
+    // Canonical Umoria density check: count adjacent monsters in 3x3 area
+    let mut neighbor_count = 0;
+    for &(ox, oy) in occupied {
+        if (ox as isize - monster.x as isize).abs() <= 1
+            && (oy as isize - monster.y as isize).abs() <= 1
+            && (ox != monster.x || oy != monster.y)
+        {
+            neighbor_count += 1;
+        }
+    }
+
+    if neighbor_count >= 4 {
+        return None;
+    }
+
+    // Canonical Umoria chance: 1 in (counter * MON_MULTIPLY_ADJUST), where adjust is 7
+    let mult_factor = (neighbor_count.max(1) * 7) as u32;
+    if rng.gen_range(0..mult_factor) != 0 {
         return None;
     }
 

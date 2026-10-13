@@ -315,7 +315,9 @@ fn process_end_of_turn(
                 .abs()
                 .max((monsters[m_idx].y as isize - player.y as isize).abs());
             let aoe = monsters[m_idx].creature_def().area_affect_radius as isize;
-            if dist <= aoe || monsters[m_idx].was_attacked {
+            if monsters[m_idx].was_attacked {
+                monsters[m_idx].asleep = 0;
+            } else if dist <= aoe {
                 monsters[m_idx].asleep = monsters[m_idx].asleep.saturating_sub(1);
             }
             if monsters[m_idx].asleep > 0 {
@@ -1329,10 +1331,17 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         &mut rng,
                                                         Some(monsters[m_idx].creature_id),
                                                     );
-                                                    status_msg = format!(
-                                                        "You hit {} for {} damage!",
-                                                        monsters[m_idx].name, damage
-                                                    );
+                                                    if damage == 0 {
+                                                        status_msg = format!(
+                                                            "You miss {}.",
+                                                            monsters[m_idx].name
+                                                        );
+                                                    } else {
+                                                        status_msg = format!(
+                                                            "You hit {} for {} damage!",
+                                                            monsters[m_idx].name, damage
+                                                        );
+                                                    }
 
                                                     monsters[m_idx].was_attacked = true;
                                                     let monster_name = monsters[m_idx].name.clone();

@@ -90,3 +90,41 @@ fn test_message_history_entry() {
     assert!(last_msg.contains("You strike"));
     assert!(last_msg.contains("total damage"));
 }
+
+#[test]
+fn test_canonical_to_hit_chances() {
+    let mut player = Player::new("Test", Race::Human, Class::Warrior, 0, 0);
+    player.stats.strength = 16;
+    player.stats.dexterity = 16;
+    player.level = 1;
+
+    assert_eq!(player.base_to_hit(), 70);
+    assert_eq!(player.class_bth_level_adj(), 4);
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
+    let mut hits_mouse = 0;
+    let mut hits_snake = 0;
+    let trials = 1000;
+
+    for _ in 0..trials {
+        if player.test_hit(&mut rng, 4) {
+            hits_mouse += 1;
+        }
+        if player.test_hit(&mut rng, 35) {
+            hits_snake += 1;
+        }
+    }
+
+    // Against AC 4 mouse: should hit ~90%+
+    assert!(
+        hits_mouse > 850,
+        "Expected >85% hits against AC 4, got {}",
+        hits_mouse
+    );
+    // Against AC 35 snake: should hit ~50%+ (unlike old 5%)
+    assert!(
+        hits_snake > 450,
+        "Expected >45% hits against AC 35, got {}",
+        hits_snake
+    );
+}

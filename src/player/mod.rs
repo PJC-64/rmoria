@@ -1731,20 +1731,68 @@ impl Player {
         blows.clamp(1, 5)
     }
 
+    pub fn base_to_hit(&self) -> i32 {
+        let class_bth = match self.class {
+            Class::Warrior => 70,
+            Class::Paladin => 68,
+            Class::Rogue => 60,
+            Class::Ranger => 56,
+            Class::Priest => 48,
+            Class::Mage => 34,
+        };
+        let race_bth = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => -1,
+            Race::Elf => -5,
+            Race::Halfling => -10,
+            Race::Gnome => -8,
+            Race::Dwarf => 15,
+            Race::HalfOrc => 12,
+            Race::HalfTroll => 20,
+        };
+        class_bth + race_bth
+    }
+
+    pub fn class_bth_level_adj(&self) -> i32 {
+        match self.class {
+            Class::Warrior => 4,
+            Class::Mage | Class::Priest => 2,
+            Class::Rogue | Class::Ranger | Class::Paladin => 3,
+        }
+    }
+
+    pub fn dex_to_hit_adj(&self) -> i32 {
+        let dex = self.stats.dexterity as i32;
+        if dex < 4 {
+            -3
+        } else if dex < 6 {
+            -2
+        } else if dex < 8 {
+            -1
+        } else if dex < 16 {
+            0
+        } else if dex < 17 {
+            1
+        } else if dex < 18 {
+            2
+        } else if dex < 69 {
+            3
+        } else {
+            4
+        }
+    }
+
     pub fn test_hit<R: rand::Rng>(&self, rng: &mut R, target_ac: i32) -> bool {
-        let mut to_hit_bonus = 0;
+        let bth = self.base_to_hit();
+        let level_adj = self.class_bth_level_adj();
+        let dex_adj = self.dex_to_hit_adj();
+        let mut to_hit_bonus = dex_adj;
         for item in &self.equipment {
             to_hit_bonus += item.to_hit as i32;
         }
-        let hit_chance = (self.stats.strength as i32 / 2) + self.level as i32 + to_hit_bonus;
-        let roll = rng.gen_range(1..=20);
-        if roll == 1 {
-            return false;
-        }
-        if roll == 20 {
-            return true;
-        }
-        roll + hit_chance >= target_ac
+        let hit_chance = bth + (to_hit_bonus * 3) + (self.level as i32 * level_adj);
+        let die = rng.gen_range(1..=20);
+        die != 1 && (die == 20 || (hit_chance > 0 && rng.gen_range(1..=hit_chance) > target_ac))
     }
 
     pub fn single_blown_damage<R: rand::Rng>(
@@ -1801,7 +1849,13 @@ impl Player {
         let weapon = self.equipped_weapon();
         let blows = self.calculate_blows(&weapon);
         let mut total_damage = 0;
-        let target_ac = 10; // For now, we assume a default target AC of 10 if not provided
+        let target_ac = target_creature_id
+            .map(|id| {
+                crate::entity::monster_data::CREATURES_LIST
+                    [id.min(crate::entity::monster_data::CREATURES_LIST.len() - 1)]
+                .ac as i32
+            })
+            .unwrap_or(10);
 
         for _ in 0..blows {
             if self.test_hit(rng, target_ac) {
@@ -1809,7 +1863,7 @@ impl Player {
             }
         }
 
-        if total_damage == 0 { 0 } else { total_damage }
+        total_damage
     }
 
     pub fn digging_ability(&self) -> i32 {

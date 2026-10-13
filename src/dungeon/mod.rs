@@ -1018,7 +1018,7 @@ impl DungeonLevel {
         for _ in 0..count {
             let (mx, my) = self.find_random_floor_tile();
             let c_idx = crate::entity::monster_data::get_monster_for_level(depth, &mut rng);
-            let sleeping = rng.gen_bool(0.4);
+            let sleeping = true;
             mons.push(Monster::from_creature_id(c_idx, mx, my, sleeping, &mut rng));
         }
 
