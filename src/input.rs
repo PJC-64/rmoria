@@ -108,12 +108,13 @@ impl InputMapper {
             'E' => Action::Eat,            // Eat food
             'R' => Action::Rest,           // Rest a while
             'f' => Action::Fire,           // Fire missile
+            'v' => Action::Throw,          // Throw item
             'M' => Action::MultiBlow,
-            't' => Action::Throw,        // Throw item
-            'T' => Action::TakeOff,      // Take off equipment
-            'B' => Action::Bash,         // Bash
-            'g' => Action::Tunnel,       // Tunnel
-            'F' => Action::RefillLight,  // Refill light
+            't' => Action::TakeOff, // Take off equipment (canonical Moria 't')
+            'T' => Action::Tunnel,  // Tunnel (canonical Moria / UI button 'T')
+            'B' => Action::Bash,    // Bash
+            'g' => Action::Tunnel,  // Tunnel (also 'g')
+            'F' => Action::RefillLight, // Refill light
             '#' => Action::ToggleSearch, // Toggle search
 
             // Unchanged Standard Commands
@@ -156,20 +157,21 @@ impl InputMapper {
             'E' => Action::Eat,       // Eat food
             'R' => Action::Rest,      // Rest a while
             'f' => Action::Fire,      // Fire missile
+            'v' => Action::Throw,     // Throw item
             'M' => Action::MultiBlow,
-            't' => Action::Throw,          // Throw item
-            'T' => Action::TakeOff,        // Take off equipment
-            'B' => Action::Bash,           // Bash
-            'g' => Action::Tunnel,         // Tunnel
-            'F' => Action::RefillLight,    // Refill light
-            '#' => Action::ToggleSearch,   // Toggle search
-            'h' => Action::Quaff,          // Quaff potion (same as standard)
-            'k' => Action::SearchOneTurn,  // Relocated from 's'
-            'D' => Action::DropItem,       // Relocated from 'd' (originally disarm)
-            'n' => Action::Disarm,         // Relocated from 'D'
-            'y' => Action::AimWand,        // Relocated from 'z'
-            'l' => Action::Look,           // Relocated from 'x'
-            'C' => Action::CloseDoor,      // Relocated from 'c'
+            't' => Action::TakeOff, // Take off equipment (canonical Moria 't')
+            'T' => Action::Tunnel,  // Tunnel (canonical Moria / UI button 'T')
+            'B' => Action::Bash,    // Bash
+            'g' => Action::Tunnel,  // Tunnel (also 'g')
+            'F' => Action::RefillLight, // Refill light
+            '#' => Action::ToggleSearch, // Toggle search
+            'h' => Action::Quaff,   // Quaff potion (same as standard)
+            'k' => Action::SearchOneTurn, // Relocated from 's'
+            'D' => Action::DropItem, // Relocated from 'd' (originally disarm)
+            'n' => Action::Disarm,  // Relocated from 'D'
+            'y' => Action::AimWand, // Relocated from 'z'
+            'l' => Action::Look,    // Relocated from 'x'
+            'C' => Action::CloseDoor, // Relocated from 'c'
             'H' => Action::CharacterStats, // Relocated from 'C'
 
             // Unchanged Roguelike Commands
@@ -190,5 +192,29 @@ impl InputMapper {
 
             other => Action::Unknown(other),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tunnel_and_takeoff_key_mappings() {
+        let std_mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
+        assert_eq!(std_mapper.map_key('T'), Action::Tunnel);
+        assert_eq!(std_mapper.map_key('g'), Action::Tunnel);
+        assert_eq!(std_mapper.map_key('t'), Action::TakeOff);
+        assert_eq!(std_mapper.map_key('W'), Action::WearWield);
+        assert_eq!(std_mapper.map_key('f'), Action::Fire);
+        assert_eq!(std_mapper.map_key('v'), Action::Throw);
+
+        let rl_mapper = InputMapper::new(KeyboardProfile::RoguelikeQweasd);
+        assert_eq!(rl_mapper.map_key('T'), Action::Tunnel);
+        assert_eq!(rl_mapper.map_key('g'), Action::Tunnel);
+        assert_eq!(rl_mapper.map_key('t'), Action::TakeOff);
+        assert_eq!(rl_mapper.map_key('W'), Action::WearWield);
+        assert_eq!(rl_mapper.map_key('f'), Action::Fire);
+        assert_eq!(rl_mapper.map_key('v'), Action::Throw);
     }
 }
