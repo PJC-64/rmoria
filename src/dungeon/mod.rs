@@ -1,4 +1,5 @@
 use rand::Rng;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 pub mod shop;
@@ -266,6 +267,76 @@ impl DungeonLevel {
         } else {
             false
         }
+    }
+
+    pub fn is_safe_for_obstacle(&self, x: usize, y: usize, entrances: &[(usize, usize)]) -> bool {
+        if !self.is_in_room(x, y) || self.is_room_entrance(x, y) {
+            return false;
+        }
+        !entrances.iter().any(|&(ex, ey)| {
+            (ex as isize - x as isize).abs() + (ey as isize - y as isize).abs() <= 1
+        })
+    }
+
+    pub fn stairs_are_reachable(&self) -> bool {
+        let up_positions: Vec<(usize, usize)> = self
+            .tiles
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.tile_type == TileType::StairsUp)
+            .map(|(i, _)| (i % self.width, i / self.width))
+            .collect();
+
+        let down_positions: Vec<(usize, usize)> = self
+            .tiles
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.tile_type == TileType::StairsDown)
+            .map(|(i, _)| (i % self.width, i / self.width))
+            .collect();
+
+        if up_positions.is_empty() || down_positions.is_empty() {
+            return true;
+        }
+
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        for &up in &up_positions {
+            visited.insert(up);
+            queue.push_back(up);
+        }
+
+        let mut reached_down_count = 0;
+        while let Some((cx, cy)) = queue.pop_front() {
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let nx = cx as isize + dx;
+                let ny = cy as isize + dy;
+                if nx >= 0 && ny >= 0 && (nx as usize) < self.width && (ny as usize) < self.height {
+                    let np = (nx as usize, ny as usize);
+                    if visited.insert(np)
+                        && let Some(t) = self.get_tile(np.0, np.1)
+                    {
+                        let passable = matches!(
+                            t.tile_type,
+                            TileType::Floor
+                                | TileType::DoorOpen
+                                | TileType::DoorClosed { .. }
+                                | TileType::StairsUp
+                                | TileType::StairsDown
+                                | TileType::Trap { .. }
+                        );
+                        if passable {
+                            if t.tile_type == TileType::StairsDown {
+                                reached_down_count += 1;
+                            }
+                            queue.push_back(np);
+                        }
+                    }
+                }
+            }
+        }
+
+        reached_down_count >= down_positions.len()
     }
 
     pub fn find_random_floor_tile(&self) -> (usize, usize) {
@@ -625,7 +696,7 @@ impl DungeonLevel {
             }
 
             let mut rooms_temp: Vec<Room> = Vec::new();
-            for _ in 0..15 {
+            for _ in 0..80 {
                 let w = rng.gen_range(5..=10);
                 let h = rng.gen_range(4..=7);
                 let rx = rng.gen_range(2..(self.width - w - 2));
@@ -679,6 +750,115 @@ impl DungeonLevel {
                 }
             }
 
+            // Loop connection from last room back to first room for redundancy
+            if rooms_temp.len() >= 3 {
+                let (x1, y1) = rooms_temp[rooms_temp.len() - 1].center();
+                let (x2, y2) = rooms_temp[0].center();
+
+                if rng.gen_bool(0.5) {
+                    self.carve_h_corridor(x1, x2, y1);
+                    self.carve_v_corridor(y1, y2, x2);
+                } else {
+                    self.carve_v_corridor(y1, y2, x1);
+                    self.carve_h_corridor(x1, x2, y2);
+                }
+            }
+
+            // Cross connection for additional redundancy if 4 or more rooms
+            if rooms_temp.len() >= 4 {
+                let r_mid = rooms_temp.len() / 2;
+                let (x1, y1) = rooms_temp[1].center();
+                let (x2, y2) = rooms_temp[r_mid].center();
+
+                if rng.gen_bool(0.5) {
+                    self.carve_h_corridor(x1, x2, y1);
+                    self.carve_v_corridor(y1, y2, x2);
+                } else {
+                    self.carve_v_corridor(y1, y2, x1);
+                    self.carve_h_corridor(x1, x2, y2);
+                }
+            }
+
+            if rooms_temp.len() >= 6 {
+                let (x1, y1) = rooms_temp[2].center();
+                let (x2, y2) = rooms_temp[rooms_temp.len() - 2].center();
+
+                if rng.gen_bool(0.5) {
+                    self.carve_h_corridor(x1, x2, y1);
+                    self.carve_v_corridor(y1, y2, x2);
+                } else {
+                    self.carve_v_corridor(y1, y2, x1);
+                    self.carve_h_corridor(x1, x2, y2);
+                }
+            }
+
+            // Track rooms containing stairs to ensure their entrances are never blocked by secret doors
+            let mut stairs_rooms = std::collections::HashSet::new();
+
+            // Place Up Stairs (1 to 2 stairs, matching Umoria)
+            let (su_x, su_y) = rooms_temp[0].center();
+            if let Some(tile) = self.get_tile_mut(su_x, su_y) {
+                tile.tile_type = TileType::StairsUp;
+                stairs_rooms.insert(0);
+            }
+            if rooms_temp.len() >= 5 && rng.gen_bool(0.5) {
+                let (su2_x, su2_y) = rooms_temp[1].center();
+                if let Some(tile) = self.get_tile_mut(su2_x, su2_y) {
+                    tile.tile_type = TileType::StairsUp;
+                    stairs_rooms.insert(1);
+                }
+            }
+
+            // Place Down Stairs (3 to 4 stairs across different rooms, matching Umoria)
+            if self.depth < self.max_depth && !rooms_temp.is_empty() {
+                let num_down = rng.gen_range(3..=4);
+                let mut candidate_rooms: Vec<usize> = (1..rooms_temp.len())
+                    .filter(|r| !stairs_rooms.contains(r))
+                    .collect();
+                if candidate_rooms.is_empty() {
+                    candidate_rooms = (0..rooms_temp.len()).collect();
+                }
+                candidate_rooms.shuffle(&mut rng);
+
+                let mut placed_down = 0;
+                // First pass: 1 stair per candidate room at center
+                for &r_idx in &candidate_rooms {
+                    if placed_down >= num_down {
+                        break;
+                    }
+                    let (sd_x, sd_y) = rooms_temp[r_idx].center();
+                    if let Some(tile) = self.get_tile_mut(sd_x, sd_y)
+                        && tile.tile_type == TileType::Floor
+                    {
+                        tile.tile_type = TileType::StairsDown;
+                        stairs_rooms.insert(r_idx);
+                        placed_down += 1;
+                    }
+                }
+
+                // Second pass if needed: offset from center in candidate rooms
+                if placed_down < num_down {
+                    for &r_idx in &candidate_rooms {
+                        if placed_down >= num_down {
+                            break;
+                        }
+                        let (cx, cy) = rooms_temp[r_idx].center();
+                        for (dx, dy) in &[(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                            let (nx, ny) =
+                                ((cx as isize + dx) as usize, (cy as isize + dy) as usize);
+                            if let Some(tile) = self.get_tile_mut(nx, ny)
+                                && tile.tile_type == TileType::Floor
+                            {
+                                tile.tile_type = TileType::StairsDown;
+                                stairs_rooms.insert(r_idx);
+                                placed_down += 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Only place doors at the entrance to rooms, never in corridors
             let mut entrances = Vec::new();
             for y in 2..(self.height - 2) {
@@ -713,7 +893,7 @@ impl DungeonLevel {
             let mut room_secret_doors: std::collections::HashMap<usize, usize> =
                 std::collections::HashMap::new();
 
-            for (ex, ey) in entrances {
+            for &(ex, ey) in &entrances {
                 let adjacent_rooms = [
                     (ex.wrapping_sub(1), ey),
                     (ex + 1, ey),
@@ -724,11 +904,12 @@ impl DungeonLevel {
                     .iter()
                     .filter_map(|&(nx, ny)| self.room_index_at(nx, ny))
                     .collect();
-                let can_be_secret = adj_r_indices.iter().all(|&r_idx| {
-                    let total = room_entrances.get(&r_idx).map(|v| v.len()).unwrap_or(0);
-                    let secrets = room_secret_doors.get(&r_idx).copied().unwrap_or(0);
-                    total > 1 && secrets == 0
-                });
+                let can_be_secret = self.depth > 1
+                    && adj_r_indices.iter().all(|&r_idx| {
+                        !stairs_rooms.contains(&r_idx)
+                            && room_entrances.get(&r_idx).map(|v| v.len()).unwrap_or(0) > 1
+                            && room_secret_doors.get(&r_idx).copied().unwrap_or(0) == 0
+                    });
 
                 let new_type = if rng.gen_bool(0.85) {
                     let roll = rng.gen_range(0..100);
@@ -746,10 +927,21 @@ impl DungeonLevel {
                     None
                 };
 
-                if let Some(tt) = new_type
-                    && let Some(mut_tile) = self.get_tile_mut(ex, ey)
-                {
-                    mut_tile.tile_type = tt;
+                if let Some(tt) = new_type {
+                    if let Some(tile) = self.get_tile_mut(ex, ey) {
+                        tile.tile_type = tt;
+                    }
+                    if tt == TileType::SecretDoor && !self.stairs_are_reachable() {
+                        // Revert to closed door if it breaks reachability to any stairs
+                        if let Some(tile) = self.get_tile_mut(ex, ey) {
+                            tile.tile_type = TileType::DoorClosed { spikes: 0 };
+                        }
+                        for &r_idx in &adj_r_indices {
+                            if let Some(cnt) = room_secret_doors.get_mut(&r_idx) {
+                                *cnt = cnt.saturating_sub(1);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -778,11 +970,11 @@ impl DungeonLevel {
                 }
             }
 
-            // Spawn Rubble (avoid blocking room entrances)
+            // Spawn Rubble (only inside rooms, never in corridors or blocking room entrances)
             let num_rubble = rng.gen_range(3..=6);
             for _ in 0..num_rubble {
                 let (rx, ry) = self.find_random_floor_tile();
-                if !self.is_room_entrance(rx, ry)
+                if self.is_safe_for_obstacle(rx, ry, &entrances)
                     && let Some(tile) = self.get_tile_mut(rx, ry)
                     && tile.tile_type == TileType::Floor
                 {
@@ -802,7 +994,9 @@ impl DungeonLevel {
                     4 => TrapType::BlindGas,
                     _ => TrapType::ConfusionGas,
                 };
-                if let Some(tile) = self.get_tile_mut(tx, ty) {
+                if let Some(tile) = self.get_tile_mut(tx, ty)
+                    && tile.tile_type == TileType::Floor
+                {
                     tile.tile_type = TileType::Trap {
                         detected: false,
                         trap_type,
@@ -815,8 +1009,9 @@ impl DungeonLevel {
                 let num_chests = rng.gen_range(1..=2);
                 for _ in 0..num_chests {
                     let (cx, cy) = self.find_random_floor_tile();
-                    if !self.is_room_entrance(cx, cy)
+                    if self.is_safe_for_obstacle(cx, cy, &entrances)
                         && let Some(tile) = self.get_tile_mut(cx, cy)
+                        && tile.tile_type == TileType::Floor
                     {
                         let trapped = rng.gen_bool(0.60);
                         let locked = rng.gen_bool(0.50);
@@ -829,19 +1024,11 @@ impl DungeonLevel {
             let num_items = rng.gen_range(4..=8);
             for _ in 0..num_items {
                 let (ix, iy) = self.find_random_floor_tile();
-                let item = generate_random_floor_item(self.depth, &mut rng);
-                self.items.push(FloorItem { x: ix, y: iy, item });
-            }
-
-            let (su_x, su_y) = rooms_temp[0].center();
-            if let Some(tile) = self.get_tile_mut(su_x, su_y) {
-                tile.tile_type = TileType::StairsUp;
-            }
-
-            if self.depth < self.max_depth {
-                let (sd_x, sd_y) = rooms_temp[rooms_temp.len() - 1].center();
-                if let Some(tile) = self.get_tile_mut(sd_x, sd_y) {
-                    tile.tile_type = TileType::StairsDown;
+                if let Some(tile) = self.get_tile(ix, iy)
+                    && tile.tile_type == TileType::Floor
+                {
+                    let item = generate_random_floor_item(self.depth, &mut rng);
+                    self.items.push(FloorItem { x: ix, y: iy, item });
                 }
             }
         }

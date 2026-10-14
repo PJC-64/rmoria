@@ -158,6 +158,8 @@ pub fn render_gui_screen(
                                 | TileType::MagmaVein { .. }
                                 | TileType::QuartzVein { .. }
                                 | TileType::Rubble
+                                | TileType::StairsUp
+                                | TileType::StairsDown
                         )
                     {
                         let floor_item = level
@@ -1502,6 +1504,8 @@ pub fn draw_map(
                                 | TileType::MagmaVein { .. }
                                 | TileType::QuartzVein { .. }
                                 | TileType::Rubble
+                                | TileType::StairsUp
+                                | TileType::StairsDown
                         )
                     {
                         let floor_item = level
