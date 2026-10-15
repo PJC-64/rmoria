@@ -9,7 +9,7 @@ use crate::entity::monster::Monster;
 use crate::player::{Item, ItemType, Player};
 pub use shop::{
     HaggleState, MAX_OWNERS, STORE_OWNERS, StoreOwner, calculate_buy_price, calculate_sell_price,
-    get_item_base_value, handle_haggle_input,
+    get_item_base_value, handle_haggle_input, handle_shop_buy_input,
 };
 pub use tile::{Tile, TileType, TrapType};
 
@@ -299,44 +299,57 @@ impl DungeonLevel {
             return true;
         }
 
-        let mut visited = std::collections::HashSet::new();
-        let mut queue = std::collections::VecDeque::new();
+        // Every up staircase must be able to reach at least one down staircase
         for &up in &up_positions {
+            let mut visited = std::collections::HashSet::new();
+            let mut queue = std::collections::VecDeque::new();
             visited.insert(up);
             queue.push_back(up);
-        }
 
-        let mut reached_down_count = 0;
-        while let Some((cx, cy)) = queue.pop_front() {
-            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                let nx = cx as isize + dx;
-                let ny = cy as isize + dy;
-                if nx >= 0 && ny >= 0 && (nx as usize) < self.width && (ny as usize) < self.height {
-                    let np = (nx as usize, ny as usize);
-                    if visited.insert(np)
-                        && let Some(t) = self.get_tile(np.0, np.1)
+            let mut reached_any_down = false;
+            while let Some((cx, cy)) = queue.pop_front() {
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let nx = cx as isize + dx;
+                    let ny = cy as isize + dy;
+                    if nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < self.width
+                        && (ny as usize) < self.height
                     {
-                        let passable = matches!(
-                            t.tile_type,
-                            TileType::Floor
-                                | TileType::DoorOpen
-                                | TileType::DoorClosed { .. }
-                                | TileType::StairsUp
-                                | TileType::StairsDown
-                                | TileType::Trap { .. }
-                        );
-                        if passable {
-                            if t.tile_type == TileType::StairsDown {
-                                reached_down_count += 1;
+                        let np = (nx as usize, ny as usize);
+                        if visited.insert(np)
+                            && let Some(t) = self.get_tile(np.0, np.1)
+                        {
+                            let passable = matches!(
+                                t.tile_type,
+                                TileType::Floor
+                                    | TileType::DoorOpen
+                                    | TileType::DoorClosed { .. }
+                                    | TileType::StairsUp
+                                    | TileType::StairsDown
+                                    | TileType::Trap { .. }
+                            );
+                            if passable {
+                                if t.tile_type == TileType::StairsDown {
+                                    reached_any_down = true;
+                                    break;
+                                }
+                                queue.push_back(np);
                             }
-                            queue.push_back(np);
                         }
                     }
                 }
+                if reached_any_down {
+                    break;
+                }
+            }
+
+            if !reached_any_down {
+                return false;
             }
         }
 
-        reached_down_count >= down_positions.len()
+        true
     }
 
     pub fn find_random_floor_tile(&self) -> (usize, usize) {
@@ -1029,6 +1042,24 @@ impl DungeonLevel {
                 {
                     let item = generate_random_floor_item(self.depth, &mut rng);
                     self.items.push(FloorItem { x: ix, y: iy, item });
+                }
+            }
+
+            // Safety guarantee: ensure all up stairs can reach down stairs.
+            // If any obstacles (such as secret doors, rubble, or chests) broke reachability,
+            // revert secret doors to closed doors, and rubble/chests to floor.
+            if !self.stairs_are_reachable() {
+                for tile in self.tiles.iter_mut() {
+                    if tile.tile_type == TileType::SecretDoor {
+                        tile.tile_type = TileType::DoorClosed { spikes: 0 };
+                    }
+                }
+            }
+            if !self.stairs_are_reachable() {
+                for tile in self.tiles.iter_mut() {
+                    if matches!(tile.tile_type, TileType::Rubble | TileType::Chest { .. }) {
+                        tile.tile_type = TileType::Floor;
+                    }
                 }
             }
         }

@@ -1214,38 +1214,84 @@ fn get_overlay_row_text(
                 (shop as usize).min(crate::dungeon::MAX_OWNERS - 1)
             };
             let owner = &crate::dungeon::STORE_OWNERS[owner_idx];
-            if row == 0 {
-                return format!("--- {} (BUY) ---", owner.name.trim());
-            }
-            if row == 1 {
-                return format!(
-                    "Your Gold: {} gp    (Purse: {} gp)",
-                    player.gold, owner.max_cost
-                );
-            }
             let items = get_shop_items(shop);
-            if row >= 3 && row < items.len() + 3 {
-                let idx = row - 3;
-                let (name, base_price, _) = &items[idx];
-                let (_, ask_price) = crate::dungeon::calculate_buy_price(
-                    *base_price,
-                    owner,
-                    player.race,
-                    player.stats.charisma,
-                );
-                return format!(
-                    "{}. {:<32}  -  {} gp",
-                    (b'a' + idx as u8) as char,
-                    name,
-                    ask_price
-                );
-            }
-            if row == items.len() + 4 {
-                return "--------------------------------".to_string();
-            }
-            if row == items.len() + 5 {
-                return "Press item letter (a-l) to buy/haggle, 's' to Sell, ESC to exit."
-                    .to_string();
+            let has_s_item = items.len() > 18;
+            let last_letter = (b'a' + items.len().saturating_sub(1) as u8) as char;
+            let prompt = if has_s_item {
+                format!(
+                    "Press item letter (a-{}) to buy/haggle, 'S' to Sell, ESC to exit.",
+                    last_letter
+                )
+            } else {
+                format!(
+                    "Press item letter (a-{}) to buy/haggle, 's'/'S' to Sell, ESC to exit.",
+                    last_letter
+                )
+            };
+
+            if items.len() > 20 {
+                if row == 0 {
+                    return format!(
+                        "--- {} (BUY) --- Gold: {} gp",
+                        owner.name.trim(),
+                        player.gold
+                    );
+                }
+                if row >= 1 && row < items.len() + 1 && row < 23 {
+                    let idx = row - 1;
+                    let (name, base_price, _) = &items[idx];
+                    let (_, ask_price) = crate::dungeon::calculate_buy_price(
+                        *base_price,
+                        owner,
+                        player.race,
+                        player.stats.charisma,
+                    );
+                    return format!(
+                        "{}. {:<32}  -  {} gp",
+                        (b'a' + idx as u8) as char,
+                        name,
+                        ask_price
+                    );
+                }
+                if row == 23 {
+                    return prompt;
+                }
+            } else {
+                if row == 0 {
+                    return format!("--- {} (BUY) ---", owner.name.trim());
+                }
+                if row == 1 {
+                    return format!(
+                        "Your Gold: {} gp    (Purse: {} gp)",
+                        player.gold, owner.max_cost
+                    );
+                }
+                if row >= 3 && row < items.len() + 3 && row < 23 {
+                    let idx = row - 3;
+                    let (name, base_price, _) = &items[idx];
+                    let (_, ask_price) = crate::dungeon::calculate_buy_price(
+                        *base_price,
+                        owner,
+                        player.race,
+                        player.stats.charisma,
+                    );
+                    return format!(
+                        "{}. {:<32}  -  {} gp",
+                        (b'a' + idx as u8) as char,
+                        name,
+                        ask_price
+                    );
+                }
+                if items.len() <= 18 {
+                    if row == items.len() + 3 {
+                        return "--------------------------------".to_string();
+                    }
+                    if row == items.len() + 4 {
+                        return prompt;
+                    }
+                } else if row == 23 {
+                    return prompt;
+                }
             }
             "".to_string()
         }
@@ -1265,14 +1311,8 @@ fn get_overlay_row_text(
                     player.gold, owner.max_cost
                 );
             }
-            if row == player.inventory.len() + 3 {
-                return "---------------------------------".to_string();
-            }
-            if row == player.inventory.len() + 4 {
-                return "Select item letter to sell, or press ESC to return to Buy menu."
-                    .to_string();
-            }
-            if row > 1 && row <= player.inventory.len() + 1 {
+            let inv_len = player.inventory.len();
+            if row > 1 && row <= inv_len + 1 && row < 22 {
                 let idx = row - 2;
                 let item = &player.inventory[idx];
                 let base_val = crate::dungeon::get_item_base_value(item);
@@ -1292,6 +1332,23 @@ fn get_overlay_row_text(
             }
             if player.inventory.is_empty() && row == 2 {
                 return "(Your inventory is completely empty)".to_string();
+            }
+            if inv_len <= 18 {
+                if row == inv_len + 3 {
+                    return "---------------------------------".to_string();
+                }
+                if row == inv_len + 4 {
+                    return "Select item letter to sell, or press ESC to return to Buy menu."
+                        .to_string();
+                }
+            } else {
+                if row == 22 {
+                    return "---------------------------------".to_string();
+                }
+                if row == 23 {
+                    return "Select item letter to sell, or press ESC to return to Buy menu."
+                        .to_string();
+                }
             }
             "".to_string()
         }

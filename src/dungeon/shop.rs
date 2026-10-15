@@ -835,6 +835,79 @@ pub fn handle_haggle_input(
     }
 }
 
+pub fn handle_shop_buy_input(
+    c: char,
+    active_shop: super::ShopType,
+    owner_idx: usize,
+    player: &Player,
+    screen_mode: &mut ScreenMode,
+    active_haggle: &mut Option<HaggleState>,
+    status_msg: &mut String,
+) {
+    let items = super::get_shop_items(active_shop);
+    let has_s_item = items.len() > 18;
+
+    match c {
+        'S' => {
+            *screen_mode = ScreenMode::ShopSellMenu;
+            *status_msg = "Sell selection mode. Select item.".to_string();
+        }
+        's' if !has_s_item => {
+            *screen_mode = ScreenMode::ShopSellMenu;
+            *status_msg = "Sell selection mode. Select item.".to_string();
+        }
+        letter if letter.is_ascii_lowercase() => {
+            let idx = letter as usize - b'a' as usize;
+            if idx < items.len() {
+                let (ref name, price, ref item_type) = items[idx];
+                let owner = &STORE_OWNERS[owner_idx.min(MAX_OWNERS - 1)];
+                let (min_p, max_p) =
+                    calculate_buy_price(price, owner, player.race, player.stats.charisma);
+                if player.gold >= min_p {
+                    let h_item =
+                        crate::entity::treasure_data::get_canonical_shop_item(active_shop, idx)
+                            .unwrap_or_else(|| {
+                                Item::new(
+                                    name,
+                                    1,
+                                    match item_type {
+                                        ItemType::Weapon { .. } => 10,
+                                        ItemType::Armor { .. } => 80,
+                                        ItemType::Potion { .. } => 5,
+                                        ItemType::Light { .. } => 15,
+                                        ItemType::Ring { .. } => 2,
+                                        ItemType::Amulet { .. } => 3,
+                                        _ => 2,
+                                    },
+                                    item_type.clone(),
+                                )
+                            });
+
+                    *active_haggle = Some(HaggleState {
+                        item: h_item,
+                        item_index: idx,
+                        initial_price: max_p,
+                        min_price: min_p,
+                        max_price: max_p,
+                        current_asking: max_p,
+                        last_bid: None,
+                        insults: 0,
+                        offers_count: 0,
+                        comment: format!("Asking price: {} gp", max_p),
+                        player_input: String::new(),
+                        owner_index: owner_idx,
+                    });
+                    *screen_mode = ScreenMode::BarterBuyMenu;
+                    *status_msg = format!("Bartering for {}.", name);
+                } else {
+                    *status_msg = "You don't have enough gold to make a serious offer!".to_string();
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1202,5 +1275,88 @@ mod tests {
         assert_eq!(shop.insults, 1);
         assert_eq!(shop.closed_until_turn, 0);
         assert!(!shop.is_closed(1000));
+    }
+
+    #[test]
+    fn test_shop_buy_input_item_s_and_sell_mapping() {
+        let mut player = make_test_player();
+        player.gold = 50000; // plenty of gold
+        let mut screen_mode = ScreenMode::Shop;
+        let mut active_haggle = None;
+        let mut status_msg = String::new();
+
+        // Armory has 20 items (indices 0..19), so index 18 is item 's'
+        let armory_items = super::super::get_shop_items(super::super::ShopType::Armory);
+        assert!(
+            armory_items.len() > 18,
+            "Armory must have more than 18 items"
+        );
+        let (ref expected_s_name, _, _) = armory_items[18];
+
+        // 1. Pressing 's' in Armory should buy / barter for item 's' (index 18), NOT switch to SellMenu
+        handle_shop_buy_input(
+            's',
+            super::super::ShopType::Armory,
+            1, // Armory owner index
+            &player,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut status_msg,
+        );
+        assert_eq!(screen_mode, ScreenMode::BarterBuyMenu);
+        assert!(active_haggle.is_some());
+        let haggle = active_haggle.unwrap();
+        assert_eq!(haggle.item_index, 18);
+        assert_eq!(haggle.item.name, *expected_s_name);
+
+        // 2. Pressing 'S' (capital S) in Armory should switch to SellMenu
+        screen_mode = ScreenMode::Shop;
+        active_haggle = None;
+        status_msg.clear();
+        handle_shop_buy_input(
+            'S',
+            super::super::ShopType::Armory,
+            1,
+            &player,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut status_msg,
+        );
+        assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
+        assert!(active_haggle.is_none());
+        assert_eq!(status_msg, "Sell selection mode. Select item.");
+
+        // 3. General Store has only 12 items (<= 18 items, so no item 's')
+        // In General Store, lowercase 's' should switch to SellMenu
+        screen_mode = ScreenMode::Shop;
+        active_haggle = None;
+        status_msg.clear();
+        handle_shop_buy_input(
+            's',
+            super::super::ShopType::General,
+            0, // General store owner index
+            &player,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut status_msg,
+        );
+        assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
+        assert!(active_haggle.is_none());
+
+        // In General Store, uppercase 'S' should also switch to SellMenu
+        screen_mode = ScreenMode::Shop;
+        active_haggle = None;
+        status_msg.clear();
+        handle_shop_buy_input(
+            'S',
+            super::super::ShopType::General,
+            0,
+            &player,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut status_msg,
+        );
+        assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
+        assert!(active_haggle.is_none());
     }
 }

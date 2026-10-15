@@ -126,7 +126,7 @@ mod event {
 use dice::Dice;
 use dungeon::{
     DungeonLevel, FloorItem, HaggleState, ShopType, TileType, generate_random_floor_item,
-    get_shop_items, handle_haggle_input, tile::TrapType,
+    handle_haggle_input, tile::TrapType,
 };
 use entity::monster::Monster;
 use input::{Action, Direction, InputMapper, KeyboardProfile};
@@ -2278,7 +2278,12 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 KeyCode::Esc => {
                                     if screen_mode == ScreenMode::ShopSellMenu {
                                         screen_mode = ScreenMode::Shop;
-                                        status_msg = "General Store - Buy Menu.".to_string();
+                                        let shop_info =
+                                            level.shops.iter().find(|s| s.shop_type == active_shop);
+                                        let owner_name = shop_info
+                                            .map(|s| s.owner().name.trim())
+                                            .unwrap_or("Store");
+                                        status_msg = format!("{} - Buy Menu.", owner_name);
                                     } else {
                                         screen_mode = ScreenMode::Dungeon;
                                         status_msg = "Returned to dungeon.".to_string();
@@ -3830,74 +3835,20 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             }
                                         }
                                     } else if screen_mode == ScreenMode::Shop {
-                                        match c {
-                                            's' => {
-                                                screen_mode = ScreenMode::ShopSellMenu;
-                                                status_msg =
-                                                    "Sell selection mode. Select item.".to_string();
-                                            }
-                                            letter if letter.is_ascii_lowercase() => {
-                                                let idx = letter as usize - 'a' as usize;
-                                                let items = get_shop_items(active_shop);
-                                                if idx < items.len() {
-                                                    let (ref name, price, ref item_type) =
-                                                        items[idx];
-                                                    let shop_info = level
-                                                        .shops
-                                                        .iter()
-                                                        .find(|s| s.shop_type == active_shop);
-                                                    let owner_idx = shop_info
-                                                        .map(|s| s.owner_index)
-                                                        .unwrap_or(active_shop as usize);
-                                                    let owner = &dungeon::STORE_OWNERS
-                                                        [owner_idx.min(dungeon::MAX_OWNERS - 1)];
-                                                    let (min_p, max_p) =
-                                                        dungeon::calculate_buy_price(
-                                                            price,
-                                                            owner,
-                                                            player.race,
-                                                            player.stats.charisma,
-                                                        );
-                                                    if player.gold >= min_p {
-                                                        let h_item = crate::entity::treasure_data::get_canonical_shop_item(active_shop, idx).unwrap_or_else(|| {
-                                                        Item::new(name, 1, match item_type {
-                                                             ItemType::Weapon {..} => 10,
-                                                             ItemType::Armor {..} => 80,
-                                                             ItemType::Potion {..} => 5,
-                                                             ItemType::Light {..} => 15,
-                                                             ItemType::Ring {..} => 2,
-                                                             ItemType::Amulet {..} => 3,
-                                                             _ => 2,
-                                                        }, item_type.clone())
-                                                    });
-
-                                                        active_haggle = Some(HaggleState {
-                                                            item: h_item,
-                                                            item_index: idx,
-                                                            initial_price: max_p,
-                                                            min_price: min_p,
-                                                            max_price: max_p,
-                                                            current_asking: max_p,
-                                                            last_bid: None,
-                                                            insults: 0,
-                                                            offers_count: 0,
-                                                            comment: format!(
-                                                                "Asking price: {} gp",
-                                                                max_p
-                                                            ),
-                                                            player_input: String::new(),
-                                                            owner_index: owner_idx,
-                                                        });
-                                                        screen_mode = ScreenMode::BarterBuyMenu;
-                                                        status_msg =
-                                                            format!("Bartering for {}.", name);
-                                                    } else {
-                                                        status_msg = "You don't have enough gold to make a serious offer!".to_string();
-                                                    }
-                                                }
-                                            }
-                                            _ => {}
-                                        }
+                                        let shop_info =
+                                            level.shops.iter().find(|s| s.shop_type == active_shop);
+                                        let owner_idx = shop_info
+                                            .map(|s| s.owner_index)
+                                            .unwrap_or(active_shop as usize);
+                                        dungeon::handle_shop_buy_input(
+                                            c,
+                                            active_shop,
+                                            owner_idx,
+                                            &player,
+                                            &mut screen_mode,
+                                            &mut active_haggle,
+                                            &mut status_msg,
+                                        );
                                     } else if screen_mode == ScreenMode::ShopSellMenu {
                                         let idx = c as usize - 'a' as usize;
                                         if idx < player.inventory.len() {
