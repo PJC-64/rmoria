@@ -1,7 +1,8 @@
 use crate::dice::Dice;
 use crate::dungeon::DungeonLevel;
 use crate::entity::monster_data::{
-    CD_EVIL, CD_MAX_HP, CM_MULTIPLY, CREATURES_LIST, CS_BLIND, CS_BR_ACID, CS_BR_FIRE, CS_BR_FROST,
+    CD_EVIL, CD_MAX_HP, CM_20_RANDOM, CM_40_RANDOM, CM_75_RANDOM, CM_ATTACK_ONLY, CM_MULTIPLY,
+    CM_OPEN_DOOR, CM_PHASE, CM_WIN, CREATURES_LIST, CS_BLIND, CS_BR_ACID, CS_BR_FIRE, CS_BR_FROST,
     CS_BR_GAS, CS_BR_LIGHT, CS_CONFUSE, CS_DRAIN_MANA, CS_FEAR, CS_FREQ, CS_HOLD_PER, CS_LGHT_WND,
     CS_SER_WND, CS_SLOW_PER, CS_SUMMON_MON, CS_SUMMON_UND, CS_TEL_LONG, CS_TEL_SHORT, CS_TEL_TO,
     CreatureDefinition, MONSTER_ATTACKS,
@@ -153,6 +154,10 @@ impl Monster {
         self.creature_def().attacks
     }
 
+    pub fn is_win_creature(&self) -> bool {
+        (self.movement() & CM_WIN) != 0
+    }
+
     /// Deal damage to monster. Returns `true` if monster died.
     pub fn take_damage(&mut self, amount: i32) -> bool {
         self.hp -= amount;
@@ -166,9 +171,9 @@ impl Monster {
         player_x: usize,
         player_y: usize,
         level: &DungeonLevel,
-        depth: u32,
-        killed_town_npcs: u32,
-        threshold: u32,
+        _depth: u32,
+        _killed_town_npcs: u32,
+        _threshold: u32,
     ) -> Option<(usize, usize)> {
         if self.stunned > 0 || self.asleep > 0 {
             return None;
@@ -177,71 +182,88 @@ impl Monster {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
-        let is_hostile = depth > 0 || self.was_attacked || killed_town_npcs > threshold;
+        let mov = self.movement();
+        let dist = (player_x as isize - self.x as isize)
+            .abs()
+            .max((player_y as isize - self.y as isize).abs());
 
-        if self.confused > 0 || self.symbol == 'p' {
-            // Confused monsters or townsfolk wander semi-randomly
-            let wander_chance = if is_hostile && self.confused == 0 {
-                0.70
-            } else {
-                1.00
-            };
-            if rng.gen_bool(wander_chance) {
-                let dx = rng.gen_range(-1..=1);
-                let dy = rng.gen_range(-1..=1);
-                if dx == 0 && dy == 0 {
-                    return None;
+        let can_pass_wall = (mov & CM_PHASE) != 0;
+        let can_open_door = (mov & CM_OPEN_DOOR) != 0;
+
+        let is_tile_accessible = |tx: usize, ty: usize| -> bool {
+            if let Some(tile) = level.get_tile(tx, ty) {
+                if tile.is_passable() {
+                    return true;
                 }
-                let next_x = (self.x as isize + dx) as usize;
-                let next_y = (self.y as isize + dy) as usize;
-                if let Some(tile) = level.get_tile(next_x, next_y)
-                    && tile.is_passable()
+                if can_open_door
+                    && matches!(
+                        tile.tile_type,
+                        crate::dungeon::tile::TileType::DoorClosed { .. }
+                    )
                 {
-                    return Some((next_x, next_y));
+                    return true;
                 }
-                return None;
+                if can_pass_wall {
+                    return true;
+                }
             }
-        }
+            false
+        };
 
-        if !is_hostile {
+        // Random movement check (confused or random movement flags)
+        let is_random = self.confused > 0
+            || ((mov & CM_75_RANDOM) != 0 && rng.gen_range(0..100) < 75)
+            || ((mov & CM_40_RANDOM) != 0 && rng.gen_range(0..100) < 40)
+            || ((mov & CM_20_RANDOM) != 0 && rng.gen_range(0..100) < 20);
+
+        if is_random {
+            let mut deltas = [
+                (-1, -1),
+                (0, -1),
+                (1, -1),
+                (-1, 0),
+                (1, 0),
+                (-1, 1),
+                (0, 1),
+                (1, 1),
+            ];
+            for i in (1..8).rev() {
+                let j = rng.gen_range(0..=i);
+                deltas.swap(i, j);
+            }
+            for (dx, dy) in deltas {
+                let nx = (self.x as isize + dx) as usize;
+                let ny = (self.y as isize + dy) as usize;
+                if is_tile_accessible(nx, ny) {
+                    return Some((nx, ny));
+                }
+            }
             return None;
         }
 
+        // CM_ATTACK_ONLY critters only move if adjacent to player
+        if (mov & CM_ATTACK_ONLY) != 0 && dist > 1 {
+            return None;
+        }
+
+        // Standard movement towards player
         let dx = (player_x as isize - self.x as isize).signum();
         let dy = (player_y as isize - self.y as isize).signum();
 
         let next_x = (self.x as isize + dx) as usize;
         let next_y = (self.y as isize + dy) as usize;
 
-        if let Some(tile) = level.get_tile(next_x, next_y)
-            && (tile.is_passable()
-                || matches!(
-                    tile.tile_type,
-                    crate::dungeon::tile::TileType::DoorClosed { .. }
-                ))
-        {
+        if is_tile_accessible(next_x, next_y) {
             return Some((next_x, next_y));
         }
 
         let next_x_only = (self.x as isize + dx) as usize;
-        if let Some(tile) = level.get_tile(next_x_only, self.y)
-            && (tile.is_passable()
-                || matches!(
-                    tile.tile_type,
-                    crate::dungeon::tile::TileType::DoorClosed { .. }
-                ))
-        {
+        if is_tile_accessible(next_x_only, self.y) {
             return Some((next_x_only, self.y));
         }
 
         let next_y_only = (self.y as isize + dy) as usize;
-        if let Some(tile) = level.get_tile(self.x, next_y_only)
-            && (tile.is_passable()
-                || matches!(
-                    tile.tile_type,
-                    crate::dungeon::tile::TileType::DoorClosed { .. }
-                ))
-        {
+        if is_tile_accessible(self.x, next_y_only) {
             return Some((self.x, next_y_only));
         }
 

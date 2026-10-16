@@ -345,11 +345,6 @@ fn process_end_of_turn(
 
             let dx = (player.x as isize - monsters[m_idx].x as isize).abs();
             let dy = (player.y as isize - monsters[m_idx].y as isize).abs();
-            let is_hostile = level.depth > 0
-                || monsters[m_idx].was_attacked
-                || player.killed_town_npcs > player.town_npc_attack_threshold;
-            let mut did_attack = false;
-
             // Collect occupied positions dynamically so multi-step moves collide accurately
             let occupied_positions: Vec<(usize, usize)> = monsters
                 .iter()
@@ -360,31 +355,28 @@ fn process_end_of_turn(
                 .collect();
 
             // 3. Try casting spell or breath weapon
-            if is_hostile {
-                did_attack = crate::entity::monster::try_monster_cast_spell(
-                    &mut monsters[m_idx],
-                    player,
-                    level,
-                    &mut new_monsters,
-                    &occupied_positions,
-                    status_msg,
-                    &mut rng,
-                );
-                if player.hp <= 0 {
-                    player.hp = 0;
-                    if save_path.exists() {
-                        let _ = std::fs::remove_file(save_path);
-                    }
-                    *screen_mode = ScreenMode::GameOver;
-                    status_msg.push_str(
-                        " You have died! Game Over. Press [r] to restart, or [q] to quit.",
-                    );
-                    break;
+            let mut did_attack = crate::entity::monster::try_monster_cast_spell(
+                &mut monsters[m_idx],
+                player,
+                level,
+                &mut new_monsters,
+                &occupied_positions,
+                status_msg,
+                &mut rng,
+            );
+            if player.hp <= 0 {
+                player.hp = 0;
+                if save_path.exists() {
+                    let _ = std::fs::remove_file(save_path);
                 }
+                *screen_mode = ScreenMode::GameOver;
+                status_msg
+                    .push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
+                break;
             }
 
             // 4. Melee attack if adjacent and hasn't cast spell
-            if !did_attack && dx <= 1 && dy <= 1 && is_hostile {
+            if !did_attack && dx <= 1 && dy <= 1 {
                 crate::entity::monster::execute_monster_melee_attacks(
                     &monsters[m_idx],
                     player,
@@ -1353,6 +1345,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     let monster_name = monsters[m_idx].name.clone();
                                                     let exp_reward =
                                                         monsters[m_idx].experience_reward;
+                                                    let m_lvl = monsters[m_idx].level;
+                                                    let is_win = monsters[m_idx].is_win_creature()
+                                                        || monster_name == "The Balrog";
 
                                                     if monsters[m_idx].take_damage(damage) {
                                                         if level.depth == 0 {
@@ -1363,17 +1358,34 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                             monster_name
                                                         ));
 
-                                                        if player.add_experience(exp_reward) {
+                                                        let old_exp = player.exp;
+                                                        let old_lvl = player.level;
+                                                        let leveled_up = player
+                                                            .gain_kill_experience(
+                                                                exp_reward, m_lvl,
+                                                            );
+                                                        let gained =
+                                                            player.exp.saturating_sub(old_exp);
+                                                        if leveled_up || player.level > old_lvl {
                                                             status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
-                                                        } else if exp_reward > 0 {
+                                                        } else if gained > 0 {
                                                             status_msg.push_str(&format!(
                                                                 " Gained {} EXP.",
-                                                                exp_reward
+                                                                gained
                                                             ));
+                                                        } else if exp_reward > 0 {
+                                                            status_msg.push_str(
+                                                                " Gained fractional EXP.",
+                                                            );
                                                         } else {
                                                             status_msg.push_str(
                                                                 " Gained 0 EXP (Town monster).",
                                                             );
+                                                        }
+
+                                                        if is_win {
+                                                            player.balrog_killed = true;
+                                                            player.total_winner = true;
                                                         }
 
                                                         let is_boss = monster_name == "The Balrog"
@@ -2788,6 +2800,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     }
 
                                                     monsters[m_idx].was_attacked = true;
+                                                    let m_lvl = monsters[m_idx].level;
+                                                    let is_win = monsters[m_idx].is_win_creature()
+                                                        || monster_name == "The Balrog";
                                                     let died = monsters[m_idx].take_damage(damage);
                                                     if died {
                                                         if level.depth == 0 {
@@ -2800,16 +2815,34 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                                         let exp_reward =
                                                             monsters[m_idx].experience_reward;
-                                                        if level.depth > 0 {
-                                                            player.exp += exp_reward;
+                                                        let old_exp = player.exp;
+                                                        let old_lvl = player.level;
+                                                        let leveled_up = player
+                                                            .gain_kill_experience(
+                                                                exp_reward, m_lvl,
+                                                            );
+                                                        let gained =
+                                                            player.exp.saturating_sub(old_exp);
+                                                        if leveled_up || player.level > old_lvl {
+                                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                                        } else if gained > 0 {
                                                             status_msg.push_str(&format!(
                                                                 " Gained {} EXP.",
-                                                                exp_reward
+                                                                gained
                                                             ));
+                                                        } else if exp_reward > 0 {
+                                                            status_msg.push_str(
+                                                                " Gained fractional EXP.",
+                                                            );
                                                         } else {
                                                             status_msg.push_str(
                                                                 " Gained 0 EXP (Town monster).",
                                                             );
+                                                        }
+
+                                                        if is_win {
+                                                            player.balrog_killed = true;
+                                                            player.total_winner = true;
                                                         }
 
                                                         let is_boss = monster_name == "The Balrog"
@@ -3413,20 +3446,37 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         {
                                                             let exp_reward =
                                                                 monsters[m_idx].experience_reward;
+                                                            let m_lvl = monsters[m_idx].level;
                                                             let monster_name =
                                                                 monsters[m_idx].name.clone();
+                                                            let is_win = monsters[m_idx]
+                                                                .is_win_creature()
+                                                                || monster_name == "The Balrog";
                                                             monsters.remove(m_idx);
                                                             status_msg.push_str(&format!(
                                                                 " You killed {}!",
                                                                 monster_name
                                                             ));
-                                                            if player.add_experience(exp_reward) {
+                                                            let old_exp = player.exp;
+                                                            let old_lvl = player.level;
+                                                            let leveled_up = player
+                                                                .gain_kill_experience(
+                                                                    exp_reward, m_lvl,
+                                                                );
+                                                            let gained =
+                                                                player.exp.saturating_sub(old_exp);
+                                                            if leveled_up || player.level > old_lvl
+                                                            {
                                                                 status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
-                                                            } else if exp_reward > 0 {
+                                                            } else if gained > 0 {
                                                                 status_msg.push_str(&format!(
                                                                     " Gained {} EXP.",
-                                                                    exp_reward
+                                                                    gained
                                                                 ));
+                                                            }
+                                                            if is_win {
+                                                                player.balrog_killed = true;
+                                                                player.total_winner = true;
                                                             }
                                                         }
                                                     } else {
@@ -3554,6 +3604,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     };
                                                     let m_name = monsters[m_idx].name.clone();
                                                     let exp = monsters[m_idx].experience_reward;
+                                                    let m_lvl = monsters[m_idx].level;
+                                                    let is_win = monsters[m_idx].is_win_creature()
+                                                        || m_name == "The Balrog";
                                                     status_msg = format!(
                                                         "Wand beam hits {} for {} damage!",
                                                         m_name, dmg
@@ -3561,9 +3614,26 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     monsters[m_idx].was_attacked = true;
                                                     if monsters[m_idx].take_damage(dmg) {
                                                         status_msg.push_str(" You killed it!");
-                                                        player.add_experience(exp);
+                                                        let old_exp = player.exp;
+                                                        let old_lvl = player.level;
+                                                        let leveled_up =
+                                                            player.gain_kill_experience(exp, m_lvl);
+                                                        let gained =
+                                                            player.exp.saturating_sub(old_exp);
+                                                        if leveled_up || player.level > old_lvl {
+                                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                                        } else if gained > 0 {
+                                                            status_msg.push_str(&format!(
+                                                                " Gained {} EXP.",
+                                                                gained
+                                                            ));
+                                                        }
                                                         if level.depth == 0 {
                                                             player.killed_town_npcs += 1;
+                                                        }
+                                                        if is_win {
+                                                            player.balrog_killed = true;
+                                                            player.total_winner = true;
                                                         }
                                                         monsters.remove(m_idx);
                                                     }
@@ -3996,102 +4066,20 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                         if idx < potion_indices.len() {
                                             let inv_idx = potion_indices[idx];
-                                            let name = player.inventory[inv_idx].name.clone();
-                                            let heal = if let ItemType::Potion { heal_amount } =
-                                                player.inventory[inv_idx].item_type
-                                            {
-                                                heal_amount
-                                            } else {
-                                                0
-                                            };
-
+                                            let potion_item = player.inventory[inv_idx].clone();
                                             player.inventory[inv_idx].count -= 1;
                                             if player.inventory[inv_idx].count == 0 {
                                                 player.inventory.remove(inv_idx);
                                             }
-                                            player.identify_item_kind(&name);
-
-                                            if name.contains("Cure Light Wounds") {
-                                                player.hp = (player.hp + heal).min(player.max_hp);
-                                                player.flags.blind = 0;
-                                                player.flags.afraid = 0;
-                                                status_msg = format!(
-                                                    "You quaffed {}! Restored {} HP. You feel much better.",
-                                                    name, heal
-                                                );
-                                            } else if name.contains("Healing") {
-                                                player.hp = player.max_hp;
-                                                player.flags.blind = 0;
-                                                player.flags.afraid = 0;
-                                                player.flags.poisoned = 0;
-                                                player.flags.confused = 0;
-                                                status_msg = format!(
-                                                    "You quaffed {}! Restored full HP and cured conditions.",
-                                                    name
-                                                );
-                                            } else if name.contains("Cure Poison") {
-                                                player.flags.poisoned = 0;
-                                                status_msg = format!(
-                                                    "You quaffed {}! The poison leaves your veins.",
-                                                    name
-                                                );
-                                            } else if name.contains("Speed") {
-                                                player.flags.fast += rng.gen_range(15..=40);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel yourself moving faster!",
-                                                    name
-                                                );
-                                            } else if name.contains("Heroism") {
-                                                player.hp = (player.hp + 10).min(player.max_hp);
-                                                player.flags.afraid = 0;
-                                                player.flags.heroism += rng.gen_range(25..=50);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel like a HERO!",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Strength") {
-                                                player.restore_stat(0);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel your strength returning.",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Dexterity") {
-                                                player.restore_stat(3);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel less clumsy.",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Constitution") {
-                                                player.restore_stat(4);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel your health returning.",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Intelligence") {
-                                                player.restore_stat(1);
-                                                status_msg = format!(
-                                                    "You quaffed {}! Your mind feels clearer.",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Wisdom") {
-                                                player.restore_stat(2);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel your wisdom returning.",
-                                                    name
-                                                );
-                                            } else if name.contains("Restore Charisma") {
-                                                player.restore_stat(5);
-                                                status_msg = format!(
-                                                    "You quaffed {}! You feel your looks returning.",
-                                                    name
-                                                );
-                                            } else {
-                                                player.hp = (player.hp + heal).min(player.max_hp);
-                                                status_msg = format!(
-                                                    "You quaffed {}! Restored {} HP.",
-                                                    name, heal
-                                                );
-                                            }
+                                            player.identify_item_kind(&potion_item.name);
+                                            crate::magic::quaff_potion(
+                                                &potion_item,
+                                                &mut player,
+                                                &mut level,
+                                                &mut monsters,
+                                                &mut rng,
+                                                &mut status_msg,
+                                            );
                                             screen_mode = ScreenMode::Dungeon;
                                             player_acted = true;
                                         }
@@ -4112,9 +4100,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                         if idx < scroll_indices.len() {
                                             let inv_idx = scroll_indices[idx];
-                                            let name = player.inventory[inv_idx].name.clone();
+                                            let scroll_item = player.inventory[inv_idx].clone();
 
-                                            if name.contains("Identify") {
+                                            if scroll_item.name.contains("Identify") {
                                                 screen_mode = ScreenMode::IdentifyMenu;
                                                 status_msg = "Item you wish identified? Select a letter [a-z] or [ESC] to cancel...".to_string();
                                             } else {
@@ -4122,93 +4110,15 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 if player.inventory[inv_idx].count == 0 {
                                                     player.inventory.remove(inv_idx);
                                                 }
-                                                player.identify_item_kind(&name);
-
-                                                if name.contains("Word of Recall") {
-                                                    if player.flags.word_of_recall == 0 {
-                                                        player.flags.word_of_recall =
-                                                            rng.gen_range(25..=55);
-                                                        status_msg = format!(
-                                                            "You read the {}! The air about you becomes charged...",
-                                                            name
-                                                        );
-                                                    } else {
-                                                        player.flags.word_of_recall = 0;
-                                                        status_msg = format!(
-                                                            "You read the {}! A tension leaves the air around you.",
-                                                            name
-                                                        );
-                                                    }
-                                                } else if name.contains("Phase Door") {
-                                                    let mut candidates = Vec::new();
-                                                    for dy in -10..=10 {
-                                                        for dx in -10..=10 {
-                                                            let dist =
-                                                                ((dx * dx + dy * dy) as f32).sqrt();
-                                                            if dist <= 10.0 && (dx != 0 || dy != 0)
-                                                            {
-                                                                let nx = player.x as isize + dx;
-                                                                let ny = player.y as isize + dy;
-                                                                if nx > 0
-                                                                    && nx
-                                                                        < (level.width - 1) as isize
-                                                                    && ny > 0
-                                                                    && ny
-                                                                        < (level.height - 1)
-                                                                            as isize
-                                                                {
-                                                                    let (ux, uy) =
-                                                                        (nx as usize, ny as usize);
-                                                                    if let Some(tile) =
-                                                                        level.get_tile(ux, uy)
-                                                                        && tile.tile_type
-                                                                            == TileType::Floor
-                                                                        && !monsters.iter().any(
-                                                                            |m| {
-                                                                                m.x == ux
-                                                                                    && m.y == uy
-                                                                            },
-                                                                        )
-                                                                    {
-                                                                        candidates.push((ux, uy));
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    if !candidates.is_empty() {
-                                                        let (rx, ry) = candidates
-                                                            [rng.gen_range(0..candidates.len())];
-                                                        player.move_to(rx, ry);
-                                                        status_msg = format!(
-                                                            "You read the {}! You phase door to ({}, {}).",
-                                                            name, rx, ry
-                                                        );
-                                                    } else {
-                                                        status_msg = format!(
-                                                            "You read the {}, but nothing seems to happen.",
-                                                            name
-                                                        );
-                                                    }
-                                                } else {
-                                                    let (rx, ry) = loop {
-                                                        let tx =
-                                                            rng.gen_range(1..(level.width - 1));
-                                                        let ty =
-                                                            rng.gen_range(1..(level.height - 1));
-                                                        if let Some(tile) = level.get_tile(tx, ty)
-                                                            && tile.tile_type == TileType::Floor
-                                                        {
-                                                            break (tx, ty);
-                                                        }
-                                                    };
-                                                    player.move_to(rx, ry);
-
-                                                    status_msg = format!(
-                                                        "You read the {}! You teleport to ({}, {}).",
-                                                        name, rx, ry
-                                                    );
-                                                }
+                                                player.identify_item_kind(&scroll_item.name);
+                                                crate::magic::read_scroll(
+                                                    &scroll_item,
+                                                    &mut player,
+                                                    &mut level,
+                                                    &mut monsters,
+                                                    &mut rng,
+                                                    &mut status_msg,
+                                                );
                                                 screen_mode = ScreenMode::Dungeon;
                                                 player_acted = true;
                                             }

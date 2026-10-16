@@ -1,9 +1,39 @@
 use crate::dice::Dice;
 use crate::dungeon::DungeonLevel;
-use crate::dungeon::tile::TileType;
+use crate::dungeon::tile::{TileType, TrapType};
 use crate::entity::monster::Monster;
+use crate::entity::monster_data::{
+    CD_ACID, CD_EVIL, CD_FIRE, CD_FROST, CD_LIGHT, CD_POISON, CS_BR_ACID, CS_BR_FIRE, CS_BR_FROST,
+    CS_BR_GAS, CS_BR_LIGHT,
+};
+use crate::entity::treasure_data::{GAME_OBJECTS, TV_POTION2, TV_SCROLL2};
 use crate::player::{Class, Item, ItemType, Player};
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MagicSpellType {
+    MagicMissile,
+    Lightning,
+    PoisonGas,
+    Acid,
+    Frost,
+    Fire,
+    HolyOrb,
+}
+
+impl MagicSpellType {
+    pub fn flags(self) -> (u16, u32) {
+        match self {
+            MagicSpellType::MagicMissile => (0, 0),
+            MagicSpellType::Lightning => (CD_LIGHT, CS_BR_LIGHT),
+            MagicSpellType::PoisonGas => (CD_POISON, CS_BR_GAS),
+            MagicSpellType::Acid => (CD_ACID, CS_BR_ACID),
+            MagicSpellType::Frost => (CD_FROST, CS_BR_FROST),
+            MagicSpellType::Fire => (CD_FIRE, CS_BR_FIRE),
+            MagicSpellType::HolyOrb => (CD_EVIL, 0),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpellDef {
@@ -1459,14 +1489,16 @@ pub fn apply_spell_mana_and_fatigue<R: rand::Rng>(
 #[allow(clippy::too_many_arguments)]
 pub fn cast_spell_bolt(
     spell_name: &str,
+    spell_type: MagicSpellType,
     dx: isize,
     dy: isize,
-    damage: i32,
+    base_damage: i32,
     player: &mut Player,
     level: &mut DungeonLevel,
     monsters: &mut Vec<Monster>,
     status_msg: &mut String,
 ) {
+    let (harm_type, weapon_type) = spell_type.flags();
     let mut cx = player.x as isize;
     let mut cy = player.y as isize;
     let mut hit = false;
@@ -1499,16 +1531,33 @@ pub fn cast_spell_bolt(
         if let Some(m_idx) = monsters.iter().position(|m| m.x == ux && m.y == uy) {
             let m_name = monsters[m_idx].name.clone();
             let exp = monsters[m_idx].experience_reward;
-            *status_msg = format!("Your {} hits {} for {} damage!", spell_name, m_name, damage);
+            let m_lvl = monsters[m_idx].level;
+            let is_win = monsters[m_idx].is_win_creature();
+
+            let mut damage = base_damage;
+            if (harm_type & monsters[m_idx].defenses()) != 0 {
+                damage *= 2;
+            } else if (weapon_type & monsters[m_idx].spells()) != 0 {
+                damage /= 4;
+            }
+
+            *status_msg = format!("Your {} strikes {}.", spell_name, m_name);
             monsters[m_idx].was_attacked = true;
             monsters[m_idx].asleep = 0;
             if monsters[m_idx].take_damage(damage) {
-                status_msg.push_str(" You destroyed it!");
-                player.add_experience(exp);
+                status_msg.push_str(&format!(" {} dies in a fit of agony.", m_name));
+                player.gain_kill_experience(exp, m_lvl);
+                if is_win {
+                    player.balrog_killed = true;
+                    player.total_winner = true;
+                    status_msg.push_str(" *** CONGRATULATIONS *** You have won the game!");
+                }
                 if level.depth == 0 {
                     player.killed_town_npcs += 1;
                 }
                 monsters.remove(m_idx);
+            } else if damage > 0 {
+                status_msg.push_str(&format!(" {} screams in agony.", m_name));
             }
             hit = true;
             break;
@@ -1522,15 +1571,17 @@ pub fn cast_spell_bolt(
 #[allow(clippy::too_many_arguments)]
 pub fn cast_spell_ball(
     spell_name: &str,
+    spell_type: MagicSpellType,
     dx: isize,
     dy: isize,
     radius: usize,
-    damage: i32,
+    base_damage: i32,
     player: &mut Player,
     level: &mut DungeonLevel,
     monsters: &mut Vec<Monster>,
     status_msg: &mut String,
 ) {
+    let (harm_type, weapon_type) = spell_type.flags();
     let mut cx = player.x as isize;
     let mut cy = player.y as isize;
     let mut impact = (player.x, player.y);
@@ -1569,21 +1620,34 @@ pub fn cast_spell_ball(
     let mut killed = Vec::new();
     let mut hit_count = 0;
     for (m_idx, m) in monsters.iter_mut().enumerate() {
-        let dist = (m.x as isize - impact.0 as isize)
-            .abs()
-            .max((m.y as isize - impact.1 as isize).abs());
+        let dy = (impact.1 as isize - m.y as isize).abs();
+        let dx = (impact.0 as isize - m.x as isize).abs();
+        let dist = ((dy + dx) * 2 - dx.min(dy)) / 2;
         if dist <= radius as isize {
             hit_count += 1;
+            let mut damage = base_damage;
+            if (harm_type & m.defenses()) != 0 {
+                damage *= 2;
+            } else if (weapon_type & m.spells()) != 0 {
+                damage /= 4;
+            }
+            let decayed_damage = damage / (dist as i32 + 1);
             m.was_attacked = true;
             m.asleep = 0;
-            if m.take_damage(damage) {
+            if m.take_damage(decayed_damage) {
                 killed.push(m_idx);
             }
         }
     }
     for &idx in killed.iter().rev() {
         let exp = monsters[idx].experience_reward;
-        player.add_experience(exp);
+        let m_lvl = monsters[idx].level;
+        let is_win = monsters[idx].is_win_creature();
+        player.gain_kill_experience(exp, m_lvl);
+        if is_win {
+            player.balrog_killed = true;
+            player.total_winner = true;
+        }
         if level.depth == 0 {
             player.killed_town_npcs += 1;
         }
@@ -1594,6 +1658,9 @@ pub fn cast_spell_ball(
             " {} creatures perished in the blast!",
             killed.len()
         ));
+        if player.total_winner {
+            status_msg.push_str(" *** CONGRATULATIONS *** You have won the game!");
+        }
     } else if hit_count > 0 {
         status_msg.push_str(&format!(
             " {} creatures were caught in the blast!",
@@ -1601,11 +1668,12 @@ pub fn cast_spell_ball(
         ));
     }
 
-    let p_dist = (player.x as isize - impact.0 as isize)
-        .abs()
-        .max((player.y as isize - impact.1 as isize).abs());
+    let p_dy = (player.y as isize - impact.1 as isize).abs();
+    let p_dx = (player.x as isize - impact.0 as isize).abs();
+    let p_dist = ((p_dy + p_dx) * 2 - p_dx.min(p_dy)) / 2;
     if p_dist <= radius as isize {
-        player.hp -= damage / 2;
+        let p_dmg = (base_damage / (p_dist as i32 + 1)) / 2;
+        player.hp -= p_dmg;
         status_msg.push_str(" You are caught in your own blast!");
     }
 }
@@ -1658,6 +1726,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 let dmg = (Dice::new(3, 6).roll(rng) + player.level) as i32;
                 cast_spell_ball(
                     "Orb of Draining",
+                    MagicSpellType::HolyOrb,
                     dx,
                     dy,
                     2,
@@ -1679,6 +1748,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 let dmg = Dice::new(2, 6).roll(rng) as i32;
                 cast_spell_bolt(
                     "Magic Missile",
+                    MagicSpellType::MagicMissile,
                     dx,
                     dy,
                     dmg,
@@ -1692,6 +1762,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 // Stinking Cloud (12 dmg ball)
                 cast_spell_ball(
                     "Stinking Cloud",
+                    MagicSpellType::PoisonGas,
                     dx,
                     dy,
                     2,
@@ -1736,6 +1807,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 let dmg = Dice::new(4, 8).roll(rng) as i32;
                 cast_spell_bolt(
                     "Lightning Bolt",
+                    MagicSpellType::Lightning,
                     dx,
                     dy,
                     dmg,
@@ -1777,6 +1849,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 let dmg = Dice::new(6, 8).roll(rng) as i32;
                 cast_spell_bolt(
                     "Frost Bolt",
+                    MagicSpellType::Frost,
                     dx,
                     dy,
                     dmg,
@@ -1850,13 +1923,20 @@ pub fn execute_directional_spell<R: rand::Rng>(
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
                     if let Some(m) = monsters.iter_mut().find(|m| m.x == ux && m.y == uy) {
-                        let old_name = m.name.clone();
-                        m.name = "Polymorphed Beast".to_string();
-                        m.symbol = 'b';
-                        m.hp = m.max_hp;
-                        m.was_attacked = true;
-                        m.asleep = 0;
-                        *status_msg = format!("{} mutates into a {}!", old_name, m.name);
+                        if m.is_win_creature() {
+                            *status_msg = format!("The {} is unaffected.", m.name);
+                        } else if rng.gen_range(1..=50) > m.level as u32 {
+                            let (mx, my) = (m.x, m.y);
+                            let new_id = crate::entity::monster_data::get_monster_for_level(
+                                level.depth,
+                                rng,
+                            );
+                            let old_name = m.name.clone();
+                            *m = Monster::from_creature_id(new_id, mx, my, false, rng);
+                            *status_msg = format!("{} mutates into a {}!", old_name, m.name);
+                        } else {
+                            *status_msg = format!("The {} is unaffected.", m.name);
+                        }
                         hit = true;
                         break;
                     }
@@ -1870,6 +1950,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 let dmg = Dice::new(9, 8).roll(rng) as i32;
                 cast_spell_bolt(
                     "Fire Bolt",
+                    MagicSpellType::Fire,
                     dx,
                     dy,
                     dmg,
@@ -1911,6 +1992,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 // Frost Ball (48 dmg ball)
                 cast_spell_ball(
                     "Frost Ball",
+                    MagicSpellType::Frost,
                     dx,
                     dy,
                     2,
@@ -1938,11 +2020,15 @@ pub fn execute_directional_spell<R: rand::Rng>(
                     }
                     let (ux, uy) = (cx as usize, cy as usize);
                     if let Some(m) = monsters.iter_mut().find(|m| m.x == ux && m.y == uy) {
-                        let dest = level.find_random_floor_tile();
-                        m.x = dest.0;
-                        m.y = dest.1;
-                        m.was_attacked = true;
-                        *status_msg = format!("{} vanishes into thin air!", m.name);
+                        if m.is_win_creature() {
+                            *status_msg = format!("The {} is unaffected.", m.name);
+                        } else {
+                            let dest = level.find_random_floor_tile();
+                            m.x = dest.0;
+                            m.y = dest.1;
+                            m.was_attacked = true;
+                            *status_msg = format!("{} vanishes into thin air!", m.name);
+                        }
                         hit = true;
                         break;
                     }
@@ -1955,6 +2041,7 @@ pub fn execute_directional_spell<R: rand::Rng>(
                 // Fire Ball (72 dmg ball)
                 cast_spell_ball(
                     "Fire Ball",
+                    MagicSpellType::Fire,
                     dx,
                     dy,
                     2,
@@ -2326,22 +2413,8 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             17 => {
                 // Recharge Item I
-                let mut recharged = false;
-                for item in &mut player.inventory {
-                    match &mut item.item_type {
-                        ItemType::Wand { charges, .. } | ItemType::Staff { charges, .. } => {
-                            *charges += rng.gen_range(2..=5);
-                            recharged = true;
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-                *status_msg = if recharged {
-                    "A burst of magical energy recharges your device!".to_string()
-                } else {
-                    "You have no wands or staves to recharge.".to_string()
-                };
+                let (_, rmsg) = spell_recharge_item(player, 20, rng);
+                *status_msg = rmsg;
             }
             18 => {
                 // Sleep II
@@ -2386,22 +2459,8 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             25 => {
                 // Recharge Item II
-                let mut recharged = false;
-                for item in &mut player.inventory {
-                    match &mut item.item_type {
-                        ItemType::Wand { charges, .. } | ItemType::Staff { charges, .. } => {
-                            *charges += rng.gen_range(5..=12);
-                            recharged = true;
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-                *status_msg = if recharged {
-                    "Potent magical essence surges into your magical devices!".to_string()
-                } else {
-                    "You have no wands or staves to recharge.".to_string()
-                };
+                let (_, rmsg) = spell_recharge_item(player, 60, rng);
+                *status_msg = rmsg;
             }
             27 => {
                 // Haste Self
@@ -2416,20 +2475,965 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             30 => {
                 // Genocide
-                let exp_sum: u32 = monsters.iter().map(|m| m.experience_reward / 2).sum();
-                player.add_experience(exp_sum);
-                let count = monsters.len();
-                monsters.clear();
-                *status_msg = format!(
-                    "A cosmic power annihilates {} monsters across the entire level!",
-                    count
-                );
+                let (count, gmsg) = spell_genocide('o', player, monsters);
+                *status_msg = format!("{} ({} destroyed)", gmsg, count);
             }
             _ => {
                 *status_msg = "Nothing happens.".to_string();
             }
         }
     }
+}
+
+pub fn spell_surround_player_with_doors(player: &Player, level: &mut DungeonLevel) -> bool {
+    let mut created = false;
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            let tx = player.x as isize + dx;
+            let ty = player.y as isize + dy;
+            if tx > 0
+                && ty > 0
+                && (tx as usize) < (level.width - 1)
+                && (ty as usize) < (level.height - 1)
+            {
+                let (ux, uy) = (tx as usize, ty as usize);
+                if let Some(tile) = level.get_tile_mut(ux, uy)
+                    && tile.tile_type == TileType::Floor
+                {
+                    tile.tile_type = TileType::DoorClosed { spikes: 0 };
+                    tile.remembered = true;
+                    created = true;
+                }
+            }
+        }
+    }
+    created
+}
+
+pub fn spell_surround_player_with_traps<R: rand::Rng>(
+    player: &Player,
+    level: &mut DungeonLevel,
+    rng: &mut R,
+) -> bool {
+    let mut created = false;
+    let trap_types = [
+        TrapType::Arrow,
+        TrapType::PoisonGas,
+        TrapType::Teleport,
+        TrapType::SleepingGas,
+        TrapType::BlindGas,
+        TrapType::ConfusionGas,
+    ];
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            let tx = player.x as isize + dx;
+            let ty = player.y as isize + dy;
+            if tx > 0
+                && ty > 0
+                && (tx as usize) < (level.width - 1)
+                && (ty as usize) < (level.height - 1)
+            {
+                let (ux, uy) = (tx as usize, ty as usize);
+                if let Some(tile) = level.get_tile_mut(ux, uy)
+                    && tile.tile_type == TileType::Floor
+                {
+                    let trap_type = trap_types[rng.gen_range(0..trap_types.len())];
+                    tile.tile_type = TileType::Trap {
+                        detected: true,
+                        trap_type,
+                    };
+                    tile.remembered = true;
+                    created = true;
+                }
+            }
+        }
+    }
+    created
+}
+
+pub fn spell_recharge_item<R: rand::Rng>(
+    player: &mut Player,
+    num_charges: i32,
+    rng: &mut R,
+) -> (bool, String) {
+    if let Some(pos) = player
+        .inventory
+        .iter()
+        .position(|i| matches!(i.item_type, ItemType::Wand { .. } | ItemType::Staff { .. }))
+    {
+        let item = &mut player.inventory[pos];
+        let current_charges = match item.item_type {
+            ItemType::Wand { charges, .. } => charges as i32,
+            ItemType::Staff { charges, .. } => charges as i32,
+            _ => 0,
+        };
+        let depth = item.sub_category_id as i32;
+        let fail_chance = num_charges + 50 - depth - current_charges;
+        let failed = if fail_chance < 19 {
+            true
+        } else {
+            rng.gen_range(1..=(fail_chance / 10).max(1)) == 1
+        };
+
+        if failed {
+            let name = item.name.clone();
+            player.inventory.remove(pos);
+            (
+                true,
+                format!(
+                    "There is a bright flash of light! Your {} is destroyed!",
+                    name
+                ),
+            )
+        } else {
+            let divisor = (depth + 2).max(1);
+            let added_base = (num_charges / divisor) + 1;
+            let added = 2 + rng.gen_range(1..=added_base.max(1)) as u32;
+            let name = item.name.clone();
+            match &mut item.item_type {
+                ItemType::Wand { charges, .. } => *charges += added,
+                ItemType::Staff { charges, .. } => *charges += added,
+                _ => {}
+            }
+            (
+                true,
+                format!(
+                    "A burst of magical energy recharges your {} (+{} charges)!",
+                    name, added
+                ),
+            )
+        }
+    } else {
+        (
+            false,
+            "You have no wands or staves to recharge.".to_string(),
+        )
+    }
+}
+
+pub fn spell_mass_genocide(player: &Player, monsters: &mut Vec<Monster>) -> (usize, String) {
+    let mut killed = 0;
+    monsters.retain(|m| {
+        let dy = (player.y as isize - m.y as isize).abs();
+        let dx = (player.x as isize - m.x as isize).abs();
+        let dist = ((dy + dx) * 2 - dx.min(dy)) / 2;
+        if dist <= 20 && !m.is_win_creature() {
+            killed += 1;
+            false
+        } else {
+            true
+        }
+    });
+    (
+        killed,
+        "A cosmic flash annihilates nearby creatures!".to_string(),
+    )
+}
+
+pub fn spell_genocide(
+    symbol: char,
+    _player: &Player,
+    monsters: &mut Vec<Monster>,
+) -> (usize, String) {
+    let mut killed = 0;
+    let mut win_unaffected = false;
+    monsters.retain(|m| {
+        if m.symbol == symbol {
+            if m.is_win_creature() {
+                win_unaffected = true;
+                true
+            } else {
+                killed += 1;
+                false
+            }
+        } else {
+            true
+        }
+    });
+    let mut msg = format!(
+        "Annihilated {} creatures of type '{}' across the level!",
+        killed, symbol
+    );
+    if win_unaffected {
+        msg.push_str(" The Balrog is unaffected.");
+    }
+    (killed, msg)
+}
+
+pub fn spell_teleport_level<R: rand::Rng>(current_depth: u32, rng: &mut R) -> u32 {
+    let offset = -3 + 2 * rng.gen_range(1..=2);
+    (current_depth as i32 + offset).max(1) as u32
+}
+
+pub fn quaff_potion<R: rand::Rng>(
+    item: &Item,
+    player: &mut Player,
+    _level: &mut DungeonLevel,
+    _monsters: &mut Vec<Monster>,
+    rng: &mut R,
+    status_msg: &mut String,
+) -> bool {
+    let mut flags = item.flags;
+    let mut cat = item.category_id;
+    if flags == 0
+        && let Some(def) = GAME_OBJECTS
+            .iter()
+            .find(|o| o.name.eq_ignore_ascii_case(&item.name))
+    {
+        flags = def.flags;
+        cat = def.category_id;
+    }
+    if flags == 0 {
+        let nl = item.name.to_lowercase();
+        if nl.contains("cure light") {
+            flags = 1 << 12;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("cure serious") {
+            flags = 1 << 13;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("cure critical") {
+            flags = 1 << 14;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("healing") {
+            flags = 1 << 15;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("speed") || nl.contains("haste") {
+            flags = 1 << 22;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("heroism") {
+            flags = 1 << 4;
+            cat = TV_POTION2;
+        } else if nl.contains("restore strength") {
+            flags = 1 << 2;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("restore intelligence") {
+            flags = 1 << 5;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("restore wisdom") {
+            flags = 1 << 8;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("restore charisma") {
+            flags = 1 << 11;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("restore dexterity") {
+            flags = 1 << 26;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        } else if nl.contains("restore constitution") {
+            flags = 1 << 27;
+            cat = crate::entity::treasure_data::TV_POTION1;
+        }
+    }
+
+    let mut msgs = Vec::new();
+    let mut item_flags = flags;
+    while item_flags != 0 {
+        let bit = item_flags.trailing_zeros();
+        item_flags &= !(1 << bit);
+        let mut potion_id = bit + 1;
+        if cat == TV_POTION2 {
+            potion_id += 32;
+        }
+
+        match potion_id {
+            1 => {
+                if player.increase_stat(0, rng) {
+                    msgs.push("Wow! What bulging muscles!".to_string());
+                }
+            }
+            2 => {
+                if player.drain_stat(0, rng) {
+                    msgs.push("You feel your strength draining away.".to_string());
+                }
+            }
+            3 => {
+                if player.restore_stat(0) {
+                    msgs.push("You feel warm all over.".to_string());
+                }
+            }
+            4 => {
+                if player.increase_stat(1, rng) {
+                    msgs.push("Aren't you brilliant!".to_string());
+                }
+            }
+            5 => {
+                if player.drain_stat(1, rng) {
+                    msgs.push("Your mind feels fuzzy and dull.".to_string());
+                }
+            }
+            6 => {
+                if player.restore_stat(1) {
+                    msgs.push("You have a warm feeling.".to_string());
+                }
+            }
+            7 => {
+                if player.increase_stat(2, rng) {
+                    msgs.push("You suddenly have a profound thought!".to_string());
+                }
+            }
+            8 => {
+                if player.drain_stat(2, rng) {
+                    msgs.push("You feel naive and foolish.".to_string());
+                }
+            }
+            9 => {
+                if player.restore_stat(2) {
+                    msgs.push("You feel your wisdom returning.".to_string());
+                }
+            }
+            10 => {
+                if player.increase_stat(5, rng) {
+                    msgs.push("Gee, ain't you cute!".to_string());
+                }
+            }
+            11 => {
+                if player.drain_stat(5, rng) {
+                    msgs.push("You feel repulsive and hideous.".to_string());
+                }
+            }
+            12 => {
+                if player.restore_stat(5) {
+                    msgs.push("You feel your looks returning.".to_string());
+                }
+            }
+            13 => {
+                let heal = Dice::new(2, 7).roll(rng) as i32;
+                player.hp = (player.hp + heal).min(player.max_hp);
+                msgs.push(format!("You feel a little better. Healed {} HP.", heal));
+            }
+            14 => {
+                let heal = Dice::new(4, 7).roll(rng) as i32;
+                player.hp = (player.hp + heal).min(player.max_hp);
+                msgs.push(format!("You feel much better. Healed {} HP.", heal));
+            }
+            15 => {
+                let heal = Dice::new(6, 7).roll(rng) as i32;
+                player.hp = (player.hp + heal).min(player.max_hp);
+                msgs.push(format!("You feel very healthy! Healed {} HP.", heal));
+            }
+            16 => {
+                player.hp = (player.hp + 1000).min(player.max_hp);
+                player.flags.blind = 0;
+                player.flags.afraid = 0;
+                player.flags.poisoned = 0;
+                player.flags.confused = 0;
+                msgs.push("You feel completely healed and rejuvenated!".to_string());
+            }
+            17 => {
+                if player.increase_stat(4, rng) {
+                    msgs.push("You feel tingly for a moment.".to_string());
+                }
+            }
+            18 => {
+                let gain = ((player.exp / 2) + 10).min(100_000);
+                player.add_experience(gain);
+                msgs.push("You feel more experienced.".to_string());
+            }
+            19 => {
+                if !player.flags.free_action {
+                    let sleep_dur = rng.gen_range(1..=4) + 4;
+                    player.flags.paralysis += sleep_dur;
+                    msgs.push("You fall asleep.".to_string());
+                }
+            }
+            20 => {
+                if player.flags.blind == 0 {
+                    msgs.push("You are covered by a veil of darkness.".to_string());
+                }
+                player.flags.blind += rng.gen_range(1..=100) + 100;
+            }
+            21 => {
+                if player.flags.confused == 0 {
+                    msgs.push("Hey! This is good stuff! *Hick!*".to_string());
+                }
+                player.flags.confused += rng.gen_range(1..=20) + 12;
+            }
+            22 => {
+                if player.flags.poisoned == 0 {
+                    msgs.push("You feel very sick.".to_string());
+                }
+                player.flags.poisoned += rng.gen_range(1..=15) + 10;
+            }
+            23 => {
+                player.flags.fast += rng.gen_range(15..=40);
+                msgs.push("You feel yourself moving faster!".to_string());
+            }
+            24 => {
+                player.flags.slow += rng.gen_range(15..=40);
+                msgs.push("You feel yourself moving slower!".to_string());
+            }
+            26 => {
+                if player.increase_stat(3, rng) {
+                    msgs.push("You feel more limber!".to_string());
+                }
+            }
+            27 => {
+                if player.restore_stat(3) {
+                    msgs.push("You feel less clumsy.".to_string());
+                }
+            }
+            28 => {
+                if player.restore_stat(4) {
+                    msgs.push("You feel your health returning!".to_string());
+                }
+            }
+            29 => {
+                player.flags.blind = 0;
+                msgs.push("Your vision clears.".to_string());
+            }
+            30 => {
+                player.flags.confused = 0;
+                msgs.push("You feel less confused.".to_string());
+            }
+            31 => {
+                player.flags.poisoned = 0;
+                msgs.push("The poison leaves your veins.".to_string());
+            }
+            34 => {
+                if player.exp > 0 {
+                    let loss = player.exp / 5 + rng.gen_range(0..=(player.exp / 5));
+                    player.lose_experience(loss);
+                    msgs.push("You feel your memories fade.".to_string());
+                }
+            }
+            35 => {
+                player.flags.poisoned = 0;
+                if player.food > 150 {
+                    player.food = 150;
+                }
+                player.flags.paralysis = 4;
+                msgs.push("The potion makes you vomit!".to_string());
+            }
+            36 => {
+                player.flags.invulnerability += rng.gen_range(10..=20);
+                msgs.push("You feel completely invulnerable!".to_string());
+            }
+            37 => {
+                player.flags.afraid = 0;
+                player.flags.heroism += rng.gen_range(25..=50);
+                msgs.push("You feel like a hero!".to_string());
+            }
+            38 => {
+                player.flags.afraid = 0;
+                player.flags.super_heroism += rng.gen_range(25..=50);
+                msgs.push("You feel like a SUPER hero!".to_string());
+            }
+            39 => {
+                player.flags.afraid = 0;
+                msgs.push("Fear leaves your heart.".to_string());
+            }
+            40 => {
+                if player.restore_life_levels() {
+                    msgs.push("You feel your lost life energies returning!".to_string());
+                }
+            }
+            41 => {
+                player.flags.heat_resistance += rng.gen_range(10..=20);
+                msgs.push("You feel resistant to heat.".to_string());
+            }
+            42 => {
+                player.flags.cold_resistance += rng.gen_range(10..=20);
+                msgs.push("You feel resistant to cold.".to_string());
+            }
+            43 => {
+                player.flags.detect_invisible += rng.gen_range(12..=24);
+                player.flags.see_invisible = true;
+                msgs.push("Your eyes tingle; you can see invisible creatures!".to_string());
+            }
+            44 => {
+                player.flags.poisoned /= 2;
+                msgs.push("The poison in your veins slows down.".to_string());
+            }
+            45 => {
+                player.flags.poisoned = 0;
+                msgs.push("The poison leaves your veins.".to_string());
+            }
+            46 => {
+                if player.mana < player.max_mana {
+                    player.mana = player.max_mana;
+                    msgs.push("You feel your head clear and mana fully restored.".to_string());
+                }
+            }
+            47 => {
+                player.flags.timed_infra += 100 + rng.gen_range(1..=100);
+                msgs.push("Your eyes begin to tingle.".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    if msgs.is_empty() {
+        *status_msg = format!("You quaffed {}. Nothing seems to happen.", item.name);
+    } else {
+        *status_msg = format!("You quaffed {}! {}", item.name, msgs.join(" "));
+    }
+    true
+}
+
+pub fn read_scroll<R: rand::Rng>(
+    item: &Item,
+    player: &mut Player,
+    level: &mut DungeonLevel,
+    monsters: &mut Vec<Monster>,
+    rng: &mut R,
+    status_msg: &mut String,
+) -> bool {
+    let mut flags = item.flags;
+    let mut cat = item.category_id;
+    if flags == 0
+        && let Some(def) = GAME_OBJECTS
+            .iter()
+            .find(|o| o.name.eq_ignore_ascii_case(&item.name))
+    {
+        flags = def.flags;
+        cat = def.category_id;
+    }
+    if flags == 0 {
+        let nl = item.name.to_lowercase();
+        if nl.contains("phase door") {
+            flags = 1 << 7;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("teleport level") {
+            flags = 1 << 9;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("teleport") {
+            flags = 1 << 8;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("identify") {
+            flags = 1 << 3;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("recall") {
+            flags = 1 << 8;
+            cat = TV_SCROLL2;
+        } else if nl.contains("light") {
+            flags = 1 << 5;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("mapping") {
+            flags = 1 << 11;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("blessing") {
+            flags = 1 << 5;
+            cat = TV_SCROLL2;
+        } else if nl.contains("chant") {
+            flags = 1 << 6;
+            cat = TV_SCROLL2;
+        } else if nl.contains("prayer") {
+            flags = 1 << 7;
+            cat = TV_SCROLL2;
+        } else if nl.contains("genocide") {
+            flags = 1 << 25;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("mass genocide") {
+            flags = 1 << 18;
+            cat = crate::entity::treasure_data::TV_SCROLL1;
+        } else if nl.contains("destruction") {
+            flags = 1 << 9;
+            cat = TV_SCROLL2;
+        }
+    }
+
+    let mut msgs = Vec::new();
+    let mut item_flags = flags;
+    while item_flags != 0 {
+        let bit = item_flags.trailing_zeros();
+        item_flags &= !(1 << bit);
+        let mut scroll_type = bit + 1;
+        if cat == TV_SCROLL2 {
+            scroll_type += 32;
+        }
+
+        match scroll_type {
+            1 => {
+                if let Some(wield) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| e.equipped_slot.as_deref() == Some("Wielding"))
+                {
+                    let chance = if wield.to_hit > 0 {
+                        (50 - wield.to_hit as i32 * 5).max(5)
+                    } else {
+                        100
+                    };
+                    if rng.gen_range(1..=100) <= chance {
+                        wield.to_hit += 1;
+                        wield.is_cursed = false;
+                        msgs.push(format!(
+                            "Your {} glows faintly! To-hit increased to (+{}).",
+                            wield.name, wield.to_hit
+                        ));
+                    } else {
+                        msgs.push("The enchantment fails.".to_string());
+                    }
+                } else {
+                    msgs.push("You are not wielding a weapon.".to_string());
+                }
+            }
+            2 => {
+                if let Some(wield) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| e.equipped_slot.as_deref() == Some("Wielding"))
+                {
+                    let chance = if wield.to_damage > 0 {
+                        (50 - wield.to_damage as i32 * 5).max(5)
+                    } else {
+                        100
+                    };
+                    if rng.gen_range(1..=100) <= chance {
+                        wield.to_damage += 1;
+                        wield.is_cursed = false;
+                        msgs.push(format!(
+                            "Your {} glows faintly! Damage increased to (+{}).",
+                            wield.name, wield.to_damage
+                        ));
+                    } else {
+                        msgs.push("The enchantment fails.".to_string());
+                    }
+                } else {
+                    msgs.push("You are not wielding a weapon.".to_string());
+                }
+            }
+            3 => {
+                if let Some(armor) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| matches!(e.item_type, ItemType::Armor { .. }))
+                {
+                    let chance = if armor.to_ac > 0 {
+                        (50 - armor.to_ac as i32 * 5).max(5)
+                    } else {
+                        100
+                    };
+                    if rng.gen_range(1..=100) <= chance {
+                        armor.to_ac += 1;
+                        armor.is_cursed = false;
+                        msgs.push(format!(
+                            "Your {} glows faintly! AC increased to [{:+}].",
+                            armor.name, armor.to_ac
+                        ));
+                    } else {
+                        msgs.push("The enchantment fails.".to_string());
+                    }
+                } else {
+                    msgs.push("You are not wearing any armor.".to_string());
+                }
+            }
+            4 => {
+                if let Some(unid) = player.inventory.iter_mut().find(|i| !i.identified) {
+                    unid.identified = true;
+                    msgs.push(format!("You identify the {}!", unid.name));
+                } else {
+                    msgs.push("All your items are already identified.".to_string());
+                }
+            }
+            5 => {
+                let mut uncursed = 0;
+                for eq in &mut player.equipment {
+                    if eq.is_cursed {
+                        eq.is_cursed = false;
+                        uncursed += 1;
+                    }
+                }
+                if uncursed > 0 {
+                    msgs.push(
+                        "You feel as if someone is watching over you. Curses lifted!".to_string(),
+                    );
+                } else {
+                    msgs.push("You feel as if someone is watching over you.".to_string());
+                }
+            }
+            6 => {
+                level.illuminate_area(player.x, player.y, 3);
+                msgs.push("Brilliant light illuminates the area.".to_string());
+            }
+            7 => {
+                let count = rng.gen_range(1..=3);
+                for _ in 0..count {
+                    let (sx, sy) = level.find_random_floor_tile_near(player.x, player.y, 3);
+                    let c_idx =
+                        crate::entity::monster_data::get_monster_for_level(level.depth, rng);
+                    monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
+                }
+                msgs.push("You hear footsteps approaching from the shadows!".to_string());
+            }
+            8 => {
+                let dest = level.find_random_floor_tile_near(player.x, player.y, 10);
+                player.move_to(dest.0, dest.1);
+                msgs.push("You phase door across short distance!".to_string());
+            }
+            9 => {
+                let dest = level.find_random_floor_tile();
+                player.move_to(dest.0, dest.1);
+                msgs.push("You teleport across the level!".to_string());
+            }
+            10 => {
+                let offset = -3 + 2 * rng.gen_range(1..=2);
+                let new_depth = (level.depth as i32 + offset).max(1) as u32;
+                level.depth = new_depth;
+                msgs.push(format!(
+                    "You sink through the floor and warp to dungeon level {}!",
+                    new_depth
+                ));
+            }
+            11 => {
+                player.flags.confuse_monster = true;
+                msgs.push("Your hands begin to glow with confusing energy.".to_string());
+            }
+            12 => {
+                level.map_area(player.x, player.y, 50);
+                msgs.push("A map of the surroundings flashes into your mind.".to_string());
+            }
+            13 => {
+                let mut count = 0;
+                for m in monsters.iter_mut() {
+                    let dist = (m.x as isize - player.x as isize)
+                        .abs()
+                        .max((m.y as isize - player.y as isize).abs());
+                    if dist <= 10 {
+                        m.asleep += rng.gen_range(5..=15);
+                        count += 1;
+                    }
+                }
+                msgs.push(format!(
+                    "A sleep fog blankets {} surrounding monsters!",
+                    count
+                ));
+            }
+            14 => {
+                level.place_glyph_of_warding(player.x, player.y);
+                msgs.push("You trace a glowing holy Glyph of Warding upon the floor!".to_string());
+            }
+            15 => {
+                let count = level.detect_treasures_near(player.x, player.y, 25);
+                msgs.push(format!("You sense {} precious treasures nearby.", count));
+            }
+            16 => {
+                let count = level.items.len();
+                msgs.push(format!("You sense {} objects on the level.", count));
+            }
+            17 => {
+                let count = level.detect_traps_near(player.x, player.y, 20);
+                msgs.push(format!("You sense {} traps in the vicinity.", count));
+            }
+            18 => {
+                let count = level.detect_doors_and_stairs_near(player.x, player.y, 20);
+                msgs.push(format!(
+                    "You sense {} secret doors and stairs in the vicinity.",
+                    count
+                ));
+            }
+            19 => {
+                let (count, mmsg) = spell_mass_genocide(player, monsters);
+                msgs.push(format!("{} ({} destroyed)", mmsg, count));
+            }
+            20 => {
+                player.flags.detect_invisible += rng.gen_range(12..=24);
+                player.flags.see_invisible = true;
+                msgs.push("Your eyes tingle; you can see invisible creatures!".to_string());
+            }
+            21 => {
+                for m in monsters.iter_mut() {
+                    m.asleep = 0;
+                    m.was_attacked = true;
+                }
+                msgs.push(
+                    "There is a high pitched humming noise! All monsters awaken!".to_string(),
+                );
+            }
+            22 => {
+                spell_surround_player_with_traps(player, level, rng);
+                msgs.push("You hear clicking and grinding! Traps surround you!".to_string());
+            }
+            23 => {
+                let count = level.destroy_adjacent_doors_and_traps(player.x, player.y);
+                msgs.push(format!(
+                    "A flash of energy destroys {} adjacent doors and traps.",
+                    count
+                ));
+            }
+            24 => {
+                spell_surround_player_with_doors(player, level);
+                msgs.push("Heavy stone doors slam shut all around you!".to_string());
+            }
+            25 => {
+                let (_, rmsg) = spell_recharge_item(player, 60, rng);
+                msgs.push(rmsg);
+            }
+            26 => {
+                let (count, gmsg) = spell_genocide('o', player, monsters);
+                msgs.push(format!("{} ({} destroyed)", gmsg, count));
+            }
+            27 => {
+                msgs.push("Darkness envelops the area!".to_string());
+            }
+            28 => {
+                player.flags.protect_evil += rng.gen_range(1..=25) + 3 * player.level as i16;
+                msgs.push("A divine barrier rises to repel evil creatures!".to_string());
+            }
+            29 => {
+                player.inventory.push(Item::new(
+                    "Ration of Food",
+                    1,
+                    20,
+                    ItemType::Food { nutrition: 5000 },
+                ));
+                msgs.push("A nutritious ration of food appears in your pack!".to_string());
+            }
+            30 => {
+                let mut count = 0;
+                let mut killed = Vec::new();
+                for (idx, m) in monsters.iter_mut().enumerate() {
+                    if (m.defenses() & crate::entity::monster_data::CD_UNDEAD) != 0 {
+                        m.was_attacked = true;
+                        m.asleep = 0;
+                        count += 1;
+                        if m.take_damage(60) {
+                            killed.push(idx);
+                        }
+                    }
+                }
+                for &idx in killed.iter().rev() {
+                    player
+                        .gain_kill_experience(monsters[idx].experience_reward, monsters[idx].level);
+                    monsters.remove(idx);
+                }
+                msgs.push(format!(
+                    "Holy radiance dispels the undead! Affected {}, killed {}.",
+                    count,
+                    killed.len()
+                ));
+            }
+            33 => {
+                if let Some(wield) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| e.equipped_slot.as_deref() == Some("Wielding"))
+                {
+                    for _ in 0..2 {
+                        let c = if wield.to_hit > 0 {
+                            (50 - wield.to_hit as i32 * 5).max(5)
+                        } else {
+                            100
+                        };
+                        if rng.gen_range(1..=100) <= c {
+                            wield.to_hit += 1;
+                        }
+                        let cd = if wield.to_damage > 0 {
+                            (50 - wield.to_damage as i32 * 5).max(5)
+                        } else {
+                            100
+                        };
+                        if rng.gen_range(1..=100) <= cd {
+                            wield.to_damage += 1;
+                        }
+                    }
+                    wield.is_cursed = false;
+                    msgs.push(format!(
+                        "Your {} glows brilliantly! (+{},+{})",
+                        wield.name, wield.to_hit, wield.to_damage
+                    ));
+                } else {
+                    msgs.push("You are not wielding a weapon.".to_string());
+                }
+            }
+            34 => {
+                if let Some(wield) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| e.equipped_slot.as_deref() == Some("Wielding"))
+                {
+                    wield.is_cursed = true;
+                    wield.to_hit = -(rng.gen_range(1..=5) + rng.gen_range(1..=5));
+                    wield.to_damage = -(rng.gen_range(1..=5) + rng.gen_range(1..=5));
+                    msgs.push(format!(
+                        "Your {} glows black and fades! It is cursed!",
+                        wield.name
+                    ));
+                }
+            }
+            35 => {
+                if let Some(armor) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| matches!(e.item_type, ItemType::Armor { .. }))
+                {
+                    let attempts = rng.gen_range(1..=3);
+                    for _ in 0..attempts {
+                        let c = if armor.to_ac > 0 {
+                            (50 - armor.to_ac as i32 * 5).max(5)
+                        } else {
+                            100
+                        };
+                        if rng.gen_range(1..=100) <= c {
+                            armor.to_ac += 1;
+                        }
+                    }
+                    armor.is_cursed = false;
+                    msgs.push(format!(
+                        "Your {} glows brightly! [{:+}]",
+                        armor.name, armor.to_ac
+                    ));
+                }
+            }
+            36 => {
+                if let Some(armor) = player
+                    .equipment
+                    .iter_mut()
+                    .find(|e| matches!(e.item_type, ItemType::Armor { .. }))
+                {
+                    armor.is_cursed = true;
+                    armor.to_ac = -(rng.gen_range(1..=5) + rng.gen_range(1..=5));
+                    msgs.push(format!("Your {} glows black! It is cursed!", armor.name));
+                }
+            }
+            37 => {
+                let count = rng.gen_range(1..=3);
+                for _ in 0..count {
+                    let (sx, sy) = level.find_random_floor_tile_near(player.x, player.y, 3);
+                    monsters.push(Monster::from_creature_id(40, sx, sy, false, rng));
+                }
+                msgs.push("Cold dread fills the air as undead rise!".to_string());
+            }
+            38 => {
+                player.flags.blessed += rng.gen_range(1..=12) + 6;
+                msgs.push("You feel a righteous blessing descend upon you!".to_string());
+            }
+            39 => {
+                player.flags.blessed += rng.gen_range(1..=24) + 12;
+                msgs.push("A sacred chant echoes around you, conferring divine favor!".to_string());
+            }
+            40 => {
+                player.flags.blessed += rng.gen_range(1..=48) + 24;
+                msgs.push("A profound holy prayer fills your soul with divine power!".to_string());
+            }
+            41 => {
+                if player.flags.word_of_recall == 0 {
+                    player.flags.word_of_recall = 25 + rng.gen_range(1..=30);
+                    msgs.push("The air about you becomes charged...".to_string());
+                } else {
+                    player.flags.word_of_recall = 0;
+                    msgs.push("A tension leaves the air around you.".to_string());
+                }
+            }
+            42 => {
+                level.destroy_area(player.x, player.y, 12);
+                msgs.push("The dungeon dissolves into raw stone and rubble!".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    if msgs.is_empty() {
+        *status_msg = format!("You read {}. Nothing seems to happen.", item.name);
+    } else {
+        *status_msg = format!("You read {}! {}", item.name, msgs.join(" "));
+    }
+    true
 }
 
 #[cfg(test)]
@@ -2567,6 +3571,7 @@ mod tests {
         // Bolt towards East (dx=1, dy=0)
         cast_spell_bolt(
             "Magic Missile",
+            MagicSpellType::MagicMissile,
             1,
             0,
             15,
@@ -2576,7 +3581,7 @@ mod tests {
             &mut msg,
         );
         assert!(monsters.is_empty(), "Monster should be killed by 15 damage");
-        assert!(msg.contains("destroyed it"));
+        assert!(msg.contains("dies in a fit of agony") || msg.contains("destroyed"));
     }
 
     #[test]
@@ -2656,20 +3661,21 @@ mod tests {
         ];
         let mut msg = String::new();
 
-        // Fire ball towards East at radius 2, damage 30
+        // Fire ball towards East at radius 2, base damage 50
         cast_spell_ball(
             "Fire Ball",
+            MagicSpellType::Fire,
             1,
             0,
             2,
-            30,
+            50,
             &mut player,
             &mut level,
             &mut monsters,
             &mut msg,
         );
 
-        // Both goblins within radius 2 of impact at (7, 5) should take 30 dmg and die
+        // Both goblins within radius 2 of impact at (7, 5) should take sufficient decayed damage and die
         assert!(
             monsters.is_empty(),
             "Both goblins should be killed by area blast"
@@ -2734,5 +3740,223 @@ mod tests {
             TileType::GlyphOfWarding
         );
         assert!(msg.contains("Glyph of Warding"));
+    }
+
+    #[test]
+    fn test_elemental_weakness_and_resistance() {
+        let mut level = DungeonLevel::new(40, 20, 1, 50);
+        level.generate_simple_floor();
+        let mut player = Player::new("Tester", Race::Human, Class::Mage, 5, 5);
+
+        // Monster A has CD_FIRE defense weakness (Blubbering Icky-Thing)
+        let monster_weak =
+            Monster::new("Blubbering Icky-Thing", 'i', 6, 5, 100, Dice::new(1, 4), 10);
+        assert_ne!(monster_weak.defenses() & CD_FIRE, 0);
+
+        // Monster B has CS_BR_FIRE spell resistance (Young Red Dragon)
+        let monster_resist = Monster::new("Young Red Dragon", 'd', 6, 5, 100, Dice::new(1, 4), 10);
+        assert_ne!(monster_resist.spells() & CS_BR_FIRE, 0);
+
+        let mut monsters = vec![monster_weak];
+        let mut msg = String::new();
+
+        // Base damage 20 with Fire bolt against fire-weak monster: 20 * 2 = 40 damage (HP 100 -> 60)
+        cast_spell_bolt(
+            "Fire Bolt",
+            MagicSpellType::Fire,
+            1,
+            0,
+            20,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut msg,
+        );
+        assert_eq!(
+            monsters[0].hp, 60,
+            "Fire weakness should double bolt damage to 40"
+        );
+
+        // Fire bolt against fire-resistant monster: 20 / 4 = 5 damage (HP 100 -> 95)
+        monsters = vec![monster_resist];
+        msg.clear();
+        cast_spell_bolt(
+            "Fire Bolt",
+            MagicSpellType::Fire,
+            1,
+            0,
+            20,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut msg,
+        );
+        assert_eq!(
+            monsters[0].hp, 95,
+            "Fire resistance should quarter bolt damage to 5"
+        );
+    }
+
+    #[test]
+    fn test_canonical_quaff_potions() {
+        let mut level = DungeonLevel::new(40, 20, 1, 50);
+        level.generate_simple_floor();
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 5, 5);
+        let mut monsters = Vec::new();
+        let mut rng = rand::thread_rng();
+        let mut msg = String::new();
+
+        // 1. Potion of Cure Poison (potion_id 45 -> bit 12 of TV_POTION2)
+        player.flags.poisoned = 50;
+        let potion_cure_poison = Item {
+            name: "Potion of Cure Poison".to_string(),
+            count: 1,
+            weight: 4,
+            category_id: TV_POTION2,
+            flags: 1 << 12,
+            ..Item::new(
+                "Potion of Cure Poison",
+                1,
+                10,
+                ItemType::Potion { heal_amount: 0 },
+            )
+        };
+        quaff_potion(
+            &potion_cure_poison,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+        assert_eq!(player.flags.poisoned, 0);
+        assert!(msg.contains("leaves your veins"));
+
+        // 2. Potion of Speed (potion_id 23 -> bit 22 of TV_POTION1)
+        player.flags.fast = 0;
+        let potion_speed = Item {
+            name: "Potion of Speed".to_string(),
+            count: 1,
+            weight: 4,
+            category_id: crate::entity::treasure_data::TV_POTION1,
+            flags: 1 << 22,
+            ..Item::new(
+                "Potion of Speed",
+                1,
+                10,
+                ItemType::Potion { heal_amount: 0 },
+            )
+        };
+        quaff_potion(
+            &potion_speed,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+        assert!(player.flags.fast > 0);
+        assert!(msg.contains("moving faster"));
+
+        // 3. Multi-bitflag potion (Restore Strength bit 2 + Speed bit 22)
+        player.stats.strength = 10;
+        player.max_stats.strength = 16;
+        player.flags.fast = 0;
+        let multi_potion = Item {
+            name: "Multi Potion".to_string(),
+            count: 1,
+            weight: 4,
+            category_id: crate::entity::treasure_data::TV_POTION1,
+            flags: (1 << 2) | (1 << 22),
+            ..Item::new("Multi Potion", 1, 10, ItemType::Potion { heal_amount: 0 })
+        };
+        quaff_potion(
+            &multi_potion,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+        assert_eq!(player.stats.strength, 16);
+        assert!(player.flags.fast > 0);
+    }
+
+    #[test]
+    fn test_canonical_read_scrolls() {
+        let mut level = DungeonLevel::new(40, 20, 1, 50);
+        level.generate_simple_floor();
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 5, 5);
+        let mut monsters = Vec::new();
+        let mut rng = rand::thread_rng();
+        let mut msg = String::new();
+
+        // 1. Word of Recall scroll (scroll_id 40 -> bit 8 of TV_SCROLL2)
+        player.flags.word_of_recall = 0;
+        let recall_scroll = Item {
+            name: "Scroll of Word of Recall".to_string(),
+            count: 1,
+            weight: 4,
+            category_id: TV_SCROLL2,
+            flags: 1 << 8,
+            ..Item::new(
+                "Scroll of Word of Recall",
+                1,
+                10,
+                ItemType::Scroll { teleport: false },
+            )
+        };
+        read_scroll(
+            &recall_scroll,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+        assert!(player.flags.word_of_recall >= 25);
+        assert!(msg.contains("air about you becomes charged"));
+
+        // 2. Enchant Weapon To-Hit (scroll_id 1 -> bit 0 of TV_SCROLL1)
+        let mut sword = Item::new(
+            "Broadsword",
+            1,
+            100,
+            ItemType::Weapon {
+                damage: Dice::new(2, 5),
+            },
+        );
+        sword.equipped_slot = Some("Wielding".to_string());
+        sword.to_hit = 0;
+        player.equipment.push(sword);
+
+        let enchant_hit_scroll = Item {
+            name: "Scroll of Enchant Weapon To-Hit".to_string(),
+            count: 1,
+            weight: 4,
+            category_id: crate::entity::treasure_data::TV_SCROLL1,
+            flags: 1 << 0,
+            ..Item::new(
+                "Scroll of Enchant Weapon To-Hit",
+                1,
+                10,
+                ItemType::Scroll { teleport: false },
+            )
+        };
+        read_scroll(
+            &enchant_hit_scroll,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+        let wield = player
+            .equipment
+            .iter()
+            .find(|e| e.equipped_slot.as_deref() == Some("Wielding"))
+            .unwrap();
+        assert_eq!(wield.to_hit, 1);
+        assert!(msg.contains("glows faintly"));
     }
 }

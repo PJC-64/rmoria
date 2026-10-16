@@ -1725,6 +1725,51 @@ impl DungeonLevel {
         count
     }
 
+    pub fn detect_treasures_near(
+        &mut self,
+        center_x: usize,
+        center_y: usize,
+        radius: usize,
+    ) -> usize {
+        let item_coords: Vec<(usize, usize)> = self
+            .items
+            .iter()
+            .map(|i| (i.x, i.y))
+            .filter(|&(ix, iy)| {
+                (ix as isize - center_x as isize)
+                    .abs()
+                    .max((iy as isize - center_y as isize).abs())
+                    <= radius as isize
+            })
+            .collect();
+        let mut count = item_coords.len();
+        for (ix, iy) in item_coords {
+            if let Some(tile) = self.get_tile_mut(ix, iy) {
+                tile.remembered = true;
+            }
+        }
+        for dy in -(radius as isize)..=(radius as isize) {
+            for dx in -(radius as isize)..=(radius as isize) {
+                let tx = center_x as isize + dx;
+                let ty = center_y as isize + dy;
+                if tx >= 0
+                    && ty >= 0
+                    && (tx as usize) < self.width
+                    && (ty as usize) < self.height
+                    && let Some(tile) = self.get_tile_mut(tx as usize, ty as usize)
+                    && matches!(
+                        tile.tile_type,
+                        TileType::MagmaVein { gold: true } | TileType::QuartzVein { gold: true }
+                    )
+                {
+                    tile.remembered = true;
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
     pub fn destroy_adjacent_doors_and_traps(&mut self, center_x: usize, center_y: usize) -> usize {
         let mut count = 0;
         for dy in -1..=1 {

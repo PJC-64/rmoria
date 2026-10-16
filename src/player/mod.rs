@@ -679,6 +679,8 @@ pub struct Player {
     pub equipment: Vec<Item>,
     pub balrog_killed: bool,
     #[serde(default)]
+    pub total_winner: bool,
+    #[serde(default)]
     pub searching: bool,
     #[serde(default)]
     pub is_wizard: bool,
@@ -1267,6 +1269,7 @@ impl Player {
             },
             equipment: Vec::new(),
             balrog_killed: false,
+            total_winner: false,
             searching: false,
             is_wizard: false,
             killed_town_npcs: 0,
@@ -2281,6 +2284,7 @@ impl Player {
             return false;
         }
         self.exp += amount;
+        self.max_exp = self.max_exp.max(self.exp);
 
         let mut leveled_up = false;
         while self.level < 40 {
@@ -2298,6 +2302,59 @@ impl Player {
             self.hp = self.max_hp;
         }
         leveled_up
+    }
+
+    pub fn gain_kill_experience(&mut self, kill_exp: u32, monster_level: u8) -> bool {
+        if kill_exp == 0 || self.level == 0 {
+            return false;
+        }
+        let exp = (kill_exp as u64) * (monster_level.max(1) as u64);
+        let player_lvl = self.level as u64;
+        let mut quotient = exp / player_lvl;
+        let remainder = exp % player_lvl;
+        let frac = (remainder * 0x10000) / player_lvl + (self.exp_fraction as u64);
+        if frac >= 0x10000 {
+            quotient += 1;
+            self.exp_fraction = (frac - 0x10000) as u16;
+        } else {
+            self.exp_fraction = frac as u16;
+        }
+        self.add_experience(quotient as u32)
+    }
+
+    pub fn lose_experience(&mut self, amount: u32) -> bool {
+        if self.exp == 0 {
+            return false;
+        }
+        self.exp = self.exp.saturating_sub(amount);
+        let mut level_lost = false;
+        while self.level > 1 {
+            let prev_req = (BASE_EXP_LEVELS[(self.level - 2) as usize] as u64
+                * self.exp_factor as u64
+                / 100) as u32;
+            if self.exp < prev_req {
+                self.level -= 1;
+                level_lost = true;
+            } else {
+                break;
+            }
+        }
+        if level_lost {
+            self.update_max_hp_and_mana();
+            self.hp = self.hp.min(self.max_hp);
+            self.mana = self.mana.min(self.max_mana);
+        }
+        true
+    }
+
+    pub fn restore_life_levels(&mut self) -> bool {
+        if self.exp < self.max_exp {
+            let diff = self.max_exp - self.exp;
+            self.add_experience(diff);
+            true
+        } else {
+            false
+        }
     }
 
     pub const BLOWS_TABLE: [[u8; 6]; 7] = [
@@ -3583,57 +3640,26 @@ mod tests {
     }
 
     #[test]
-    fn test_town_npc_pacifism() {
-        let player = Player::new("TestPlayer", Race::Human, Class::Warrior, 10, 10);
-        let mut monster = crate::entity::monster::Monster::new(
-            "Filthy Street Urchin",
-            'p',
-            11,
-            11,
-            6,
-            crate::dice::Dice::new(1, 2),
+    fn test_town_npc_canonical_stats_and_zero_exp() {
+        let urchin = crate::entity::monster::Monster::from_creature_id(
             0,
+            11,
+            11,
+            false,
+            &mut rand::thread_rng(),
         );
+        assert_eq!(urchin.experience_reward, 0);
+        assert_eq!(urchin.level, 0);
 
-        // Initially on town level (depth 0), the monster should not be hostile to player
-        let depth = 0;
-        let is_hostile = depth > 0
-            || monster.was_attacked
-            || player.killed_town_npcs > player.town_npc_attack_threshold;
-        assert!(
-            !is_hostile,
-            "Monster should be peaceful initially on town level"
+        let beggar = crate::entity::monster::Monster::from_creature_id(
+            2,
+            11,
+            11,
+            false,
+            &mut rand::thread_rng(),
         );
-
-        // If the depth > 0, the monster is always hostile
-        let deep_hostile = 1 > 0
-            || monster.was_attacked
-            || player.killed_town_npcs > player.town_npc_attack_threshold;
-        assert!(deep_hostile, "Monster should be hostile in the dungeon");
-
-        // If the monster is attacked, it becomes hostile
-        monster.was_attacked = true;
-        let attacked_hostile = depth > 0
-            || monster.was_attacked
-            || player.killed_town_npcs > player.town_npc_attack_threshold;
-        assert!(
-            attacked_hostile,
-            "Monster should be hostile after being attacked"
-        );
-
-        // Reset monster attacked flag
-        monster.was_attacked = false;
-
-        // If player has killed more than the threshold NPCs, the monster becomes hostile
-        let mut player_aggro = player.clone();
-        player_aggro.killed_town_npcs = player_aggro.town_npc_attack_threshold + 1;
-        let threshold_hostile = depth > 0
-            || monster.was_attacked
-            || player_aggro.killed_town_npcs > player_aggro.town_npc_attack_threshold;
-        assert!(
-            threshold_hostile,
-            "Monster should be hostile if player exceeded kill threshold"
-        );
+        assert_eq!(beggar.experience_reward, 0);
+        assert_eq!(beggar.level, 0);
     }
 
     #[test]
