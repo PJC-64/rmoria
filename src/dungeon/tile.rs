@@ -34,6 +34,7 @@ pub struct Tile {
     pub tile_type: TileType,
     pub visible: bool,
     pub remembered: bool,
+    pub is_lit: bool,
 }
 
 impl Tile {
@@ -42,6 +43,7 @@ impl Tile {
             tile_type,
             visible: false,
             remembered: false,
+            is_lit: false,
         }
     }
 

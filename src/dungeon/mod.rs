@@ -165,26 +165,34 @@ impl DungeonLevel {
         }
     }
 
-    fn carve_h_corridor(&mut self, x1: usize, x2: usize, y: usize) {
+    fn carve_h_corridor(&mut self, x1: usize, x2: usize, y: usize, is_lit: bool) {
         let start = x1.min(x2);
         let end = x1.max(x2);
         for x in start..=end {
+            let in_room = self.is_in_room(x, y);
             if let Some(tile) = self.get_tile_mut(x, y)
                 && tile.tile_type == TileType::Wall
             {
                 tile.tile_type = TileType::Floor;
+                if !in_room {
+                    tile.is_lit = is_lit;
+                }
             }
         }
     }
 
-    fn carve_v_corridor(&mut self, y1: usize, y2: usize, x: usize) {
+    fn carve_v_corridor(&mut self, y1: usize, y2: usize, x: usize, is_lit: bool) {
         let start = y1.min(y2);
         let end = y1.max(y2);
         for y in start..=end {
+            let in_room = self.is_in_room(x, y);
             if let Some(tile) = self.get_tile_mut(x, y)
                 && tile.tile_type == TileType::Wall
             {
                 tile.tile_type = TileType::Floor;
+                if !in_room {
+                    tile.is_lit = is_lit;
+                }
             }
         }
     }
@@ -404,6 +412,7 @@ impl DungeonLevel {
                 {
                     tile.visible = true;
                     tile.remembered = true;
+                    tile.is_lit = true;
                 }
             }
         }
@@ -594,6 +603,9 @@ impl DungeonLevel {
         if self.depth == 0 {
             // --- TOWN LEVEL GENERATION ---
             self.rooms.clear();
+            for tile in self.tiles.iter_mut() {
+                tile.is_lit = true;
+            }
             for y in 1..(self.height - 1) {
                 for x in 1..(self.width - 1) {
                     if let Some(tile) = self.get_tile_mut(x, y) {
@@ -725,16 +737,17 @@ impl DungeonLevel {
                 }
 
                 if !overlaps {
+                    let lit_chance = (1.0 - (self.depth as f64 / 10.0)).clamp(0.0, 1.0);
+                    let is_lit = rng.gen_bool(lit_chance);
+
                     for y in ry..(ry + h) {
                         for x in rx..(rx + w) {
                             if let Some(tile) = self.get_tile_mut(x, y) {
                                 tile.tile_type = TileType::Floor;
+                                tile.is_lit = is_lit;
                             }
                         }
                     }
-
-                    let lit_chance = 1.0 - (self.depth as f64 / 10.0).min(1.0);
-                    let is_lit = rng.gen_bool(lit_chance);
 
                     self.rooms.push(RoomInfo {
                         x: rx,
@@ -750,16 +763,19 @@ impl DungeonLevel {
                 }
             }
 
+            let lit_chance = (1.0 - (self.depth as f64 / 10.0)).clamp(0.0, 1.0);
+
             for i in 0..(rooms_temp.len() - 1) {
                 let (x1, y1) = rooms_temp[i].center();
                 let (x2, y2) = rooms_temp[i + 1].center();
+                let is_corridor_lit = rng.gen_bool(lit_chance);
 
                 if rng.gen_bool(0.5) {
-                    self.carve_h_corridor(x1, x2, y1);
-                    self.carve_v_corridor(y1, y2, x2);
+                    self.carve_h_corridor(x1, x2, y1, is_corridor_lit);
+                    self.carve_v_corridor(y1, y2, x2, is_corridor_lit);
                 } else {
-                    self.carve_v_corridor(y1, y2, x1);
-                    self.carve_h_corridor(x1, x2, y2);
+                    self.carve_v_corridor(y1, y2, x1, is_corridor_lit);
+                    self.carve_h_corridor(x1, x2, y2, is_corridor_lit);
                 }
             }
 
@@ -767,13 +783,14 @@ impl DungeonLevel {
             if rooms_temp.len() >= 3 {
                 let (x1, y1) = rooms_temp[rooms_temp.len() - 1].center();
                 let (x2, y2) = rooms_temp[0].center();
+                let is_loop_lit = rng.gen_bool(lit_chance);
 
                 if rng.gen_bool(0.5) {
-                    self.carve_h_corridor(x1, x2, y1);
-                    self.carve_v_corridor(y1, y2, x2);
+                    self.carve_h_corridor(x1, x2, y1, is_loop_lit);
+                    self.carve_v_corridor(y1, y2, x2, is_loop_lit);
                 } else {
-                    self.carve_v_corridor(y1, y2, x1);
-                    self.carve_h_corridor(x1, x2, y2);
+                    self.carve_v_corridor(y1, y2, x1, is_loop_lit);
+                    self.carve_h_corridor(x1, x2, y2, is_loop_lit);
                 }
             }
 
@@ -782,26 +799,28 @@ impl DungeonLevel {
                 let r_mid = rooms_temp.len() / 2;
                 let (x1, y1) = rooms_temp[1].center();
                 let (x2, y2) = rooms_temp[r_mid].center();
+                let is_cross_lit = rng.gen_bool(lit_chance);
 
                 if rng.gen_bool(0.5) {
-                    self.carve_h_corridor(x1, x2, y1);
-                    self.carve_v_corridor(y1, y2, x2);
+                    self.carve_h_corridor(x1, x2, y1, is_cross_lit);
+                    self.carve_v_corridor(y1, y2, x2, is_cross_lit);
                 } else {
-                    self.carve_v_corridor(y1, y2, x1);
-                    self.carve_h_corridor(x1, x2, y2);
+                    self.carve_v_corridor(y1, y2, x1, is_cross_lit);
+                    self.carve_h_corridor(x1, x2, y2, is_cross_lit);
                 }
             }
 
             if rooms_temp.len() >= 6 {
                 let (x1, y1) = rooms_temp[2].center();
                 let (x2, y2) = rooms_temp[rooms_temp.len() - 2].center();
+                let is_cross2_lit = rng.gen_bool(lit_chance);
 
                 if rng.gen_bool(0.5) {
-                    self.carve_h_corridor(x1, x2, y1);
-                    self.carve_v_corridor(y1, y2, x2);
+                    self.carve_h_corridor(x1, x2, y1, is_cross2_lit);
+                    self.carve_v_corridor(y1, y2, x2, is_cross2_lit);
                 } else {
-                    self.carve_v_corridor(y1, y2, x1);
-                    self.carve_h_corridor(x1, x2, y2);
+                    self.carve_v_corridor(y1, y2, x1, is_cross2_lit);
+                    self.carve_h_corridor(x1, x2, y2, is_cross2_lit);
                 }
             }
 
@@ -941,8 +960,13 @@ impl DungeonLevel {
                 };
 
                 if let Some(tt) = new_type {
+                    let any_adj_room_lit =
+                        adj_r_indices.iter().any(|&r_idx| self.rooms[r_idx].is_lit);
                     if let Some(tile) = self.get_tile_mut(ex, ey) {
                         tile.tile_type = tt;
+                        if any_adj_room_lit {
+                            tile.is_lit = true;
+                        }
                     }
                     if tt == TileType::SecretDoor && !self.stairs_are_reachable() {
                         // Revert to closed door if it breaks reachability to any stairs
@@ -1065,7 +1089,13 @@ impl DungeonLevel {
         }
     }
 
-    pub fn has_los(&self, x1: usize, y1: usize, x2: usize, y2: usize) -> bool {
+    pub fn has_los_step(
+        &self,
+        x1: usize,
+        y1: usize,
+        x2: usize,
+        y2: usize,
+    ) -> Option<(usize, usize)> {
         let dx = (x2 as isize - x1 as isize).abs();
         let dy = (y2 as isize - y1 as isize).abs();
         let sx = if x1 < x2 { 1 } else { -1 };
@@ -1074,22 +1104,24 @@ impl DungeonLevel {
 
         let mut cx = x1 as isize;
         let mut cy = y1 as isize;
+        let mut prev_x = cx;
+        let mut prev_y = cy;
 
         loop {
             if cx == x2 as isize && cy == y2 as isize {
-                return true;
+                return Some((prev_x as usize, prev_y as usize));
             }
             if (cx != x1 as isize || cy != y1 as isize)
                 && let Some(tile) = self.get_tile(cx as usize, cy as usize)
                 && !tile.is_passable()
             {
-                return false;
+                return None;
             }
             let e2 = 2 * err;
             let mut stepped_x = false;
             let mut stepped_y = false;
-            let prev_x = cx;
-            let prev_y = cy;
+            prev_x = cx;
+            prev_y = cy;
             if e2 > -dy {
                 err -= dy;
                 cx += sx;
@@ -1111,10 +1143,14 @@ impl DungeonLevel {
                     .map(|t| !t.is_passable())
                     .unwrap_or(true);
                 if c1_blocked && c2_blocked {
-                    return false;
+                    return None;
                 }
             }
         }
+    }
+
+    pub fn has_los(&self, x1: usize, y1: usize, x2: usize, y2: usize) -> bool {
+        self.has_los_step(x1, y1, x2, y2).is_some()
     }
 
     pub fn update_fov(&mut self, player: &Player) {
@@ -1153,25 +1189,31 @@ impl DungeonLevel {
         let radius = player.get_light_radius();
         let max_dist = 8;
 
+        // Step 1: Reveal lit rooms when player is inside
         for y in 0..self.height {
             for x in 0..self.width {
-                let mut is_revealed_by_room = false;
                 for room in &lit_rooms_to_reveal {
-                    if x >= room.x - 1
+                    if x >= room.x.saturating_sub(1)
                         && x <= room.x + room.w
-                        && y >= room.y - 1
+                        && y >= room.y.saturating_sub(1)
                         && y <= room.y + room.h
                     {
-                        is_revealed_by_room = true;
+                        if let Some(tile) = self.get_tile_mut(x, y) {
+                            tile.visible = true;
+                            tile.remembered = true;
+                        }
                         break;
                     }
                 }
+            }
+        }
 
-                if is_revealed_by_room {
-                    if let Some(tile) = self.get_tile_mut(x, y) {
-                        tile.visible = true;
-                        tile.remembered = true;
-                    }
+        // Step 2: Line of sight checks from player position
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if let Some(tile) = self.get_tile(x, y)
+                    && tile.visible
+                {
                     continue;
                 }
 
@@ -1183,13 +1225,65 @@ impl DungeonLevel {
                     let is_in_lit_room = self.rooms.iter().any(|r| {
                         r.is_lit && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
                     });
-                    if (dist <= radius || is_in_lit_room)
+                    let is_tile_lit = self.get_tile(x, y).map(|t| t.is_lit).unwrap_or(false);
+
+                    if (dist <= radius || is_tile_lit || is_in_lit_room)
                         && let Some(tile) = self.get_tile_mut(x, y)
                     {
                         tile.visible = true;
                         tile.remembered = true;
                     }
                 }
+            }
+        }
+
+        // Step 3: Walls adjacent to visible, illuminated passable tiles
+        let mut illuminated_walls = Vec::new();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if let Some(tile) = self.get_tile(x, y)
+                    && !tile.visible
+                    && !tile.is_passable()
+                {
+                    let dx = (x as isize - player.x as isize).abs();
+                    let dy = (y as isize - player.y as isize).abs();
+                    let dist = dx.max(dy) as usize;
+
+                    if dist <= max_dist {
+                        let mut touches_lit_visible = false;
+                        for (ndx, ndy) in &[
+                            (0, 1),
+                            (0, -1),
+                            (1, 0),
+                            (-1, 0),
+                            (1, 1),
+                            (1, -1),
+                            (-1, 1),
+                            (-1, -1),
+                        ] {
+                            let nx = (x as isize + ndx) as usize;
+                            let ny = (y as isize + ndy) as usize;
+                            if let Some(adj) = self.get_tile(nx, ny)
+                                && adj.is_passable()
+                                && adj.visible
+                                && adj.is_lit
+                            {
+                                touches_lit_visible = true;
+                                break;
+                            }
+                        }
+                        if touches_lit_visible {
+                            illuminated_walls.push((x, y));
+                        }
+                    }
+                }
+            }
+        }
+
+        for (wx, wy) in illuminated_walls {
+            if let Some(tile) = self.get_tile_mut(wx, wy) {
+                tile.visible = true;
+                tile.remembered = true;
             }
         }
     }
@@ -1356,6 +1450,7 @@ pub fn get_shop_items(shop: ShopType) -> Vec<(String, u32, ItemType)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::player::{Class, Player, Race};
 
     #[test]
     fn test_doors_only_placed_at_room_entrances() {
@@ -1501,6 +1596,177 @@ mod tests {
                     r_idx, depth
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_level_1_and_level_5_lighting_ratios() {
+        // Level 1: Almost all rooms and corridors should be lit (~90%)
+        let mut l1_room_lit = 0;
+        let mut l1_room_total = 0;
+        let mut l1_corr_lit = 0;
+        let mut l1_corr_total = 0;
+
+        for _ in 0..100 {
+            let mut level = DungeonLevel::new(66, 22, 1, 50);
+            level.generate_simple_floor();
+
+            for r in &level.rooms {
+                l1_room_total += 1;
+                if r.is_lit {
+                    l1_room_lit += 1;
+                }
+            }
+
+            for y in 0..level.height {
+                for x in 0..level.width {
+                    if let Some(tile) = level.get_tile(x, y)
+                        && tile.is_passable()
+                        && !level.is_in_room(x, y)
+                    {
+                        l1_corr_total += 1;
+                        if tile.is_lit {
+                            l1_corr_lit += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let l1_room_ratio = l1_room_lit as f64 / l1_room_total as f64;
+        let l1_corr_ratio = l1_corr_lit as f64 / l1_corr_total as f64;
+        assert!(
+            (0.80..=0.98).contains(&l1_room_ratio),
+            "Expected ~90% lit rooms on level 1, got {:.2}",
+            l1_room_ratio
+        );
+        assert!(
+            (0.80..=0.98).contains(&l1_corr_ratio),
+            "Expected ~90% lit corridors on level 1, got {:.2}",
+            l1_corr_ratio
+        );
+
+        // Level 5: About 50% of rooms and corridors should be lit
+        let mut l5_room_lit = 0;
+        let mut l5_room_total = 0;
+        let mut l5_corr_lit = 0;
+        let mut l5_corr_total = 0;
+
+        for _ in 0..100 {
+            let mut level = DungeonLevel::new(66, 22, 5, 50);
+            level.generate_simple_floor();
+
+            for r in &level.rooms {
+                l5_room_total += 1;
+                if r.is_lit {
+                    l5_room_lit += 1;
+                }
+            }
+
+            for y in 0..level.height {
+                for x in 0..level.width {
+                    if let Some(tile) = level.get_tile(x, y)
+                        && tile.is_passable()
+                        && !level.is_in_room(x, y)
+                    {
+                        l5_corr_total += 1;
+                        if tile.is_lit {
+                            l5_corr_lit += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let l5_room_ratio = l5_room_lit as f64 / l5_room_total as f64;
+        let l5_corr_ratio = l5_corr_lit as f64 / l5_corr_total as f64;
+        assert!(
+            (0.40..=0.60).contains(&l5_room_ratio),
+            "Expected ~50% lit rooms on level 5, got {:.2}",
+            l5_room_ratio
+        );
+        assert!(
+            (0.40..=0.60).contains(&l5_corr_ratio),
+            "Expected ~50% lit corridors on level 5, got {:.2}",
+            l5_corr_ratio
+        );
+    }
+
+    #[test]
+    fn test_corridor_lighting_fov() {
+        let mut level = DungeonLevel::new(20, 10, 1, 50);
+        // Build a horizontal corridor at y = 5 from x = 1 to x = 15
+        for x in 1..=15 {
+            let t = level.get_tile_mut(x, 5).unwrap();
+            t.tile_type = TileType::Floor;
+            t.is_lit = true;
+        }
+
+        let player = Player::new("TestLit", Race::Human, Class::Warrior, 2, 5);
+        // Default player radius is 1 (no torch)
+        assert_eq!(player.get_light_radius(), 1);
+
+        level.update_fov(&player);
+
+        // Lit corridor tiles in LOS up to distance 8 should be visible
+        for x in 2..=10 {
+            let t = level.get_tile(x, 5).unwrap();
+            assert!(
+                t.visible,
+                "Tile at ({}, 5) in lit corridor should be visible in LOS",
+                x
+            );
+        }
+        // Walls adjacent to lit corridor floor should also be visible in LOS
+        for x in 2..=10 {
+            let top_wall = level.get_tile(x, 4).unwrap();
+            let bot_wall = level.get_tile(x, 6).unwrap();
+            assert!(
+                top_wall.visible,
+                "Top wall at ({}, 4) bordering lit corridor should be visible in LOS",
+                x
+            );
+            assert!(
+                bot_wall.visible,
+                "Bottom wall at ({}, 6) bordering lit corridor should be visible in LOS",
+                x
+            );
+        }
+        // Beyond distance 8 (e.g. x = 11, dist = 9) should NOT be visible
+        let distant_tile = level.get_tile(11, 5).unwrap();
+        assert!(
+            !distant_tile.visible,
+            "Tile at distance 9 should not be visible beyond max_dist 8"
+        );
+
+        // Now darken the corridor
+        for x in 1..=15 {
+            level.get_tile_mut(x, 5).unwrap().is_lit = false;
+        }
+
+        level.update_fov(&player);
+
+        // At dist <= 1, visible from player's personal light
+        assert!(level.get_tile(2, 5).unwrap().visible);
+        assert!(level.get_tile(3, 5).unwrap().visible);
+
+        // At dist >= 2 in dark corridor, should NOT be visible
+        for x in 4..=10 {
+            let t = level.get_tile(x, 5).unwrap();
+            assert!(
+                !t.visible,
+                "Tile at ({}, 5) in dark corridor should NOT be visible beyond light radius",
+                x
+            );
+        }
+        // Adjacent walls at dist >= 2 in dark corridor should NOT be visible
+        for x in 4..=10 {
+            let top_wall = level.get_tile(x, 4).unwrap();
+            assert!(
+                !top_wall.visible,
+                "Top wall at ({}, 4) in dark corridor should NOT be visible beyond light radius",
+                x
+            );
         }
     }
 }
