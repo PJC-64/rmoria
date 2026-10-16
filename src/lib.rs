@@ -261,7 +261,13 @@ fn process_end_of_turn(
             *level = cached_level;
             *monsters = cached_monsters;
         } else {
-            *level = DungeonLevel::new(66, 22, new_depth, max_depth);
+            let (w, h) = if new_depth == 0 {
+                (dungeon::SCREEN_WIDTH, dungeon::SCREEN_HEIGHT)
+            } else {
+                (dungeon::MAX_WIDTH, dungeon::MAX_HEIGHT)
+            };
+            *level = DungeonLevel::new(w, h, new_depth, max_depth);
+            level.generate_simple_floor();
             *monsters = level.generate_monsters(player.balrog_killed);
         }
 

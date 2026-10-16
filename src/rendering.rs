@@ -119,8 +119,12 @@ pub fn render_gui_screen(
     active_haggle: Option<&HaggleState>,
     active_inscribe: Option<&InscribeState>,
 ) -> Vec<String> {
+    let (view_top, view_bottom, view_left, view_right) =
+        level.get_viewport_bounds(player.x, player.y);
+    let view_h = view_bottom.saturating_sub(view_top);
     let mut screen = Vec::new();
-    for map_y in 0..level.height {
+    for screen_y in 0..view_h {
+        let map_y = view_top + screen_y;
         let mut map_part = String::new();
         if mode == ScreenMode::Dungeon
             || mode == ScreenMode::SelectRestCount
@@ -128,7 +132,7 @@ pub fn render_gui_screen(
             || mode == ScreenMode::SelectTunnelDirection
             || mode == ScreenMode::GameOver
         {
-            for map_x in 0..level.width {
+            for map_x in view_left..view_right {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
@@ -208,7 +212,7 @@ pub fn render_gui_screen(
         } else {
             map_part = format!(
                 "{:<66}",
-                get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe)
+                get_overlay_row_text(screen_y, mode, player, shop, active_haggle, active_inscribe)
             );
         }
         screen.push(map_part);
@@ -1521,8 +1525,13 @@ pub fn draw_map(
     let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
     print!("{}", msg_line);
 
-    for map_y in 0..level.height {
-        let stats_part = get_lhs_stat_line(map_y + 1, player, level);
+    let (view_top, view_bottom, view_left, view_right) =
+        level.get_viewport_bounds(player.x, player.y);
+    let view_h = view_bottom.saturating_sub(view_top);
+
+    for screen_y in 0..view_h {
+        let map_y = view_top + screen_y;
+        let stats_part = get_lhs_stat_line(screen_y + 1, player, level);
         let mut map_part = String::new();
 
         if mode == ScreenMode::Dungeon
@@ -1531,7 +1540,7 @@ pub fn draw_map(
             || mode == ScreenMode::SelectTunnelDirection
             || mode == ScreenMode::GameOver
         {
-            for map_x in 0..level.width {
+            for map_x in view_left..view_right {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
                     if map_x == player.x && map_y == player.y {
                         map_part.push('@');
@@ -1611,14 +1620,14 @@ pub fn draw_map(
         } else {
             map_part = format!(
                 "{:<66}",
-                get_overlay_row_text(map_y, mode, player, shop, active_haggle, active_inscribe)
+                get_overlay_row_text(screen_y, mode, player, shop, active_haggle, active_inscribe)
             );
         }
 
         let row_line = format!("{} {}\x1b[K", stats_part, map_part);
         let _ = execute!(
             io::stdout(),
-            crossterm::cursor::MoveTo(offset_x, offset_y + 1 + map_y as u16)
+            crossterm::cursor::MoveTo(offset_x, offset_y + 1 + screen_y as u16)
         );
         print!("{}", row_line);
     }
