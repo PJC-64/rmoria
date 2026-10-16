@@ -7452,6 +7452,9 @@ pub fn create_item_from_index(index: usize, count: u32) -> Item {
         flags: def.flags,
         cost: def.cost.max(0) as u32,
         ego_name: None,
+        category_id: def.category_id,
+        sub_category_id: def.sub_category_id as u16,
+        misc_use: def.misc_use as i32,
     }
 }
 

@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 pub mod creation;
 pub use creation::run_character_creation;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Gender {
+    #[default]
+    Male,
+    Female,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Race {
     Human,
@@ -15,6 +22,80 @@ pub enum Race {
     Dwarf,
     HalfOrc,
     HalfTroll,
+}
+
+impl Race {
+    pub fn classes_bit_field(&self) -> u32 {
+        match self {
+            Race::Human => 0x3F,
+            Race::HalfElf => 0x3F,
+            Race::Elf => 0x1F,
+            Race::Halfling => 0x0B,
+            Race::Gnome => 0x0F,
+            Race::Dwarf => 0x05,
+            Race::HalfOrc => 0x0D,
+            Race::HalfTroll => 0x05,
+        }
+    }
+
+    pub fn allows_class(&self, class: Class) -> bool {
+        let bit = match class {
+            Class::Warrior => 0,
+            Class::Mage => 1,
+            Class::Priest => 2,
+            Class::Rogue => 3,
+            Class::Ranger => 4,
+            Class::Paladin => 5,
+        };
+        (self.classes_bit_field() & (1 << bit)) != 0
+    }
+
+    pub fn generate_age_height_weight<R: rand::Rng>(
+        &self,
+        gender: Gender,
+        rng: &mut R,
+    ) -> (u16, u16, u32) {
+        let (base_age, max_age) = match self {
+            Race::Human => (14, 6),
+            Race::HalfElf => (24, 16),
+            Race::Elf => (75, 75),
+            Race::Halfling => (21, 12),
+            Race::Gnome => (50, 40),
+            Race::Dwarf => (35, 15),
+            Race::HalfOrc => (11, 4),
+            Race::HalfTroll => (20, 10),
+        };
+        let age = base_age + rng.gen_range(1..=max_age);
+
+        let (h_base, h_mod, w_base, w_mod) = match (self, gender) {
+            (Race::Human, Gender::Male) => (72, 6, 180, 25),
+            (Race::Human, Gender::Female) => (66, 4, 150, 20),
+            (Race::HalfElf, Gender::Male) => (66, 6, 130, 15),
+            (Race::HalfElf, Gender::Female) => (62, 6, 100, 10),
+            (Race::Elf, Gender::Male) => (60, 4, 100, 6),
+            (Race::Elf, Gender::Female) => (54, 4, 80, 6),
+            (Race::Halfling, Gender::Male) => (36, 3, 60, 3),
+            (Race::Halfling, Gender::Female) => (33, 3, 50, 3),
+            (Race::Gnome, Gender::Male) => (42, 3, 90, 6),
+            (Race::Gnome, Gender::Female) => (39, 3, 75, 3),
+            (Race::Dwarf, Gender::Male) => (48, 3, 150, 10),
+            (Race::Dwarf, Gender::Female) => (46, 3, 120, 10),
+            (Race::HalfOrc, Gender::Male) => (66, 1, 150, 5),
+            (Race::HalfOrc, Gender::Female) => (62, 1, 120, 5),
+            (Race::HalfTroll, Gender::Male) => (96, 10, 255, 50),
+            (Race::HalfTroll, Gender::Female) => (84, 8, 225, 40),
+        };
+
+        let height = random_normal_distribution(h_base, h_mod, rng) as u16;
+        let weight = random_normal_distribution(w_base, w_mod, rng) as u32;
+        (age, height, weight)
+    }
+}
+
+pub fn random_normal_distribution<R: rand::Rng>(mean: i32, sd: i32, rng: &mut R) -> i32 {
+    let tmp = (0..8).map(|_| rng.gen_range(1..=99)).sum::<i32>();
+    let diff = (tmp - 400) * sd / 81;
+    (diff + mean).max(1)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +144,27 @@ impl Attributes {
     }
 }
 
+pub fn roll_character_stats<R: rand::Rng>(rng: &mut R) -> Attributes {
+    let mut dice = [0i16; 18];
+    loop {
+        let mut total = 0;
+        for (i, d) in dice.iter_mut().enumerate() {
+            *d = rng.gen_range(1..=(3 + (i % 3) as i16));
+            total += *d;
+        }
+        if total > 42 && total < 54 {
+            break;
+        }
+    }
+    let s_str = 5 + dice[0] + dice[1] + dice[2];
+    let s_int = 5 + dice[3] + dice[4] + dice[5];
+    let s_wis = 5 + dice[6] + dice[7] + dice[8];
+    let s_dex = 5 + dice[9] + dice[10] + dice[11];
+    let s_con = 5 + dice[12] + dice[13] + dice[14];
+    let s_chr = 5 + dice[15] + dice[16] + dice[17];
+    Attributes::new(s_str, s_int, s_wis, s_dex, s_con, s_chr)
+}
+
 /// Formats a stat value according to the canonical 18/xx percentile display:
 /// - Values <= 18 display as right-aligned integer (e.g. `"    18"`).
 /// - Values > 18 display as percentile (e.g. `" 18/01"`, `" 18/50"`, `"18/100"`).
@@ -105,6 +207,51 @@ pub fn modify_stat(current: i16, amount: i32) -> i16 {
         }
     }
     new_stat
+}
+
+pub fn create_modify_player_stat_with_rng<R: rand::Rng>(
+    stat: i16,
+    adjustment: i16,
+    rng: &mut R,
+) -> i16 {
+    let mut s = stat;
+    if adjustment < 0 {
+        for _ in 0..(-adjustment) {
+            if s > 108 {
+                s -= 1;
+            } else if s > 88 {
+                let roll = rng.gen_range(1..=6);
+                s -= roll + 2;
+            } else if s > 18 {
+                let roll = rng.gen_range(1..=15);
+                s -= roll + 5;
+                if s < 18 {
+                    s = 18;
+                }
+            } else if s > 3 {
+                s -= 1;
+            }
+        }
+    } else {
+        for _ in 0..adjustment {
+            if s < 18 {
+                s += 1;
+            } else if s < 88 {
+                let roll = rng.gen_range(1..=15);
+                s += roll + 5;
+            } else if s < 108 {
+                let roll = rng.gen_range(1..=6);
+                s += roll + 2;
+            } else if s < 118 {
+                s += 1;
+            }
+        }
+    }
+    s.max(3)
+}
+
+pub fn create_modify_player_stat(stat: i16, adjustment: i16) -> i16 {
+    create_modify_player_stat_with_rng(stat, adjustment, &mut rand::thread_rng())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -210,14 +357,109 @@ pub struct Item {
     pub cost: u32,
     #[serde(default)]
     pub ego_name: Option<String>,
+    #[serde(default)]
+    pub category_id: u8,
+    #[serde(default)]
+    pub sub_category_id: u16,
+    #[serde(default)]
+    pub misc_use: i32,
 }
 
 fn default_identified() -> bool {
     true
 }
 
+pub fn default_category_for_type(item_type: &ItemType, name: &str) -> u8 {
+    use crate::entity::treasure_data::*;
+    match item_type {
+        ItemType::Weapon { .. } => {
+            let nl = name.to_lowercase();
+            if nl.contains("sword")
+                || nl.contains("blade")
+                || nl.contains("dagger")
+                || nl.contains("stiletto")
+                || nl.contains("rapier")
+                || nl.contains("saber")
+            {
+                TV_SWORD
+            } else if nl.contains("mace")
+                || nl.contains("hammer")
+                || nl.contains("flail")
+                || nl.contains("club")
+                || nl.contains("whip")
+                || nl.contains("morning star")
+            {
+                TV_HAFTED
+            } else if nl.contains("spear")
+                || nl.contains("lance")
+                || nl.contains("halberd")
+                || nl.contains("pike")
+                || nl.contains("axe")
+                || nl.contains("glaive")
+            {
+                TV_POLEARM
+            } else if nl.contains("shovel") || nl.contains("pick") || nl.contains("mattock") {
+                TV_DIGGING
+            } else {
+                TV_SWORD
+            }
+        }
+        ItemType::Bow { .. } => TV_BOW,
+        ItemType::Missile { .. } => {
+            let nl = name.to_lowercase();
+            if nl.contains("bolt") {
+                TV_BOLT
+            } else if nl.contains("shot") || nl.contains("pebble") {
+                TV_SLING_AMMO
+            } else {
+                TV_ARROW
+            }
+        }
+        ItemType::Armor { .. } => {
+            let nl = name.to_lowercase();
+            if nl.contains("shield") {
+                TV_SHIELD
+            } else if nl.contains("helm")
+                || nl.contains("hat")
+                || nl.contains("crown")
+                || nl.contains("cap")
+            {
+                TV_HELM
+            } else if nl.contains("gloves") || nl.contains("gauntlets") {
+                TV_GLOVES
+            } else if nl.contains("boots") || nl.contains("shoes") {
+                TV_BOOTS
+            } else if nl.contains("cloak") {
+                TV_CLOAK
+            } else if nl.contains("soft") || nl.contains("leather") || nl.contains("robe") {
+                TV_SOFT_ARMOR
+            } else {
+                TV_HARD_ARMOR
+            }
+        }
+        ItemType::Potion { .. } => TV_POTION1,
+        ItemType::Scroll { .. } => {
+            let nl = name.to_lowercase();
+            if nl.contains("spike") {
+                TV_SPIKE
+            } else {
+                TV_SCROLL1
+            }
+        }
+        ItemType::Wand { .. } => TV_WAND,
+        ItemType::Staff { .. } => TV_STAFF,
+        ItemType::Food { .. } => TV_FOOD,
+        ItemType::Light { .. } => TV_LIGHT,
+        ItemType::Ring { .. } => TV_RING,
+        ItemType::Amulet { .. } => TV_AMULET,
+        ItemType::MagicBook { .. } => TV_MAGIC_BOOK,
+        ItemType::PrayerBook { .. } => TV_PRAYER_BOOK,
+    }
+}
+
 impl Item {
     pub fn new(name: &str, count: u32, weight: u32, item_type: ItemType) -> Self {
+        let cat = default_category_for_type(&item_type, name);
         Self {
             name: name.to_string(),
             count,
@@ -234,10 +476,14 @@ impl Item {
             flags: 0,
             cost: 0,
             ego_name: None,
+            category_id: cat,
+            sub_category_id: 0,
+            misc_use: 0,
         }
     }
 
     pub fn new_unidentified(name: &str, count: u32, weight: u32, item_type: ItemType) -> Self {
+        let cat = default_category_for_type(&item_type, name);
         Self {
             name: name.to_string(),
             count,
@@ -254,6 +500,9 @@ impl Item {
             flags: 0,
             cost: 0,
             ego_name: None,
+            category_id: cat,
+            sub_category_id: 0,
+            misc_use: 0,
         }
     }
 
@@ -305,33 +554,51 @@ impl Item {
         if let Some(ref slot) = self.equipped_slot {
             return slot.as_str();
         }
-        match &self.item_type {
-            ItemType::Weapon { .. } => "Weapon",
-            ItemType::Bow { .. } => "Ranged Weapon",
-            ItemType::Light { .. } => "Light Source",
-            ItemType::Ring { .. } => "On right hand",
-            ItemType::Amulet { .. } => "Around neck",
-            ItemType::Armor { .. } => {
-                let name = self.name.to_lowercase();
-                if name.contains("shield") {
-                    "Shield"
-                } else if name.contains("helm")
-                    || name.contains("hat")
-                    || name.contains("crown")
-                    || name.contains("cap")
-                {
-                    "Headwear"
-                } else if name.contains("gloves") || name.contains("gauntlets") {
-                    "Gloves"
-                } else if name.contains("boots") || name.contains("shoes") {
-                    "Boots"
-                } else if name.contains("cloak") {
-                    "Cloak"
-                } else {
-                    "Body Armor"
-                }
+        use crate::entity::treasure_data::*;
+        if self.category_id != 0 {
+            match self.category_id {
+                TV_HAFTED | TV_POLEARM | TV_SWORD | TV_DIGGING => "Wielding",
+                TV_BOW => "Spare weapon",
+                TV_HELM => "On head",
+                TV_AMULET => "Around neck",
+                TV_HARD_ARMOR | TV_SOFT_ARMOR => "On body",
+                TV_SHIELD => "On arm",
+                TV_GLOVES => "On hands",
+                TV_RING => "On right hand",
+                TV_BOOTS => "On feet",
+                TV_CLOAK => "About body",
+                TV_LIGHT => "Light source",
+                _ => "Accessory",
             }
-            _ => "Accessory",
+        } else {
+            match &self.item_type {
+                ItemType::Weapon { .. } => "Wielding",
+                ItemType::Bow { .. } => "Spare weapon",
+                ItemType::Light { .. } => "Light source",
+                ItemType::Ring { .. } => "On right hand",
+                ItemType::Amulet { .. } => "Around neck",
+                ItemType::Armor { .. } => {
+                    let name = self.name.to_lowercase();
+                    if name.contains("shield") {
+                        "On arm"
+                    } else if name.contains("helm")
+                        || name.contains("hat")
+                        || name.contains("crown")
+                        || name.contains("cap")
+                    {
+                        "On head"
+                    } else if name.contains("gloves") || name.contains("gauntlets") {
+                        "On hands"
+                    } else if name.contains("boots") || name.contains("shoes") {
+                        "On feet"
+                    } else if name.contains("cloak") {
+                        "About body"
+                    } else {
+                        "On body"
+                    }
+                }
+                _ => "Accessory",
+            }
         }
     }
 }
@@ -359,14 +626,31 @@ fn default_spells_learned_order() -> [u8; 32] {
     [99; 32]
 }
 
+fn default_gender() -> Gender {
+    Gender::Male
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,
     pub race: Race,
     pub class: Class,
+    #[serde(default = "default_gender")]
+    pub gender: Gender,
     pub level: u32,
     pub exp: u32,
+    #[serde(default)]
+    pub max_exp: u32,
+    #[serde(default)]
+    pub exp_fraction: u16,
     pub gold: u32,
+
+    #[serde(default)]
+    pub age: u16,
+    #[serde(default)]
+    pub height: u16,
+    #[serde(default)]
+    pub social_class: i16,
 
     pub x: usize,
     pub y: usize,
@@ -419,8 +703,7 @@ pub struct Player {
     pub history: String,
 }
 
-pub fn generate_history(race: Race) -> String {
-    let mut rng = rand::thread_rng();
+pub fn generate_history_with_social_class<R: rand::Rng>(race: Race, rng: &mut R) -> (String, i16) {
     let mut history = String::new();
     let mut chart = match race {
         Race::Human => 1,
@@ -432,269 +715,421 @@ pub fn generate_history(race: Race) -> String {
         Race::HalfOrc => 19,
         Race::HalfTroll => 22,
     };
+    let mut social_class: i16 = rng.gen_range(1..=4);
 
     loop {
         let roll = rng.gen_range(1..=100);
-        let (text, next_chart) = match chart {
+        let (text, next_chart, bonus): (&str, i32, i16) = match chart {
             1 => {
                 if roll <= 10 {
-                    ("You are the illegitimate and unacknowledged child ", 2)
+                    ("You are the illegitimate and unacknowledged child ", 2, 25)
                 } else if roll <= 20 {
-                    ("You are the illegitimate but acknowledged child ", 2)
+                    ("You are the illegitimate but acknowledged child ", 2, 35)
                 } else if roll <= 95 {
-                    ("You are one of several children ", 2)
+                    ("You are one of several children ", 2, 45)
                 } else {
-                    ("You are the first child ", 2)
+                    ("You are the first child ", 2, 50)
                 }
             }
             2 => {
                 if roll <= 40 {
-                    ("of a Serf. ", 3)
+                    ("of a Serf.  ", 3, 65)
                 } else if roll <= 65 {
-                    ("of a Yeoman. ", 3)
+                    ("of a Yeoman.  ", 3, 80)
                 } else if roll <= 80 {
-                    ("of a Townsman. ", 3)
+                    ("of a Townsman.  ", 3, 90)
                 } else if roll <= 90 {
-                    ("of a Guildsman. ", 3)
+                    ("of a Guildsman.  ", 3, 105)
                 } else if roll <= 96 {
-                    ("of a Landed Knight. ", 3)
+                    ("of a Landed Knight.  ", 3, 120)
                 } else if roll <= 99 {
-                    ("of a Titled Noble. ", 3)
+                    ("of a Titled Noble.  ", 3, 130)
                 } else {
-                    ("of a Royal Blood Line. ", 3)
+                    ("of a Royal Blood Line.  ", 3, 140)
                 }
             }
             3 => {
                 if roll <= 20 {
-                    ("You are the black sheep of the family. ", 50)
+                    ("You are the black sheep of the family.  ", 50, 20)
                 } else if roll <= 80 {
-                    ("You are a credit to the family. ", 50)
+                    ("You are a credit to the family.  ", 50, 55)
                 } else {
-                    ("You are a well liked child. ", 50)
+                    ("You are a well liked child.  ", 50, 60)
                 }
             }
             4 => {
                 if roll <= 40 {
-                    ("Your mother was a Green-Elf. ", 1)
+                    ("Your mother was a Green-Elf.  ", 1, 50)
                 } else if roll <= 75 {
-                    ("Your father was a Green-Elf. ", 1)
+                    ("Your father was a Green-Elf.  ", 1, 55)
                 } else if roll <= 90 {
-                    ("Your mother was a Grey-Elf. ", 1)
+                    ("Your mother was a Grey-Elf.  ", 1, 55)
                 } else if roll <= 95 {
-                    ("Your father was a Grey-Elf. ", 1)
+                    ("Your father was a Grey-Elf.  ", 1, 60)
                 } else if roll <= 98 {
-                    ("Your mother was a High-Elf. ", 1)
+                    ("Your mother was a High-Elf.  ", 1, 65)
                 } else {
-                    ("Your father was a High-Elf. ", 1)
+                    ("Your father was a High-Elf.  ", 1, 70)
                 }
             }
             7 => {
                 if roll <= 60 {
-                    ("You are one of several children ", 8)
+                    ("You are one of several children ", 8, 50)
                 } else {
-                    ("You are the only child ", 8)
+                    ("You are the only child ", 8, 55)
                 }
             }
             8 => {
                 if roll <= 75 {
-                    ("of a Green-Elf ", 9)
+                    ("of a Green-Elf ", 9, 50)
                 } else if roll <= 95 {
-                    ("of a Grey-Elf ", 9)
+                    ("of a Grey-Elf ", 9, 55)
                 } else {
-                    ("of a High-Elf ", 9)
+                    ("of a High-Elf ", 9, 60)
                 }
             }
             9 => {
                 if roll <= 40 {
-                    ("Ranger. ", 50)
+                    ("Ranger.  ", 54, 80)
                 } else if roll <= 70 {
-                    ("Archer. ", 50)
+                    ("Archer.  ", 54, 90)
                 } else if roll <= 87 {
-                    ("Warrior. ", 50)
+                    ("Warrior.  ", 54, 110)
                 } else if roll <= 95 {
-                    ("Mage. ", 50)
+                    ("Mage.  ", 54, 125)
                 } else if roll <= 99 {
-                    ("Prince. ", 50)
+                    ("Prince.  ", 54, 140)
                 } else {
-                    ("King. ", 50)
+                    ("King.  ", 54, 145)
                 }
             }
             10 => {
                 if roll <= 85 {
-                    ("You are one of several children of a Halfling ", 11)
+                    ("You are one of several children of a Halfling ", 11, 45)
                 } else {
-                    ("You are the only child of a Halfling ", 11)
+                    ("You are the only child of a Halfling ", 11, 55)
                 }
             }
             11 => {
                 if roll <= 20 {
-                    ("Bum. ", 3)
+                    ("Bum.  ", 3, 55)
                 } else if roll <= 30 {
-                    ("Tavern Owner. ", 3)
+                    ("Tavern Owner.  ", 3, 80)
                 } else if roll <= 40 {
-                    ("Miller. ", 3)
+                    ("Miller.  ", 3, 90)
                 } else if roll <= 50 {
-                    ("Home Owner. ", 3)
+                    ("Home Owner.  ", 3, 100)
                 } else if roll <= 80 {
-                    ("Burglar. ", 3)
+                    ("Burglar.  ", 3, 110)
                 } else if roll <= 95 {
-                    ("Warrior. ", 3)
+                    ("Warrior.  ", 3, 115)
                 } else if roll <= 99 {
-                    ("Mage. ", 3)
+                    ("Mage.  ", 3, 125)
                 } else {
-                    ("Clan Elder. ", 3)
+                    ("Clan Elder.  ", 3, 140)
                 }
             }
             13 => {
                 if roll <= 85 {
-                    ("You are one of several children of a Gnome ", 14)
+                    ("You are one of several children of a Gnome ", 14, 45)
                 } else {
-                    ("You are the only child of a Gnome ", 14)
+                    ("You are the only child of a Gnome ", 14, 55)
                 }
             }
             14 => {
                 if roll <= 20 {
-                    ("Beggar. ", 3)
+                    ("Beggar.  ", 3, 55)
                 } else if roll <= 50 {
-                    ("Braggart. ", 3)
+                    ("Braggart.  ", 3, 70)
                 } else if roll <= 75 {
-                    ("Prankster. ", 3)
+                    ("Prankster.  ", 3, 85)
                 } else if roll <= 95 {
-                    ("Warrior. ", 3)
+                    ("Warrior.  ", 3, 100)
                 } else {
-                    ("Mage. ", 3)
+                    ("Mage.  ", 3, 125)
                 }
             }
             16 => {
                 if roll <= 25 {
-                    ("You are one of two children of a Dwarven ", 17)
+                    ("You are one of two children of a Dwarven ", 17, 40)
                 } else {
-                    ("You are the only child of a Dwarven ", 17)
+                    ("You are the only child of a Dwarven ", 17, 50)
                 }
             }
             17 => {
                 if roll <= 10 {
-                    ("Thief. ", 18)
+                    ("Thief.  ", 18, 60)
                 } else if roll <= 25 {
-                    ("Prison Guard. ", 18)
+                    ("Prison Guard.  ", 18, 75)
                 } else if roll <= 75 {
-                    ("Miner. ", 18)
+                    ("Miner.  ", 18, 90)
                 } else if roll <= 90 {
-                    ("Warrior. ", 18)
+                    ("Warrior.  ", 18, 110)
                 } else if roll <= 99 {
-                    ("Priest. ", 18)
+                    ("Priest.  ", 18, 130)
                 } else {
-                    ("King. ", 18)
+                    ("King.  ", 18, 150)
                 }
             }
             18 => {
                 if roll <= 15 {
-                    ("You are the black sheep of the family. ", 50)
+                    ("You are the black sheep of the family.  ", 57, 10)
                 } else if roll <= 85 {
-                    ("You are a credit to the family. ", 50)
+                    ("You are a credit to the family.  ", 57, 50)
                 } else {
-                    ("You are a well liked child. ", 50)
+                    ("You are a well liked child.  ", 57, 55)
                 }
             }
             19 => {
                 if roll <= 25 {
-                    ("Your mother was an Orc, but it is unacknowledged. ", 20)
+                    (
+                        "Your mother was an Orc, but it is unacknowledged.  ",
+                        20,
+                        25,
+                    )
                 } else {
-                    ("Your father was an Orc, but it is unacknowledged. ", 20)
+                    (
+                        "Your father was an Orc, but it is unacknowledged.  ",
+                        20,
+                        25,
+                    )
                 }
             }
-            20 => ("You are the adopted child ", 2),
+            20 => ("You are the adopted child ", 2, 50),
             22 => {
                 if roll <= 30 {
-                    ("Your mother was a Cave-Troll ", 23)
+                    ("Your mother was a Cave-Troll ", 23, 20)
                 } else if roll <= 60 {
-                    ("Your father was a Cave-Troll ", 23)
+                    ("Your father was a Cave-Troll ", 23, 25)
                 } else if roll <= 75 {
-                    ("Your mother was a Hill-Troll ", 23)
+                    ("Your mother was a Hill-Troll ", 23, 30)
                 } else if roll <= 90 {
-                    ("Your father was a Hill-Troll ", 23)
+                    ("Your father was a Hill-Troll ", 23, 35)
                 } else if roll <= 95 {
-                    ("Your mother was a Water-Troll ", 23)
+                    ("Your mother was a Water-Troll ", 23, 40)
                 } else {
-                    ("Your father was a Water-Troll ", 23)
+                    ("Your father was a Water-Troll ", 23, 45)
                 }
             }
             23 => {
                 if roll <= 5 {
-                    ("Cook. ", 50)
+                    ("Cook.  ", 62, 60)
                 } else if roll <= 95 {
-                    ("Warrior. ", 50)
+                    ("Warrior.  ", 62, 55)
                 } else if roll <= 99 {
-                    ("Shaman. ", 50)
+                    ("Shaman.  ", 62, 65)
                 } else {
-                    ("Clan Chief. ", 50)
+                    ("Clan Chief.  ", 62, 80)
                 }
             }
             50 => {
                 if roll <= 20 {
-                    ("You have dark brown eyes, ", 51)
+                    ("You have dark brown eyes, ", 51, 50)
                 } else if roll <= 60 {
-                    ("You have brown eyes, ", 51)
+                    ("You have brown eyes, ", 51, 50)
                 } else if roll <= 70 {
-                    ("You have hazel eyes, ", 51)
+                    ("You have hazel eyes, ", 51, 50)
                 } else if roll <= 80 {
-                    ("You have green eyes, ", 51)
+                    ("You have green eyes, ", 51, 50)
                 } else if roll <= 90 {
-                    ("You have blue eyes, ", 51)
+                    ("You have blue eyes, ", 51, 50)
                 } else {
-                    ("You have blue-gray eyes, ", 51)
+                    ("You have blue-gray eyes, ", 51, 50)
                 }
             }
             51 => {
                 if roll <= 70 {
-                    ("straight ", 52)
+                    ("straight ", 52, 50)
                 } else if roll <= 90 {
-                    ("wavy ", 52)
+                    ("wavy ", 52, 50)
                 } else {
-                    ("curly ", 52)
+                    ("curly ", 52, 50)
                 }
             }
             52 => {
                 if roll <= 30 {
-                    ("black hair, ", 53)
+                    ("black hair, ", 53, 50)
                 } else if roll <= 70 {
-                    ("brown hair, ", 53)
+                    ("brown hair, ", 53, 50)
                 } else if roll <= 80 {
-                    ("auburn hair, ", 53)
+                    ("auburn hair, ", 53, 50)
                 } else if roll <= 90 {
-                    ("red hair, ", 53)
+                    ("red hair, ", 53, 50)
                 } else {
-                    ("blond hair, ", 53)
+                    ("blond hair, ", 53, 50)
                 }
             }
             53 => {
                 if roll <= 10 {
-                    ("and a very dark complexion.", 0)
+                    ("and a very dark complexion.", 0, 50)
                 } else if roll <= 30 {
-                    ("and a dark complexion.", 0)
+                    ("and a dark complexion.", 0, 50)
                 } else if roll <= 80 {
-                    ("and an average complexion.", 0)
+                    ("and an average complexion.", 0, 50)
                 } else if roll <= 90 {
-                    ("and a fair complexion.", 0)
+                    ("and a fair complexion.", 0, 50)
                 } else {
-                    ("and a very fair complexion.", 0)
+                    ("and a very fair complexion.", 0, 50)
                 }
             }
-            _ => ("", 0),
+            54 => {
+                if roll <= 85 {
+                    ("You have light grey eyes, ", 55, 50)
+                } else if roll <= 95 {
+                    ("You have light blue eyes, ", 55, 50)
+                } else {
+                    ("You have light green eyes, ", 55, 50)
+                }
+            }
+            55 => {
+                if roll <= 75 {
+                    ("straight ", 56, 50)
+                } else {
+                    ("wavy ", 56, 50)
+                }
+            }
+            56 => {
+                if roll <= 75 {
+                    ("black hair, and a fair complexion.", 0, 50)
+                } else if roll <= 85 {
+                    ("brown hair, and a fair complexion.", 0, 50)
+                } else if roll <= 95 {
+                    ("blond hair, and a fair complexion.", 0, 50)
+                } else {
+                    ("silver hair, and a fair complexion.", 0, 50)
+                }
+            }
+            57 => {
+                if roll <= 99 {
+                    ("You have dark brown eyes, ", 58, 50)
+                } else {
+                    ("You have glowing red eyes, ", 58, 60)
+                }
+            }
+            58 => {
+                if roll <= 90 {
+                    ("straight ", 59, 50)
+                } else {
+                    ("wavy ", 59, 50)
+                }
+            }
+            59 => {
+                if roll <= 75 {
+                    ("black hair, ", 60, 50)
+                } else {
+                    ("brown hair, ", 60, 50)
+                }
+            }
+            60 => {
+                if roll <= 25 {
+                    ("a one foot beard, ", 61, 50)
+                } else if roll <= 60 {
+                    ("a two foot beard, ", 61, 51)
+                } else if roll <= 90 {
+                    ("a three foot beard, ", 61, 53)
+                } else {
+                    ("a four foot beard, ", 61, 55)
+                }
+            }
+            61 => ("and a dark complexion.", 0, 50),
+            62 => {
+                if roll <= 60 {
+                    ("You have slime green eyes, ", 63, 50)
+                } else if roll <= 85 {
+                    ("You have puke yellow eyes, ", 63, 50)
+                } else if roll <= 99 {
+                    ("You have blue-bloodshot eyes, ", 63, 50)
+                } else {
+                    ("You have glowing red eyes, ", 63, 55)
+                }
+            }
+            63 => {
+                if roll <= 33 {
+                    ("dirty ", 64, 50)
+                } else if roll <= 66 {
+                    ("mangy ", 64, 50)
+                } else {
+                    ("oily ", 64, 50)
+                }
+            }
+            64 => {
+                if roll <= 33 {
+                    ("sea-weed green hair, ", 65, 50)
+                } else if roll <= 66 {
+                    ("bright red hair, ", 65, 50)
+                } else {
+                    ("dark purple hair, ", 65, 50)
+                }
+            }
+            65 => {
+                if roll <= 25 {
+                    ("and green ", 66, 50)
+                } else if roll <= 50 {
+                    ("and blue ", 66, 50)
+                } else if roll <= 75 {
+                    ("and white ", 66, 50)
+                } else {
+                    ("and black ", 66, 50)
+                }
+            }
+            66 => {
+                if roll <= 33 {
+                    ("ulcerous skin.", 0, 50)
+                } else if roll <= 66 {
+                    ("scabby skin.", 0, 50)
+                } else {
+                    ("leprous skin.", 0, 50)
+                }
+            }
+            _ => ("", 0, 50),
         };
 
         history.push_str(text);
+        social_class += bonus - 50;
         if next_chart == 0 {
             break;
         }
         chart = next_chart;
     }
 
-    history
+    (history, social_class.clamp(1, 100))
+}
+
+pub fn generate_history(race: Race) -> String {
+    generate_history_with_social_class(race, &mut rand::thread_rng()).0
 }
 
 impl Player {
+    pub fn calculate_start_gold<R: rand::Rng>(&self, rng: &mut R) -> u32 {
+        fn monetary_val(stat: i16) -> i32 {
+            5 * (stat as i32 - 10)
+        }
+        let value = monetary_val(self.stats.strength)
+            + monetary_val(self.stats.intelligence)
+            + monetary_val(self.stats.wisdom)
+            + monetary_val(self.stats.constitution)
+            + monetary_val(self.stats.dexterity);
+        let mut new_gold = (self.social_class as i32) * 6 + rng.gen_range(1..=25) + 325;
+        new_gold -= value;
+        new_gold += monetary_val(self.stats.charisma);
+        if self.gender == Gender::Female {
+            new_gold += 50;
+        }
+        new_gold.max(80) as u32
+    }
+
     pub fn new(name: &str, race: Race, class: Class, x: usize, y: usize) -> Self {
+        Self::new_with_gender(name, race, class, Gender::Male, x, y)
+    }
+
+    pub fn new_with_gender(
+        name: &str,
+        race: Race,
+        class: Class,
+        gender: Gender,
+        x: usize,
+        y: usize,
+    ) -> Self {
         let base_stats = Attributes::new(10, 10, 10, 10, 10, 10);
 
         let race_hp = match race {
@@ -743,25 +1178,22 @@ impl Player {
             Class::Paladin => 35,
         };
         let exp_factor = race_exp + class_exp;
-        let history = generate_history(race);
-        let body_weight = match race {
-            Race::Human => 180,
-            Race::HalfElf => 130,
-            Race::Elf => 100,
-            Race::Halfling => 60,
-            Race::Gnome => 90,
-            Race::Dwarf => 150,
-            Race::HalfOrc => 150,
-            Race::HalfTroll => 220,
-        };
+        let (age, height, body_weight) = race.generate_age_height_weight(gender, &mut temp_rng);
+        let (history, social_class) = generate_history_with_social_class(race, &mut temp_rng);
 
         let mut player = Self {
             name: name.to_string(),
             race,
             class,
+            gender,
             level: 1,
             exp: 0,
+            max_exp: 0,
+            exp_fraction: 0,
             gold: 150,
+            age,
+            height,
+            social_class,
             x,
             y,
             max_hp: hit_die,
@@ -781,12 +1213,12 @@ impl Player {
                     Item::new(
                         "Dagger",
                         1,
-                        10,
+                        12,
                         ItemType::Weapon {
                             damage: Dice::new(1, 4),
                         },
                     ),
-                    Item::new("Leather Armor", 1, 80, ItemType::Armor { ac: 4 }),
+                    Item::new("Cloak", 1, 10, ItemType::Armor { ac: 1 }),
                     Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 }),
                     Item::new(
                         "Potion of Cure Light Wounds",
@@ -803,7 +1235,14 @@ impl Player {
                     Item::new("Iron Spike", 5, 2, ItemType::Scroll { teleport: false }),
                     Item::new("Ration of Food", 2, 10, ItemType::Food { nutrition: 5000 }),
                 ];
-                if matches!(class, Class::Mage | Class::Rogue | Class::Ranger) {
+                if matches!(class, Class::Warrior) {
+                    starter.push(Item::new(
+                        "Soft Leather Armor",
+                        1,
+                        80,
+                        ItemType::Armor { ac: 4 },
+                    ));
+                } else if matches!(class, Class::Mage | Class::Rogue | Class::Ranger) {
                     starter.push(crate::magic::create_book(0, false));
                 } else if matches!(class, Class::Priest | Class::Paladin) {
                     starter.push(crate::magic::create_book(0, true));
@@ -872,15 +1311,20 @@ impl Player {
         newly_identified
     }
 
-    pub fn add_item_to_inventory(&mut self, item: Item) {
-        if let Some(existing) = self
-            .inventory
-            .iter_mut()
-            .find(|i| i.name == item.name && i.item_type == item.item_type)
-        {
+    pub fn add_item_to_inventory(&mut self, item: Item) -> bool {
+        if let Some(existing) = self.inventory.iter_mut().find(|i| {
+            i.name == item.name
+                && i.item_type == item.item_type
+                && i.sub_category_id == item.sub_category_id
+        }) {
             existing.count += item.count;
+            true
         } else {
+            if self.inventory.len() >= 22 {
+                return false;
+            }
             self.inventory.push(item);
+            true
         }
     }
 
@@ -1031,7 +1475,79 @@ impl Player {
         let mut chr_mod = 0i32;
 
         for item in &self.equipment {
+            use crate::entity::treasure_data::*;
+            let flags = item.flags;
             let name_lower = item.name.to_lowercase();
+
+            if (flags & TR_SEE_INVIS) != 0 || name_lower.contains("see invisible") {
+                self.flags.see_invisible = true;
+            }
+            if (flags & TR_FREE_ACT) != 0 || name_lower.contains("free action") {
+                self.flags.free_action = true;
+            }
+            if (flags & TR_SLOW_DIGEST) != 0 || name_lower.contains("slow digestion") {
+                self.flags.slow_digest = true;
+            }
+            if (flags & TR_FFALL) != 0 || name_lower.contains("feather falling") {
+                self.flags.free_fall = true;
+            }
+            if (flags & TR_RES_FIRE) != 0
+                || name_lower.contains("resist fire")
+                || name_lower.contains("lordly protection (fire)")
+            {
+                self.flags.resistant_to_fire = true;
+            }
+            if (flags & TR_RES_COLD) != 0
+                || name_lower.contains("resist cold")
+                || name_lower.contains("lordly protection (cold)")
+            {
+                self.flags.resistant_to_cold = true;
+            }
+            if (flags & TR_RES_ACID) != 0
+                || name_lower.contains("resist acid")
+                || name_lower.contains("lordly protection (acid)")
+            {
+                self.flags.resistant_to_acid = true;
+            }
+            if (flags & TR_RES_LIGHT) != 0 {
+                self.flags.resistant_to_light = true;
+            }
+            if (flags & TR_TELEPORT) != 0 || name_lower.contains("teleportation") {
+                self.flags.teleport = true;
+            }
+            if (flags & TR_AGGRAVATE) != 0 || name_lower.contains("aggravate") {
+                self.flags.aggravate = true;
+            }
+            if (flags & TR_REGEN) != 0 {
+                self.flags.regenerate_hp = true;
+            }
+            if (flags & TR_SUST_STAT) != 0 {
+                self.flags.sustain_str = true;
+                self.flags.sustain_int = true;
+                self.flags.sustain_wis = true;
+                self.flags.sustain_con = true;
+                self.flags.sustain_dex = true;
+                self.flags.sustain_chr = true;
+            }
+            if (flags & TR_STR) != 0 {
+                str_mod += item.misc_use.max(1);
+            }
+            if (flags & TR_INT) != 0 {
+                int_mod += item.misc_use.max(1);
+            }
+            if (flags & TR_WIS) != 0 {
+                wis_mod += item.misc_use.max(1);
+            }
+            if (flags & TR_DEX) != 0 {
+                dex_mod += item.misc_use.max(1);
+            }
+            if (flags & TR_CON) != 0 {
+                con_mod += item.misc_use.max(1);
+            }
+            if (flags & TR_CHR) != 0 {
+                chr_mod += item.misc_use.max(1);
+            }
+
             match &item.item_type {
                 ItemType::Ring { bonus } => {
                     if name_lower.contains("strength") && !name_lower.contains("sustain") {
@@ -1054,37 +1570,6 @@ impl Player {
                         wis_mod -= 5;
                     }
 
-                    if name_lower.contains("see invisible") {
-                        self.flags.see_invisible = true;
-                    }
-                    if name_lower.contains("free action") {
-                        self.flags.free_action = true;
-                    }
-                    if name_lower.contains("slow digestion") {
-                        self.flags.slow_digest = true;
-                    }
-                    if name_lower.contains("feather falling") {
-                        self.flags.free_fall = true;
-                    }
-                    if name_lower.contains("resist fire")
-                        || name_lower.contains("lordly protection (fire)")
-                    {
-                        self.flags.resistant_to_fire = true;
-                    }
-                    if name_lower.contains("resist cold")
-                        || name_lower.contains("lordly protection (cold)")
-                    {
-                        self.flags.resistant_to_cold = true;
-                    }
-                    if name_lower.contains("lordly protection (acid)") {
-                        self.flags.resistant_to_acid = true;
-                    }
-                    if name_lower.contains("teleportation") {
-                        self.flags.teleport = true;
-                    }
-                    if name_lower.contains("aggravate") {
-                        self.flags.aggravate = true;
-                    }
                     if name_lower.contains("sustain strength") {
                         self.flags.sustain_str = true;
                     }
@@ -1123,27 +1608,13 @@ impl Player {
                         con_mod -= 5;
                         chr_mod -= 5;
                     }
-
-                    if name_lower.contains("resist acid") {
-                        self.flags.resistant_to_acid = true;
-                    }
-                    if name_lower.contains("slow digestion") {
-                        self.flags.slow_digest = true;
-                    }
-                    if name_lower.contains("teleportation") {
-                        self.flags.teleport = true;
-                    }
                 }
-                _ => {
-                    if name_lower.contains("see invisible") {
-                        self.flags.see_invisible = true;
-                    }
-                    if name_lower.contains("free action") {
-                        self.flags.free_action = true;
-                    }
-                }
+                _ => {}
             }
         }
+
+        let old_max_hp = self.max_hp;
+        let old_max_mana = self.max_mana;
 
         self.stats.strength = modify_stat(self.base_stats.strength, str_mod);
         self.stats.intelligence = modify_stat(self.base_stats.intelligence, int_mod);
@@ -1153,6 +1624,12 @@ impl Player {
         self.stats.charisma = modify_stat(self.base_stats.charisma, chr_mod);
 
         self.update_max_hp_and_mana();
+        if old_max_hp > 0 && self.max_hp != old_max_hp {
+            self.hp = ((self.hp as i64 * self.max_hp as i64) / old_max_hp as i64) as i32;
+        }
+        if old_max_mana > 0 && self.max_mana != old_max_mana {
+            self.mana = ((self.mana as i64 * self.max_mana as i64) / old_max_mana as i64) as i32;
+        }
     }
 
     /// Drains a stat by 1 or percentile chunk according to canonical Umoria rules.
@@ -1583,6 +2060,97 @@ impl Player {
         }
     }
 
+    pub fn eliminate_known_spells_greater_than_level(&mut self) -> Vec<String> {
+        let mut messages = Vec::new();
+        if !self.is_mage_caster() && !self.is_priest_caster() {
+            return messages;
+        }
+        let is_prayer = self.is_priest_caster();
+        let spell_type_name = if is_prayer { "prayer" } else { "spell" };
+        let mut mask: u32 = 0x8000_0000;
+        for i in (0..32).rev() {
+            if (mask & self.spells_learnt) != 0
+                && let Some(def) = crate::magic::get_spell_def(self.class, i, is_prayer)
+            {
+                if def.level_required > self.level {
+                    self.spells_learnt &= !mask;
+                    self.spells_forgotten |= mask;
+                    messages.push(format!(
+                        "You have forgotten the {} of {}.",
+                        spell_type_name, def.name
+                    ));
+                } else {
+                    break;
+                }
+            }
+            mask >>= 1;
+        }
+        messages
+    }
+
+    pub fn remember_forgotten_spells(
+        &mut self,
+        mut allowed_spells: usize,
+        mut new_spells: usize,
+    ) -> (usize, Vec<String>) {
+        let mut messages = Vec::new();
+        if !self.is_mage_caster() && !self.is_priest_caster() {
+            return (new_spells, messages);
+        }
+        let is_prayer = self.is_priest_caster();
+        let spell_type_name = if is_prayer { "prayer" } else { "spell" };
+        let mut n = 0;
+        while self.spells_forgotten != 0 && new_spells != 0 && n < allowed_spells && n < 32 {
+            let order_id = self.spells_learned_order[n] as usize;
+            let mask = if order_id == 99 { 0 } else { 1u32 << order_id };
+            if (mask & self.spells_forgotten) != 0
+                && let Some(def) = crate::magic::get_spell_def(self.class, order_id, is_prayer)
+            {
+                if def.level_required <= self.level {
+                    new_spells -= 1;
+                    self.spells_forgotten &= !mask;
+                    self.spells_learnt |= mask;
+                    messages.push(format!(
+                        "You have remembered the {} of {}.",
+                        spell_type_name, def.name
+                    ));
+                } else {
+                    allowed_spells += 1;
+                }
+            }
+            n += 1;
+        }
+        (new_spells, messages)
+    }
+
+    pub fn forget_spells(&mut self, mut excess_spells: usize) -> Vec<String> {
+        let mut messages = Vec::new();
+        if !self.is_mage_caster() && !self.is_priest_caster() {
+            return messages;
+        }
+        let is_prayer = self.is_priest_caster();
+        let spell_type_name = if is_prayer { "prayer" } else { "spell" };
+        for i in (0..32).rev() {
+            if excess_spells == 0 || self.spells_learnt == 0 {
+                break;
+            }
+            let order_id = self.spells_learned_order[i] as usize;
+            let mask = if order_id == 99 { 0 } else { 1u32 << order_id };
+            if (mask & self.spells_learnt) != 0
+                && let Some(def) = crate::magic::get_spell_def(self.class, order_id, is_prayer)
+            {
+                self.spells_learnt &= !mask;
+                self.spells_forgotten |= mask;
+                excess_spells -= 1;
+                messages.push(format!(
+                    "You have forgotten the {} of {}.",
+                    spell_type_name, def.name
+                ));
+            }
+        }
+        messages
+    }
+
     pub fn update_spells_to_learn(&mut self) {
         let stat_val = if self.is_mage_caster() {
             self.stats.intelligence
@@ -1592,10 +2160,29 @@ impl Player {
             self.new_spells_to_learn = 0;
             return;
         };
-        let allowed = crate::magic::number_of_spells_allowed(self.level, self.class, stat_val);
-        let known = self.spells_learnt.count_ones();
+        let _ = self.eliminate_known_spells_greater_than_level();
+        let allowed =
+            crate::magic::number_of_spells_allowed(self.level, self.class, stat_val) as usize;
+        let known = self.spells_learnt.count_ones() as usize;
         if allowed > known {
-            self.new_spells_to_learn = allowed - known;
+            let diff = allowed - known;
+            let (rem_new, _) = self.remember_forgotten_spells(allowed, diff);
+            let is_prayer = self.is_priest_caster();
+            let mut id = 0;
+            let spell_flag = 0x7FFF_FFFF & !self.spells_learnt;
+            for i in 0..31 {
+                if (spell_flag & (1 << i)) != 0
+                    && let Some(def) = crate::magic::get_spell_def(self.class, i, is_prayer)
+                    && def.level_required <= self.level
+                {
+                    id += 1;
+                }
+            }
+            self.new_spells_to_learn = (rem_new.min(id)) as u32;
+        } else if known > allowed {
+            let diff = known - allowed;
+            let _ = self.forget_spells(diff);
+            self.new_spells_to_learn = 0;
         } else {
             self.new_spells_to_learn = 0;
         }
@@ -1713,6 +2300,275 @@ impl Player {
         leveled_up
     }
 
+    pub const BLOWS_TABLE: [[u8; 6]; 7] = [
+        // STR/W:   9  18  67  107 117 118  : DEX
+        [1, 1, 1, 1, 1, 1], // <2
+        [1, 1, 1, 1, 2, 2], // <3
+        [1, 1, 1, 2, 2, 3], // <4
+        [1, 1, 2, 2, 3, 3], // <5
+        [1, 2, 2, 3, 3, 4], // <7
+        [1, 2, 2, 3, 4, 4], // <9
+        [2, 2, 3, 3, 4, 4], // >=9
+    ];
+
+    pub const WARRIOR_TITLES: [&str; 40] = [
+        "Rookie",
+        "Private",
+        "Soldier",
+        "Mercenary",
+        "Veteran(1st)",
+        "Veteran(2nd)",
+        "Veteran(3rd)",
+        "Warrior(1st)",
+        "Warrior(2nd)",
+        "Warrior(3rd)",
+        "Warrior(4th)",
+        "Swordsman-1",
+        "Swordsman-2",
+        "Swordsman-3",
+        "Hero",
+        "Swashbuckler",
+        "Myrmidon",
+        "Champion-1",
+        "Champion-2",
+        "Champion-3",
+        "Superhero",
+        "Knight",
+        "Superior Knt",
+        "Gallant Knt",
+        "Knt Errant",
+        "Guardian Knt",
+        "Baron",
+        "Duke",
+        "Lord (1st)",
+        "Lord (2nd)",
+        "Lord (3rd)",
+        "Lord (4th)",
+        "Lord (5th)",
+        "Lord (6th)",
+        "Lord (7th)",
+        "Lord (8th)",
+        "Lord (9th)",
+        "Lord Gallant",
+        "Lord Keeper",
+        "Lord Noble",
+    ];
+
+    pub const MAGE_TITLES: [&str; 40] = [
+        "Novice",
+        "Apprentice",
+        "Trickster-1",
+        "Trickster-2",
+        "Trickster-3",
+        "Cabalist-1",
+        "Cabalist-2",
+        "Cabalist-3",
+        "Visionist",
+        "Phantasmist",
+        "Shadowist",
+        "Spellbinder",
+        "Illusionist",
+        "Evoker (1st)",
+        "Evoker (2nd)",
+        "Evoker (3rd)",
+        "Evoker (4th)",
+        "Conjurer",
+        "Theurgist",
+        "Thaumaturge",
+        "Magician",
+        "Enchanter",
+        "Warlock",
+        "Sorcerer",
+        "Necromancer",
+        "Mage (1st)",
+        "Mage (2nd)",
+        "Mage (3rd)",
+        "Mage (4th)",
+        "Mage (5th)",
+        "Wizard (1st)",
+        "Wizard (2nd)",
+        "Wizard (3rd)",
+        "Wizard (4th)",
+        "Wizard (5th)",
+        "Wizard (6th)",
+        "Wizard (7th)",
+        "Wizard (8th)",
+        "Wizard (9th)",
+        "Wizard Lord",
+    ];
+
+    pub const PRIEST_TITLES: [&str; 40] = [
+        "Believer",
+        "Acolyte(1st)",
+        "Acolyte(2nd)",
+        "Acolyte(3rd)",
+        "Adept (1st)",
+        "Adept (2nd)",
+        "Adept (3rd)",
+        "Priest (1st)",
+        "Priest (2nd)",
+        "Priest (3rd)",
+        "Priest (4th)",
+        "Priest (5th)",
+        "Priest (6th)",
+        "Priest (7th)",
+        "Priest (8th)",
+        "Priest (9th)",
+        "Curate (1st)",
+        "Curate (2nd)",
+        "Curate (3rd)",
+        "Curate (4th)",
+        "Curate (5th)",
+        "Curate (6th)",
+        "Curate (7th)",
+        "Curate (8th)",
+        "Curate (9th)",
+        "Canon (1st)",
+        "Canon (2nd)",
+        "Canon (3rd)",
+        "Canon (4th)",
+        "Canon (5th)",
+        "Low Lama",
+        "Lama-1",
+        "Lama-2",
+        "Lama-3",
+        "High Lama",
+        "Great Lama",
+        "Patriarch",
+        "High Priest",
+        "Great Priest",
+        "Noble Priest",
+    ];
+
+    pub const ROGUE_TITLES: [&str; 40] = [
+        "Vagabond",
+        "Footpad",
+        "Cutpurse",
+        "Robber",
+        "Burglar",
+        "Filcher",
+        "Sharper",
+        "Magsman",
+        "Common Rogue",
+        "Rogue (1st)",
+        "Rogue (2nd)",
+        "Rogue (3rd)",
+        "Rogue (4th)",
+        "Rogue (5th)",
+        "Rogue (6th)",
+        "Rogue (7th)",
+        "Rogue (8th)",
+        "Rogue (9th)",
+        "Master Rogue",
+        "Expert Rogue",
+        "Senior Rogue",
+        "Chief Rogue",
+        "Prime Rogue",
+        "Low Thief",
+        "Thief (1st)",
+        "Thief (2nd)",
+        "Thief (3rd)",
+        "Thief (4th)",
+        "Thief (5th)",
+        "Thief (6th)",
+        "Thief (7th)",
+        "Thief (8th)",
+        "Thief (9th)",
+        "High Thief",
+        "Master Thief",
+        "Executioner",
+        "Low Assassin",
+        "Assassin",
+        "High Assassin",
+        "Guildsmaster",
+    ];
+
+    pub const RANGER_TITLES: [&str; 40] = [
+        "Runner (1st)",
+        "Runner (2nd)",
+        "Runner (3rd)",
+        "Strider (1st)",
+        "Strider (2nd)",
+        "Strider (3rd)",
+        "Scout (1st)",
+        "Scout (2nd)",
+        "Scout (3rd)",
+        "Scout (4th)",
+        "Scout (5th)",
+        "Courser (1st)",
+        "Courser (2nd)",
+        "Courser (3rd)",
+        "Courser (4th)",
+        "Courser (5th)",
+        "Tracker (1st)",
+        "Tracker (2nd)",
+        "Tracker (3rd)",
+        "Tracker (4th)",
+        "Tracker (5th)",
+        "Tracker (6th)",
+        "Tracker (7th)",
+        "Tracker (8th)",
+        "Tracker (9th)",
+        "Guide (1st)",
+        "Guide (2nd)",
+        "Guide (3rd)",
+        "Guide (4th)",
+        "Guide (5th)",
+        "Guide (6th)",
+        "Guide (7th)",
+        "Guide (8th)",
+        "Guide (9th)",
+        "Pathfinder-1",
+        "Pathfinder-2",
+        "Pathfinder-3",
+        "Ranger",
+        "High Ranger",
+        "Ranger Lord",
+    ];
+
+    pub const PALADIN_TITLES: [&str; 40] = [
+        "Gallant",
+        "Keeper (1st)",
+        "Keeper (2nd)",
+        "Keeper (3rd)",
+        "Keeper (4th)",
+        "Keeper (5th)",
+        "Keeper (6th)",
+        "Keeper (7th)",
+        "Keeper (8th)",
+        "Keeper (9th)",
+        "Protector-1",
+        "Protector-2",
+        "Protector-3",
+        "Protector-4",
+        "Protector-5",
+        "Protector-6",
+        "Protector-7",
+        "Protector-8",
+        "Defender-1",
+        "Defender-2",
+        "Defender-3",
+        "Defender-4",
+        "Defender-5",
+        "Defender-6",
+        "Defender-7",
+        "Defender-8",
+        "Warder (1st)",
+        "Warder (2nd)",
+        "Warder (3rd)",
+        "Warder (4th)",
+        "Warder (5th)",
+        "Warder (6th)",
+        "Warder (7th)",
+        "Warder (8th)",
+        "Warder (9th)",
+        "Guardian",
+        "Chevalier",
+        "Justiciar",
+        "Paladin",
+        "High Lord",
+    ];
+
     pub fn roll_melee_damage<R: rand::Rng>(&self, rng: &mut R) -> i32 {
         self.roll_melee_damage_against(rng, None)
     }
@@ -1726,9 +2582,40 @@ impl Player {
     pub fn calculate_blows(&self, weapon: &Option<&Item>) -> u32 {
         let weight = weapon.map(|w| w.weight).unwrap_or(10);
         let weight = if weight == 0 { 10 } else { weight };
-        let str_dex = (self.stats.strength as u32 + self.stats.dexterity as u32) * 10;
-        let blows = str_dex / weight;
-        blows.clamp(1, 5)
+        let str_val = self.stats.strength.max(3) as u32;
+        if str_val * 15 < weight {
+            return 1;
+        }
+        let dex_idx = match self.stats.dexterity {
+            d if d < 10 => 0,
+            d if d < 19 => 1,
+            d if d < 68 => 2,
+            d if d < 108 => 3,
+            d if d < 118 => 4,
+            _ => 5,
+        };
+        let adj_w = (str_val * 10) / weight;
+        let str_idx = match adj_w {
+            w if w < 2 => 0,
+            w if w < 3 => 1,
+            w if w < 4 => 2,
+            w if w < 5 => 3,
+            w if w < 7 => 4,
+            w if w < 9 => 5,
+            _ => 6,
+        };
+        Self::BLOWS_TABLE[str_idx][dex_idx] as u32
+    }
+
+    pub fn weapon_weight_to_hit_penalty(&self, weapon: &Option<&Item>) -> i32 {
+        let weight = weapon.map(|w| w.weight).unwrap_or(10);
+        let weight = if weight == 0 { 10 } else { weight };
+        let str_val = self.stats.strength.max(3) as u32;
+        if str_val * 15 < weight {
+            (str_val * 15) as i32 - weight as i32
+        } else {
+            0
+        }
     }
 
     pub fn base_to_hit(&self) -> i32 {
@@ -1762,7 +2649,7 @@ impl Player {
     }
 
     pub fn dex_to_hit_adj(&self) -> i32 {
-        let dex = self.stats.dexterity as i32;
+        let dex = self.stats.dexterity;
         if dex < 4 {
             -3
         } else if dex < 6 {
@@ -1777,16 +2664,194 @@ impl Player {
             2
         } else if dex < 69 {
             3
+        } else if dex < 118 {
+            4
+        } else {
+            5
+        }
+    }
+
+    pub fn str_to_hit_adj(&self) -> i32 {
+        let strength = self.stats.strength;
+        if strength < 4 {
+            -3
+        } else if strength < 5 {
+            -2
+        } else if strength < 7 {
+            -1
+        } else if strength < 18 {
+            0
+        } else if strength < 94 {
+            1
+        } else if strength < 109 {
+            2
+        } else if strength < 117 {
+            3
         } else {
             4
+        }
+    }
+
+    pub fn to_hit_adjustment(&self) -> i32 {
+        self.dex_to_hit_adj() + self.str_to_hit_adj()
+    }
+
+    pub fn str_damage_adj(&self) -> i32 {
+        let strength = self.stats.strength;
+        if strength < 4 {
+            -2
+        } else if strength < 5 {
+            -1
+        } else if strength < 16 {
+            0
+        } else if strength < 17 {
+            1
+        } else if strength < 18 {
+            2
+        } else if strength < 94 {
+            3
+        } else if strength < 109 {
+            4
+        } else if strength < 117 {
+            5
+        } else {
+            6
+        }
+    }
+
+    pub fn dex_ac_adj(&self) -> i32 {
+        let stat = self.stats.dexterity;
+        if stat < 4 {
+            -4
+        } else if stat == 4 {
+            -3
+        } else if stat == 5 {
+            -2
+        } else if stat == 6 {
+            -1
+        } else if stat < 15 {
+            0
+        } else if stat < 18 {
+            1
+        } else if stat < 59 {
+            2
+        } else if stat < 94 {
+            3
+        } else if stat < 117 {
+            4
+        } else {
+            5
+        }
+    }
+
+    pub fn dex_disarm_adj(&self) -> i32 {
+        let stat = self.stats.dexterity;
+        if stat < 4 {
+            -8
+        } else if stat == 4 {
+            -6
+        } else if stat == 5 {
+            -4
+        } else if stat == 6 {
+            -2
+        } else if stat == 7 {
+            -1
+        } else if stat < 13 {
+            0
+        } else if stat < 16 {
+            1
+        } else if stat < 18 {
+            2
+        } else if stat < 59 {
+            4
+        } else if stat < 94 {
+            5
+        } else if stat < 117 {
+            6
+        } else {
+            8
+        }
+    }
+
+    pub fn int_wis_stat_adj(&self, is_wisdom: bool) -> i32 {
+        let val = if is_wisdom {
+            self.stats.wisdom
+        } else {
+            self.stats.intelligence
+        };
+        if val > 117 {
+            7
+        } else if val > 107 {
+            6
+        } else if val > 87 {
+            5
+        } else if val > 67 {
+            4
+        } else if val > 17 {
+            3
+        } else if val > 14 {
+            2
+        } else if val > 7 {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn player_weapon_critical_blow<R: rand::Rng>(
+        &self,
+        rng: &mut R,
+        weapon_weight: u32,
+        plus_to_hit: i32,
+        damage: i32,
+        attack_type_id: usize,
+    ) -> (i32, Option<&'static str>) {
+        let class_idx = match self.class {
+            Class::Warrior => 0,
+            Class::Mage => 1,
+            Class::Priest => 2,
+            Class::Rogue => 3,
+            Class::Ranger => 4,
+            Class::Paladin => 5,
+        };
+        let class_adj = match (class_idx, attack_type_id) {
+            (0, 0) | (0, 1) => 4,
+            (1, 0) | (1, 1) => 2,
+            (2, 0) | (2, 1) => 2,
+            (3, 0) => 3,
+            (3, 1) => 4,
+            (4, 0) => 3,
+            (4, 1) => 4,
+            (5, 0) | (5, 1) => 3,
+            _ => 3,
+        };
+        let crit_threshold =
+            weapon_weight as i32 + 5 * plus_to_hit + (class_adj * self.level as i32);
+        if rng.gen_range(1..=5000) <= crit_threshold {
+            let effective_weight = weapon_weight + rng.gen_range(1..=650);
+            if effective_weight < 400 {
+                (2 * damage + 5, Some("It was a good hit! (x2 damage)"))
+            } else if effective_weight < 700 {
+                (
+                    3 * damage + 10,
+                    Some("It was an excellent hit! (x3 damage)"),
+                )
+            } else if effective_weight < 900 {
+                (4 * damage + 15, Some("It was a superb hit! (x4 damage)"))
+            } else {
+                (5 * damage + 20, Some("It was a *GREAT* hit! (x5 damage)"))
+            }
+        } else {
+            (damage, None)
         }
     }
 
     pub fn test_hit<R: rand::Rng>(&self, rng: &mut R, target_ac: i32) -> bool {
         let bth = self.base_to_hit();
         let level_adj = self.class_bth_level_adj();
-        let dex_adj = self.dex_to_hit_adj();
-        let mut to_hit_bonus = dex_adj;
+        let to_hit_adj = self.to_hit_adjustment();
+        let weapon = self.equipped_weapon();
+        let mut to_hit_bonus = to_hit_adj + self.weapon_weight_to_hit_penalty(&weapon);
         for item in &self.equipment {
             to_hit_bonus += item.to_hit as i32;
         }
@@ -1801,19 +2866,19 @@ impl Player {
         weapon: Option<&Item>,
         target_creature_id: Option<usize>,
     ) -> i32 {
-        let (base_dice, weapon_flags, weapon_to_dam) = if let Some(weapon) = weapon {
+        let (base_dice, weapon_flags, weapon_to_dam, weight) = if let Some(weapon) = weapon {
             let dice = match &weapon.item_type {
                 ItemType::Weapon { damage } => *damage,
                 _ => Dice::new(1, 4),
             };
-            (dice, weapon.flags, weapon.to_damage as i32)
+            (dice, weapon.flags, weapon.to_damage as i32, weapon.weight)
         } else {
             let dice = match self.class {
                 Class::Warrior => Dice::new(2, 6),
                 Class::Rogue => Dice::new(1, 8),
                 _ => Dice::new(1, 6),
             };
-            (dice, 0, 0)
+            (dice, 0, 0, 10)
         };
 
         let mut dice_roll = base_dice.roll(rng) as i32;
@@ -1823,7 +2888,7 @@ impl Player {
             dice_roll *= multiplier as i32;
         }
 
-        let mut damage = dice_roll + (self.stats.strength as i32 - 10) / 2 + weapon_to_dam;
+        let mut damage = dice_roll + self.str_damage_adj() + weapon_to_dam;
         for item in &self.equipment {
             if let ItemType::Ring { bonus } = &item.item_type {
                 let lname = item.name.to_lowercase();
@@ -1838,6 +2903,8 @@ impl Player {
         if self.flags.super_heroism > 0 {
             damage += 4;
         }
+        let (crit, _) = self.player_weapon_critical_blow(rng, weight, weapon_to_dam, damage, 0);
+        damage = crit;
         if damage < 1 { 1 } else { damage }
     }
 
@@ -1893,8 +2960,7 @@ impl Player {
     }
 
     pub fn calculate_ac(&self) -> i32 {
-        let mut ac = 10;
-        ac += (self.stats.dexterity as i32 - 10) / 2;
+        let mut ac = self.dex_ac_adj();
 
         for item in &self.equipment {
             match &item.item_type {
@@ -1924,8 +2990,7 @@ impl Player {
         ac
     }
 
-    /// Saving throw check against magical attacks and spells according to canonical Umoria rules.
-    pub fn saving_throw<R: rand::Rng>(&self, rng: &mut R) -> bool {
+    pub fn saving_throw_target(&self) -> i32 {
         let base_save = match self.class {
             Class::Warrior => 18,
             Class::Mage => 36,
@@ -1944,12 +3009,225 @@ impl Player {
             Race::HalfOrc => -3,
             Race::HalfTroll => -8,
         };
-        let wis_adj = crate::magic::stat_adjustment(self.stats.wisdom);
-        let save_target = (base_save + race_save + wis_adj + self.level as i32).clamp(5, 95);
-        rng.gen_range(1..=100) <= save_target
+        let level_adj = (3 * self.level as i32) / 3;
+        let wis_adj = self.int_wis_stat_adj(true);
+        (base_save + race_save + wis_adj + level_adj).clamp(5, 95)
+    }
+
+    pub fn saving_throw<R: rand::Rng>(&self, rng: &mut R) -> bool {
+        let target = self.saving_throw_target();
+        rng.gen_range(1..=100) <= target
+    }
+
+    pub fn disarm_skill(&self) -> i32 {
+        let race_dis = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => 2,
+            Race::Elf => 5,
+            Race::Halfling => 15,
+            Race::Gnome => 10,
+            Race::Dwarf => 2,
+            Race::HalfOrc => -3,
+            Race::HalfTroll => -5,
+        };
+        let (class_dis, class_lvl_adj) = match self.class {
+            Class::Warrior => (25, 2),
+            Class::Mage => (30, 3),
+            Class::Priest => (25, 3),
+            Class::Rogue => (45, 4),
+            Class::Ranger => (30, 3),
+            Class::Paladin => (20, 2),
+        };
+        race_dis + class_dis + self.dex_disarm_adj() + ((class_lvl_adj * self.level as i32) / 3)
+    }
+
+    pub fn search_chance(&self) -> i32 {
+        let race_src = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => 6,
+            Race::Elf => 8,
+            Race::Halfling => 12,
+            Race::Gnome => 6,
+            Race::Dwarf => 7,
+            Race::HalfOrc => 0,
+            Race::HalfTroll => -1,
+        };
+        let class_src = match self.class {
+            Class::Warrior => 14,
+            Class::Mage => 16,
+            Class::Priest => 16,
+            Class::Rogue => 32,
+            Class::Ranger => 24,
+            Class::Paladin => 12,
+        };
+        let int_adj = self.int_wis_stat_adj(false);
+        race_src + class_src + int_adj + (self.level as i32 / 3)
+    }
+
+    pub fn fos(&self) -> i32 {
+        let race_fos = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => -1,
+            Race::Elf => -2,
+            Race::Halfling => -5,
+            Race::Gnome => -3,
+            Race::Dwarf => 0,
+            Race::HalfOrc => 3,
+            Race::HalfTroll => 5,
+        };
+        let class_fos = match self.class {
+            Class::Warrior => 38,
+            Class::Mage => 20,
+            Class::Priest => 32,
+            Class::Rogue => 16,
+            Class::Ranger => 24,
+            Class::Paladin => 38,
+        };
+        (class_fos + race_fos).max(1)
+    }
+
+    pub fn stealth_factor(&self) -> i32 {
+        let race_stl = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => 1,
+            Race::Elf => 1,
+            Race::Halfling => 4,
+            Race::Gnome => 3,
+            Race::Dwarf => -1,
+            Race::HalfOrc => -1,
+            Race::HalfTroll => -2,
+        };
+        let class_stl = match self.class {
+            Class::Warrior => 1,
+            Class::Mage => 2,
+            Class::Priest => 2,
+            Class::Rogue => 5,
+            Class::Ranger => 3,
+            Class::Paladin => 1,
+        };
+        let mut stealth = race_stl + class_stl;
+        for item in &self.equipment {
+            if (item.flags & crate::entity::treasure_data::TR_STEALTH) != 0 {
+                stealth += 1;
+            }
+        }
+        stealth.max(0)
+    }
+
+    pub fn bth_with_bows(&self) -> i32 {
+        let race_btb = match self.race {
+            Race::Human => 0,
+            Race::HalfElf => 5,
+            Race::Elf => 15,
+            Race::Halfling => 20,
+            Race::Gnome => 12,
+            Race::Dwarf => 0,
+            Race::HalfOrc => -5,
+            Race::HalfTroll => -10,
+        };
+        let (class_btb, class_adj) = match self.class {
+            Class::Warrior => (55, 4),
+            Class::Mage => (20, 2),
+            Class::Priest => (35, 2),
+            Class::Rogue => (66, 4),
+            Class::Ranger => (72, 4),
+            Class::Paladin => (40, 3),
+        };
+        race_btb + class_btb + (class_adj * self.level as i32) + (self.dex_to_hit_adj() * 3)
+    }
+
+    pub fn device_skill(&self) -> i32 {
+        let (class_dev, class_adj) = match self.class {
+            Class::Warrior => (24, 2),
+            Class::Mage => (36, 4),
+            Class::Priest => (30, 4),
+            Class::Rogue => (32, 3),
+            Class::Ranger => (28, 3),
+            Class::Paladin => (24, 3),
+        };
+        let int_adj = self.int_wis_stat_adj(false);
+        class_dev + int_adj + ((class_adj * self.level as i32) / 3)
+    }
+
+    pub fn rank_title(&self) -> &'static str {
+        let lvl_idx = (self.level as usize).saturating_sub(1).min(39);
+        match self.class {
+            Class::Warrior => Self::WARRIOR_TITLES[lvl_idx],
+            Class::Mage => Self::MAGE_TITLES[lvl_idx],
+            Class::Priest => Self::PRIEST_TITLES[lvl_idx],
+            Class::Rogue => Self::ROGUE_TITLES[lvl_idx],
+            Class::Ranger => Self::RANGER_TITLES[lvl_idx],
+            Class::Paladin => Self::PALADIN_TITLES[lvl_idx],
+        }
+    }
+
+    pub fn damage_pack_items<R: rand::Rng, F: Fn(&Item) -> bool>(
+        &mut self,
+        rng: &mut R,
+        predicate: F,
+        chance_percent: u32,
+    ) -> usize {
+        let mut destroyed_count = 0;
+        let mut i = 0;
+        while i < self.inventory.len() {
+            if predicate(&self.inventory[i]) && rng.gen_range(1..=100) <= chance_percent {
+                if self.inventory[i].count > 1 {
+                    self.inventory[i].count -= 1;
+                } else {
+                    self.inventory.remove(i);
+                    destroyed_count += 1;
+                    continue;
+                }
+                destroyed_count += 1;
+            }
+            i += 1;
+        }
+        destroyed_count
+    }
+
+    pub fn damage_minus_ac<R: rand::Rng>(
+        &mut self,
+        rng: &mut R,
+        typ_dam: u32,
+        status_msg: &mut String,
+    ) -> bool {
+        let armor_indices: Vec<usize> = self
+            .equipment
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| matches!(it.item_type, ItemType::Armor { .. }))
+            .map(|(idx, _)| idx)
+            .collect();
+        if armor_indices.is_empty() {
+            return false;
+        }
+        let pick = armor_indices[rng.gen_range(0..armor_indices.len())];
+        if (self.equipment[pick].flags & typ_dam) != 0 {
+            status_msg.push_str(&format!(
+                " Your {} resists damage!",
+                self.equipment[pick].name
+            ));
+            true
+        } else if self.equipment[pick].to_ac > -10 {
+            self.equipment[pick].to_ac -= 1;
+            status_msg.push_str(&format!(" Your {} is damaged!", self.equipment[pick].name));
+            self.update_equipment_bonuses();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn damage_fire(&mut self, damage: i32, status_msg: &mut String) {
+        self.damage_fire_with_rng(damage, status_msg, &mut rand::thread_rng());
+    }
+
+    pub fn damage_fire_with_rng<R: rand::Rng>(
+        &mut self,
+        damage: i32,
+        status_msg: &mut String,
+        rng: &mut R,
+    ) {
         let mut dmg = damage;
         if self.flags.resistant_to_fire || self.flags.heat_resistance > 0 {
             dmg /= 3;
@@ -1957,9 +3235,36 @@ impl Player {
         let final_dmg = dmg.max(1);
         self.hp -= final_dmg;
         status_msg.push_str(&format!(" You take {} fire damage!", final_dmg));
+
+        let burned = self.damage_pack_items(
+            rng,
+            |item| {
+                use crate::entity::treasure_data::*;
+                match item.category_id {
+                    TV_ARROW | TV_BOW | TV_HAFTED | TV_POLEARM | TV_BOOTS | TV_GLOVES
+                    | TV_CLOAK | TV_SOFT_ARMOR => (item.flags & TR_RES_FIRE) == 0,
+                    TV_STAFF | TV_SCROLL1 | TV_SCROLL2 | TV_POTION1 | TV_POTION2 | TV_FLASK
+                    | TV_FOOD => true,
+                    _ => false,
+                }
+            },
+            3,
+        );
+        if burned > 0 {
+            status_msg.push_str(" There is smoke coming from your pack!");
+        }
     }
 
     pub fn damage_cold(&mut self, damage: i32, status_msg: &mut String) {
+        self.damage_cold_with_rng(damage, status_msg, &mut rand::thread_rng());
+    }
+
+    pub fn damage_cold_with_rng<R: rand::Rng>(
+        &mut self,
+        damage: i32,
+        status_msg: &mut String,
+        rng: &mut R,
+    ) {
         let mut dmg = damage;
         if self.flags.resistant_to_cold || self.flags.cold_resistance > 0 {
             dmg /= 3;
@@ -1967,9 +3272,32 @@ impl Player {
         let final_dmg = dmg.max(1);
         self.hp -= final_dmg;
         status_msg.push_str(&format!(" You take {} cold damage!", final_dmg));
+
+        let shattered = self.damage_pack_items(
+            rng,
+            |item| {
+                use crate::entity::treasure_data::*;
+                item.category_id == TV_POTION1
+                    || item.category_id == TV_POTION2
+                    || item.category_id == TV_FLASK
+            },
+            5,
+        );
+        if shattered > 0 {
+            status_msg.push_str(" Something shatters inside your pack!");
+        }
     }
 
     pub fn damage_lightning(&mut self, damage: i32, status_msg: &mut String) {
+        self.damage_lightning_with_rng(damage, status_msg, &mut rand::thread_rng());
+    }
+
+    pub fn damage_lightning_with_rng<R: rand::Rng>(
+        &mut self,
+        damage: i32,
+        status_msg: &mut String,
+        rng: &mut R,
+    ) {
         let mut dmg = damage;
         if self.flags.resistant_to_light {
             dmg /= 3;
@@ -1977,16 +3305,60 @@ impl Player {
         let final_dmg = dmg.max(1);
         self.hp -= final_dmg;
         status_msg.push_str(&format!(" You take {} lightning damage!", final_dmg));
+
+        let sparked = self.damage_pack_items(
+            rng,
+            |item| {
+                use crate::entity::treasure_data::*;
+                item.category_id == TV_RING
+                    || item.category_id == TV_WAND
+                    || item.category_id == TV_SPIKE
+            },
+            3,
+        );
+        if sparked > 0 {
+            status_msg.push_str(" There are sparks coming from your pack!");
+        }
     }
 
     pub fn damage_acid(&mut self, damage: i32, status_msg: &mut String) {
-        let mut dmg = damage;
-        if self.flags.resistant_to_acid {
-            dmg /= 3;
+        self.damage_acid_with_rng(damage, status_msg, &mut rand::thread_rng());
+    }
+
+    pub fn damage_acid_with_rng<R: rand::Rng>(
+        &mut self,
+        damage: i32,
+        status_msg: &mut String,
+        rng: &mut R,
+    ) {
+        let mut flag = 0;
+        if self.damage_minus_ac(rng, crate::entity::treasure_data::TR_RES_ACID, status_msg) {
+            flag = 1;
         }
-        let final_dmg = dmg.max(1);
+        if self.flags.resistant_to_acid {
+            flag += 2;
+        }
+        let final_dmg = (damage / (flag + 1)).max(1);
         self.hp -= final_dmg;
         status_msg.push_str(&format!(" You take {} acid damage!", final_dmg));
+
+        let melted = self.damage_pack_items(
+            rng,
+            |item| {
+                use crate::entity::treasure_data::*;
+                match item.category_id {
+                    TV_MISC | TV_CHEST => true,
+                    TV_BOLT | TV_ARROW | TV_BOW | TV_HAFTED | TV_POLEARM | TV_BOOTS | TV_GLOVES
+                    | TV_CLOAK | TV_SOFT_ARMOR => (item.flags & TR_RES_ACID) == 0,
+                    TV_STAFF | TV_SCROLL1 | TV_SCROLL2 | TV_FOOD => true,
+                    _ => false,
+                }
+            },
+            5,
+        );
+        if melted > 0 {
+            status_msg.push_str(" There is an acrid smell coming from your pack.");
+        }
     }
 
     pub fn damage_poison_gas(&mut self, damage: i32, status_msg: &mut String) {
@@ -2114,12 +3486,37 @@ impl Player {
             Class::Paladin => (3, -3, 1, 0, 2, 2),
         };
 
-        self.stats.strength = (self.stats.strength + r_str + c_str).max(2);
-        self.stats.intelligence = (self.stats.intelligence + r_int + c_int).max(2);
-        self.stats.wisdom = (self.stats.wisdom + r_wis + c_wis).max(2);
-        self.stats.dexterity = (self.stats.dexterity + r_dex + c_dex).max(2);
-        self.stats.constitution = (self.stats.constitution + r_con + c_con).max(2);
-        self.stats.charisma = (self.stats.charisma + r_chr + c_chr).max(2);
+        let mut rng = rand::thread_rng();
+        self.stats.strength = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.strength, r_str, &mut rng),
+            c_str,
+            &mut rng,
+        );
+        self.stats.intelligence = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.intelligence, r_int, &mut rng),
+            c_int,
+            &mut rng,
+        );
+        self.stats.wisdom = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.wisdom, r_wis, &mut rng),
+            c_wis,
+            &mut rng,
+        );
+        self.stats.dexterity = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.dexterity, r_dex, &mut rng),
+            c_dex,
+            &mut rng,
+        );
+        self.stats.constitution = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.constitution, r_con, &mut rng),
+            c_con,
+            &mut rng,
+        );
+        self.stats.charisma = create_modify_player_stat_with_rng(
+            create_modify_player_stat_with_rng(self.stats.charisma, r_chr, &mut rng),
+            c_chr,
+            &mut rng,
+        );
     }
 }
 
@@ -2176,13 +3573,13 @@ mod tests {
         let torch = Item::new("Wooden Torch", 1, 15, ItemType::Light { fuel: 4000 });
         let bow = Item::new("Short Bow", 1, 30, ItemType::Bow { multiplier: 2 });
 
-        assert_eq!(dagger.get_equipment_slot(), "Weapon");
-        assert_eq!(shield.get_equipment_slot(), "Shield");
-        assert_eq!(mail.get_equipment_slot(), "Body Armor");
-        assert_eq!(boots.get_equipment_slot(), "Boots");
-        assert_eq!(helm.get_equipment_slot(), "Headwear");
-        assert_eq!(torch.get_equipment_slot(), "Light Source");
-        assert_eq!(bow.get_equipment_slot(), "Ranged Weapon");
+        assert_eq!(dagger.get_equipment_slot(), "Wielding");
+        assert_eq!(shield.get_equipment_slot(), "On arm");
+        assert_eq!(mail.get_equipment_slot(), "On body");
+        assert_eq!(boots.get_equipment_slot(), "On feet");
+        assert_eq!(helm.get_equipment_slot(), "On head");
+        assert_eq!(torch.get_equipment_slot(), "Light source");
+        assert_eq!(bow.get_equipment_slot(), "Spare weapon");
     }
 
     #[test]
@@ -2247,28 +3644,28 @@ mod tests {
         player.apply_race_and_class_modifiers();
 
         assert!(
-            player.stats.strength >= 2,
-            "Strength was not clamped to minimum 2"
+            player.stats.strength >= 3,
+            "Strength was not clamped to minimum 3"
         );
         assert!(
-            player.stats.intelligence >= 2,
-            "Intelligence was not clamped to minimum 2"
+            player.stats.intelligence >= 3,
+            "Intelligence was not clamped to minimum 3"
         );
         assert!(
-            player.stats.wisdom >= 2,
-            "Wisdom was not clamped to minimum 2"
+            player.stats.wisdom >= 3,
+            "Wisdom was not clamped to minimum 3"
         );
         assert!(
-            player.stats.dexterity >= 2,
-            "Dexterity was not clamped to minimum 2"
+            player.stats.dexterity >= 3,
+            "Dexterity was not clamped to minimum 3"
         );
         assert!(
-            player.stats.constitution >= 2,
-            "Constitution was not clamped to minimum 2"
+            player.stats.constitution >= 3,
+            "Constitution was not clamped to minimum 3"
         );
         assert!(
-            player.stats.charisma >= 2,
-            "Charisma was not clamped to minimum 2"
+            player.stats.charisma >= 3,
+            "Charisma was not clamped to minimum 3"
         );
     }
 
@@ -2684,7 +4081,7 @@ mod tests {
     #[test]
     fn test_bow_and_missile_types() {
         let bow = Item::new("Heavy Crossbow", 1, 200, ItemType::Bow { multiplier: 4 });
-        assert_eq!(bow.get_equipment_slot(), "Ranged Weapon");
+        assert_eq!(bow.get_equipment_slot(), "Spare weapon");
 
         let bolt = Item::new(
             "Bolt",
@@ -2784,9 +4181,9 @@ mod tests {
             "Must have see invisible from Amulet of the Magi"
         );
 
-        // Calculate AC with bonuses: 10 base + DEX mod + 5 (ring) + 3 (amulet)
+        // Calculate AC with bonuses: 0 base + DEX mod + 5 (ring) + 3 (amulet)
         let ac = player.calculate_ac();
-        let expected_ac = 10 + (player.stats.dexterity as i32 - 10) / 2 + 5 + 3;
+        let expected_ac = player.dex_ac_adj() + 5 + 3;
         assert_eq!(ac, expected_ac);
 
         // Unequip all items

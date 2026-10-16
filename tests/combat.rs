@@ -31,6 +31,9 @@ fn test_calculate_blows_range() {
         cost: 0,
         ego_name: None,
         to_ac: 0,
+        category_id: 0,
+        sub_category_id: 0,
+        misc_use: 0,
     };
 
     let blows_heavy = player.calculate_blows(&Some(&heavy_weapon));
@@ -55,6 +58,9 @@ fn test_calculate_blows_range() {
         cost: 0,
         ego_name: None,
         to_ac: 0,
+        category_id: 0,
+        sub_category_id: 0,
+        misc_use: 0,
     };
 
     let blows_light = player.calculate_blows(&Some(&light_weapon));
