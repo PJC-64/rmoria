@@ -437,6 +437,45 @@ pub fn get_item_base_value(item: &Item) -> u32 {
     }
 }
 
+pub fn store_carry_item(inventory: &mut Vec<Item>, item: Item) -> bool {
+    let is_stackable = item.count > 0
+        && matches!(
+            item.item_type,
+            ItemType::Potion { .. }
+                | ItemType::Scroll { .. }
+                | ItemType::Food { .. }
+                | ItemType::Missile { .. }
+                | ItemType::Light { .. }
+        );
+    if is_stackable && let Some(existing) = inventory.iter_mut().find(|it| it.name == item.name) {
+        existing.count = (existing.count + item.count).min(24);
+        return true;
+    }
+    if inventory.len() < 24 {
+        inventory.push(item);
+        true
+    } else {
+        false
+    }
+}
+
+pub fn create_store_item<R: rand::Rng>(
+    shop_type: super::ShopType,
+    max_cost: u32,
+    rng: &mut R,
+) -> Option<Item> {
+    let choices = crate::entity::treasure_data::get_canonical_store_choices(shop_type);
+    for _ in 0..4 {
+        let choice_idx = choices[rng.gen_range(0..choices.len())];
+        let mut item = crate::entity::treasure_data::create_item_from_index(choice_idx as usize, 1);
+        if item.cost > 0 && item.cost < max_cost {
+            item.identified = true;
+            return Some(item);
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HaggleState {
     pub item: Item,
@@ -462,7 +501,7 @@ pub fn handle_haggle_input(
     player: &mut Player,
     status_msg: &mut String,
     current_turn: u64,
-    mut shop_closed_until: Option<&mut u64>,
+    mut shop_info: Option<&mut super::ShopInfo>,
 ) {
     let mut rng = rand::thread_rng();
     if *screen_mode == ScreenMode::BarterBuyMenu {
@@ -486,16 +525,27 @@ pub fn handle_haggle_input(
                                 "You do not have enough gold for that price!".to_string();
                             return;
                         }
-                        player.gold -= haggle.current_asking;
+                        let final_price = haggle.current_asking;
+                        player.gold -= final_price;
                         let mut bought_item = haggle.item.clone();
                         bought_item.identified = true;
                         player.identify_item_kind(&bought_item.name);
                         player.add_item_to_inventory(bought_item);
+                        if let Some(ref mut s) = shop_info {
+                            s.update_bargaining_skills(final_price, haggle.min_price);
+                            if haggle.item_index < s.inventory.len() {
+                                if s.inventory[haggle.item_index].count > 1 {
+                                    s.inventory[haggle.item_index].count -= 1;
+                                } else {
+                                    s.inventory.remove(haggle.item_index);
+                                }
+                            }
+                        }
                         let speech =
                             SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
                         *status_msg = format!(
                             "{} You buy the {} for {} gp.",
-                            speech, haggle.item.name, haggle.current_asking
+                            speech, haggle.item.name, final_price
                         );
                         *screen_mode = ScreenMode::Shop;
                         *active_haggle = None;
@@ -530,6 +580,16 @@ pub fn handle_haggle_input(
                             bought_item.identified = true;
                             player.identify_item_kind(&bought_item.name);
                             player.add_item_to_inventory(bought_item);
+                            if let Some(ref mut s) = shop_info {
+                                s.update_bargaining_skills(final_price, haggle.min_price);
+                                if haggle.item_index < s.inventory.len() {
+                                    if s.inventory[haggle.item_index].count > 1 {
+                                        s.inventory[haggle.item_index].count -= 1;
+                                    } else {
+                                        s.inventory.remove(haggle.item_index);
+                                    }
+                                }
+                            }
                             let speech =
                                 SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
                             *status_msg = format!(
@@ -555,8 +615,9 @@ pub fn handle_haggle_input(
                                     let line2 = SPEECH_GET_OUT_OF_MY_STORE
                                         [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                     *status_msg = format!("{} {}", line1, line2);
-                                    if let Some(ref mut closed) = shop_closed_until {
-                                        **closed = current_turn + rng.gen_range(2500..5000);
+                                    if let Some(ref mut s) = shop_info {
+                                        s.closed_until_turn =
+                                            current_turn + rng.gen_range(2500..5000);
                                     }
                                     *screen_mode = ScreenMode::Dungeon;
                                     *active_haggle = None;
@@ -580,8 +641,8 @@ pub fn handle_haggle_input(
                                 let line2 = SPEECH_GET_OUT_OF_MY_STORE
                                     [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                 *status_msg = format!("{} {}", line1, line2);
-                                if let Some(ref mut closed) = shop_closed_until {
-                                    **closed = current_turn + rng.gen_range(2500..5000);
+                                if let Some(ref mut s) = shop_info {
+                                    s.closed_until_turn = current_turn + rng.gen_range(2500..5000);
                                 }
                                 *screen_mode = ScreenMode::Dungeon;
                                 *active_haggle = None;
@@ -608,6 +669,16 @@ pub fn handle_haggle_input(
                                 bought_item.identified = true;
                                 player.identify_item_kind(&bought_item.name);
                                 player.add_item_to_inventory(bought_item);
+                                if let Some(ref mut s) = shop_info {
+                                    s.update_bargaining_skills(bid, haggle.min_price);
+                                    if haggle.item_index < s.inventory.len() {
+                                        if s.inventory[haggle.item_index].count > 1 {
+                                            s.inventory[haggle.item_index].count -= 1;
+                                        } else {
+                                            s.inventory.remove(haggle.item_index);
+                                        }
+                                    }
+                                }
                                 let speech = SPEECH_SALE_ACCEPTED
                                     [rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
                                 *status_msg = format!(
@@ -661,7 +732,8 @@ pub fn handle_haggle_input(
                     let input = haggle.player_input.trim();
                     // Blank input: accept shopkeeper's offer
                     if input.is_empty() {
-                        player.gold += haggle.current_asking;
+                        let final_val = haggle.current_asking;
+                        player.gold += final_val;
                         player.identify_item_kind(&haggle.item.name);
                         let idx = haggle.item_index;
                         if idx < player.inventory.len() {
@@ -671,11 +743,15 @@ pub fn handle_haggle_input(
                                 player.inventory.remove(idx);
                             }
                         }
+                        if let Some(ref mut s) = shop_info {
+                            s.update_bargaining_skills(final_val, haggle.min_price);
+                            store_carry_item(&mut s.inventory, haggle.item.clone());
+                        }
                         let speech =
                             SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
                         *status_msg = format!(
                             "{} You sell the {} for {} gp.",
-                            speech, haggle.item.name, haggle.current_asking
+                            speech, haggle.item.name, final_val
                         );
                         *screen_mode = ScreenMode::Shop;
                         *active_haggle = None;
@@ -709,6 +785,10 @@ pub fn handle_haggle_input(
                                     player.inventory.remove(idx);
                                 }
                             }
+                            if let Some(ref mut s) = shop_info {
+                                s.update_bargaining_skills(final_val, haggle.min_price);
+                                store_carry_item(&mut s.inventory, haggle.item.clone());
+                            }
                             let speech =
                                 SPEECH_SALE_ACCEPTED[rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
                             *status_msg = format!(
@@ -734,8 +814,9 @@ pub fn handle_haggle_input(
                                     let line2 = SPEECH_GET_OUT_OF_MY_STORE
                                         [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                     *status_msg = format!("{} {}", line1, line2);
-                                    if let Some(ref mut closed) = shop_closed_until {
-                                        **closed = current_turn + rng.gen_range(2500..5000);
+                                    if let Some(ref mut s) = shop_info {
+                                        s.closed_until_turn =
+                                            current_turn + rng.gen_range(2500..5000);
                                     }
                                     *screen_mode = ScreenMode::Dungeon;
                                     *active_haggle = None;
@@ -759,8 +840,8 @@ pub fn handle_haggle_input(
                                 let line2 = SPEECH_GET_OUT_OF_MY_STORE
                                     [rng.gen_range(0..SPEECH_GET_OUT_OF_MY_STORE.len())];
                                 *status_msg = format!("{} {}", line1, line2);
-                                if let Some(ref mut closed) = shop_closed_until {
-                                    **closed = current_turn + rng.gen_range(2500..5000);
+                                if let Some(ref mut s) = shop_info {
+                                    s.closed_until_turn = current_turn + rng.gen_range(2500..5000);
                                 }
                                 *screen_mode = ScreenMode::Dungeon;
                                 *active_haggle = None;
@@ -791,6 +872,10 @@ pub fn handle_haggle_input(
                                     } else {
                                         player.inventory.remove(idx);
                                     }
+                                }
+                                if let Some(ref mut s) = shop_info {
+                                    s.update_bargaining_skills(ask, haggle.min_price);
+                                    store_carry_item(&mut s.inventory, haggle.item.clone());
                                 }
                                 let speech = SPEECH_SALE_ACCEPTED
                                     [rng.gen_range(0..SPEECH_SALE_ACCEPTED.len())];
@@ -835,6 +920,7 @@ pub fn handle_haggle_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn handle_shop_buy_input(
     c: char,
     active_shop: super::ShopType,
@@ -843,6 +929,7 @@ pub fn handle_shop_buy_input(
     screen_mode: &mut ScreenMode,
     active_haggle: &mut Option<HaggleState>,
     status_msg: &mut String,
+    shop_info: Option<&super::ShopInfo>,
 ) {
     let items = super::get_shop_items(active_shop);
     let has_s_item = items.len() > 18;
@@ -883,22 +970,38 @@ pub fn handle_shop_buy_input(
                                 )
                             });
 
+                    let waiver = shop_info.is_some_and(|s| s.no_need_to_bargain(min_p));
+                    let (curr_ask, comment, offers) = if waiver {
+                        (
+                            min_p,
+                            "After a long bargaining session, you agree upon the price. (Press Enter to accept)".to_string(),
+                            1,
+                        )
+                    } else {
+                        (max_p, format!("Asking price: {} gp", max_p), 0)
+                    };
+
                     *active_haggle = Some(HaggleState {
                         item: h_item,
                         item_index: idx,
-                        initial_price: max_p,
+                        initial_price: if waiver { min_p } else { max_p },
                         min_price: min_p,
                         max_price: max_p,
-                        current_asking: max_p,
+                        current_asking: curr_ask,
                         last_bid: None,
                         insults: 0,
-                        offers_count: 0,
-                        comment: format!("Asking price: {} gp", max_p),
+                        offers_count: offers,
+                        comment,
                         player_input: String::new(),
                         owner_index: owner_idx,
                     });
                     *screen_mode = ScreenMode::BarterBuyMenu;
-                    *status_msg = format!("Bartering for {}.", name);
+                    if waiver {
+                        *status_msg =
+                            format!("Bartering for {} (Agreed price: {} gp).", name, min_p);
+                    } else {
+                        *status_msg = format!("Bartering for {}.", name);
+                    }
                 } else {
                     *status_msg = "You don't have enough gold to make a serious offer!".to_string();
                 }
@@ -1156,7 +1259,10 @@ mod tests {
         let mut player = make_test_player();
         let mut screen_mode = ScreenMode::BarterBuyMenu;
         let mut status_msg = String::new();
-        let mut closed_turn = 0u64;
+        let mut rng = rand::thread_rng();
+        let mut test_shop =
+            crate::dungeon::ShopInfo::new(0, 0, crate::dungeon::ShopType::Armory, &mut rng);
+        test_shop.owner_index = 1;
 
         // Owner 1: Mauglin the Grumpy has max_insults = 5
         let mut haggle = Some(HaggleState {
@@ -1181,12 +1287,12 @@ mod tests {
             &mut player,
             &mut status_msg,
             500,
-            Some(&mut closed_turn),
+            Some(&mut test_shop),
         );
 
         assert_eq!(screen_mode, ScreenMode::Dungeon);
         assert!(haggle.is_none());
-        assert!(closed_turn >= 500 + 2500);
+        assert!(test_shop.closed_until_turn >= 500 + 2500);
         assert!(!status_msg.is_empty());
     }
 
@@ -1264,17 +1370,37 @@ mod tests {
         shop.insults = 3;
         shop.closed_until_turn = 1000;
 
-        // Turn 500: closed_until_turn not reached, insults decrement by 1
+        // Turn 500: closed_until_turn not reached, insults reset to 0 in canonical maintenance
         shop.maintain(500, &mut rng);
-        assert_eq!(shop.insults, 2);
+        assert_eq!(shop.insults, 0);
         assert_eq!(shop.closed_until_turn, 1000);
         assert!(shop.is_closed(500));
 
         // Turn 1000: closed_until_turn reached -> resets closed_until_turn to 0
         shop.maintain(1000, &mut rng);
-        assert_eq!(shop.insults, 1);
+        assert_eq!(shop.insults, 0);
         assert_eq!(shop.closed_until_turn, 0);
         assert!(!shop.is_closed(1000));
+
+        // Inventory population check
+        assert!(shop.inventory.len() >= 15 && shop.inventory.len() <= 24);
+
+        // Bargaining skills test
+        shop.good_purchases = 0;
+        shop.bad_purchases = 0;
+        assert!(!shop.no_need_to_bargain(100));
+
+        // With sufficient good purchases and low min_price, waiver activates
+        shop.good_purchases = 20;
+        shop.bad_purchases = 0;
+        // record = 20 - 5 = 15; record * record = 225 > 100 / 50 = 2 -> true
+        assert!(shop.no_need_to_bargain(100));
+
+        // Update bargaining skills
+        shop.update_bargaining_skills(50, 50);
+        assert_eq!(shop.good_purchases, 21);
+        shop.update_bargaining_skills(60, 50);
+        assert_eq!(shop.bad_purchases, 1);
     }
 
     #[test]
@@ -1302,6 +1428,7 @@ mod tests {
             &mut screen_mode,
             &mut active_haggle,
             &mut status_msg,
+            None,
         );
         assert_eq!(screen_mode, ScreenMode::BarterBuyMenu);
         assert!(active_haggle.is_some());
@@ -1321,6 +1448,7 @@ mod tests {
             &mut screen_mode,
             &mut active_haggle,
             &mut status_msg,
+            None,
         );
         assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
         assert!(active_haggle.is_none());
@@ -1339,6 +1467,7 @@ mod tests {
             &mut screen_mode,
             &mut active_haggle,
             &mut status_msg,
+            None,
         );
         assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
         assert!(active_haggle.is_none());
@@ -1355,6 +1484,7 @@ mod tests {
             &mut screen_mode,
             &mut active_haggle,
             &mut status_msg,
+            None,
         );
         assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
         assert!(active_haggle.is_none());

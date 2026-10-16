@@ -83,6 +83,83 @@ pub const TR_TIMID: u32 = 0x1000_0000;
 pub const TR_TUNNEL: u32 = 0x2000_0000;
 pub const TR_INFRA: u32 = 0x4000_0000;
 pub const TR_CURSED: u32 = 0x8000_0000;
+pub const TR_STATS: u32 = 0x0000_003F;
+pub const TR_EGO_WEAPON: u32 = 0x0007_E000;
+
+// Chest trap bitflags from Umoria
+pub const CH_LOCKED: u32 = 0x0000_0001;
+pub const CH_TRAPPED: u32 = 0x0000_01F0;
+pub const CH_LOSE_STR: u32 = 0x0000_0010;
+pub const CH_POISON: u32 = 0x0000_0020;
+pub const CH_PARALYSED: u32 = 0x0000_0040;
+pub const CH_EXPLODE: u32 = 0x0000_0080;
+pub const CH_SUMMON: u32 = 0x0000_0100;
+
+// Special name IDs from Umoria SpecialNameIds
+pub const SN_NULL: usize = 0;
+pub const SN_R: usize = 1;
+pub const SN_RA: usize = 2;
+pub const SN_RF: usize = 3;
+pub const SN_RC: usize = 4;
+pub const SN_RL: usize = 5;
+pub const SN_HA: usize = 6;
+pub const SN_DF: usize = 7;
+pub const SN_SA: usize = 8;
+pub const SN_SD: usize = 9;
+pub const SN_SE: usize = 10;
+pub const SN_SU: usize = 11;
+pub const SN_FT: usize = 12;
+pub const SN_FB: usize = 13;
+pub const SN_FREE_ACTION: usize = 14;
+pub const SN_SLAYING: usize = 15;
+pub const SN_CLUMSINESS: usize = 16;
+pub const SN_WEAKNESS: usize = 17;
+pub const SN_SLOW_DESCENT: usize = 18;
+pub const SN_SPEED: usize = 19;
+pub const SN_STEALTH: usize = 20;
+pub const SN_SLOWNESS: usize = 21;
+pub const SN_NOISE: usize = 22;
+pub const SN_GREAT_MASS: usize = 23;
+pub const SN_INTELLIGENCE: usize = 24;
+pub const SN_WISDOM: usize = 25;
+pub const SN_INFRAVISION: usize = 26;
+pub const SN_MIGHT: usize = 27;
+pub const SN_LORDLINESS: usize = 28;
+pub const SN_MAGI: usize = 29;
+pub const SN_BEAUTY: usize = 30;
+pub const SN_SEEING: usize = 31;
+pub const SN_REGENERATION: usize = 32;
+pub const SN_STUPIDITY: usize = 33;
+pub const SN_DULLNESS: usize = 34;
+pub const SN_BLINDNESS: usize = 35;
+pub const SN_TIMIDNESS: usize = 36;
+pub const SN_TELEPORTATION: usize = 37;
+pub const SN_UGLINESS: usize = 38;
+pub const SN_PROTECTION: usize = 39;
+pub const SN_IRRITATION: usize = 40;
+pub const SN_VULNERABILITY: usize = 41;
+pub const SN_ENVELOPING: usize = 42;
+pub const SN_FIRE: usize = 43;
+pub const SN_SLAY_EVIL: usize = 44;
+pub const SN_DRAGON_SLAYING: usize = 45;
+pub const SN_EMPTY: usize = 46;
+pub const SN_LOCKED_DESC: usize = 47;
+pub const SN_POISON_NEEDLE: usize = 48;
+pub const SN_GAS_TRAP: usize = 49;
+pub const SN_EXPLOSION_DEVICE: usize = 50;
+pub const SN_SUMMONING_RUNES: usize = 51;
+pub const SN_MULTIPLE_TRAPS: usize = 52;
+pub const SN_DISARMED: usize = 53;
+pub const SN_UNLOCKED: usize = 54;
+pub const SN_SLAY_ANIMAL: usize = 55;
+
+pub fn set_special_name(item: &mut Item, sn_id: usize) {
+    if sn_id < SPECIAL_ITEM_NAMES.len() && !SPECIAL_ITEM_NAMES[sn_id].is_empty() {
+        item.ego_name = Some(SPECIAL_ITEM_NAMES[sn_id].to_string());
+    } else {
+        item.ego_name = None;
+    }
+}
 
 // Ego and special item names from Umoria SpecialNameIds
 pub const SPECIAL_ITEM_NAMES: [&str; 56] = [
@@ -7458,185 +7535,973 @@ pub fn create_item_from_index(index: usize, count: u32) -> Item {
     }
 }
 
-pub fn apply_magical_ability<R: rand::Rng>(item: &mut Item, _depth: u32, rng: &mut R) {
-    match &item.item_type {
-        ItemType::Weapon { .. } => {
-            if rng.gen_range(0..100) < 15 {
-                let ego_roll = rng.gen_range(1..=8);
-                match ego_roll {
-                    1 => {
-                        item.ego_name = Some("(HA)".to_string());
-                        item.to_hit += 5;
-                        item.to_damage += 5;
-                        item.to_ac += rng.gen_range(1..=4);
-                        item.flags |=
-                            TR_SEE_INVIS | TR_SUST_STAT | TR_SLAY_UNDEAD | TR_SLAY_EVIL | TR_STR;
-                        item.cost += 10000;
-                    }
-                    2 => {
-                        item.ego_name = Some("(DF)".to_string());
-                        item.to_hit += 3;
-                        item.to_damage += 3;
-                        item.to_ac += rng.gen_range(5..=10);
-                        item.flags |= TR_FFALL
-                            | TR_RES_LIGHT
-                            | TR_SEE_INVIS
-                            | TR_FREE_ACT
-                            | TR_RES_COLD
-                            | TR_RES_ACID
-                            | TR_RES_FIRE
-                            | TR_REGEN
-                            | TR_STEALTH;
-                        item.cost += 7500;
-                    }
-                    3 => {
-                        item.ego_name = Some("(SA)".to_string());
-                        item.to_hit += 2;
-                        item.to_damage += 2;
-                        item.flags |= TR_SLAY_ANIMAL;
-                        item.cost += 3000;
-                    }
-                    4 => {
-                        item.ego_name = Some("(SD)".to_string());
-                        item.to_hit += 3;
-                        item.to_damage += 3;
-                        item.flags |= TR_SLAY_DRAGON;
-                        item.cost += 4000;
-                    }
-                    5 => {
-                        item.ego_name = Some("(SE)".to_string());
-                        item.to_hit += 3;
-                        item.to_damage += 3;
-                        item.flags |= TR_SLAY_EVIL;
-                        item.cost += 4000;
-                    }
-                    6 => {
-                        item.ego_name = Some("(SU)".to_string());
-                        item.to_hit += 3;
-                        item.to_damage += 3;
-                        item.flags |= TR_SEE_INVIS | TR_SLAY_UNDEAD;
-                        item.cost += 5000;
-                    }
-                    7 => {
-                        item.ego_name = Some("(FT)".to_string());
-                        item.to_hit += 1;
-                        item.to_damage += 3;
-                        item.flags |= TR_FLAME_TONGUE;
-                        item.cost += 2000;
-                    }
-                    _ => {
-                        item.ego_name = Some("(FB)".to_string());
-                        item.to_hit += 1;
-                        item.to_damage += 1;
-                        item.flags |= TR_FROST_BRAND;
-                        item.cost += 1200;
-                    }
-                }
-            } else {
-                item.to_hit += rng.gen_range(1..=3) as i16;
-                item.to_damage += rng.gen_range(1..=3) as i16;
-                item.cost = item
-                    .cost
-                    .saturating_add((item.to_hit + item.to_damage).max(0) as u32 * 50);
+pub const MAX_DUNGEON_OBJECTS: usize = 344;
+pub const TREASURE_MAX_LEVELS: usize = 50;
+
+static MISSILES_COUNTER: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
+
+pub fn item_bigger_than_chest(obj: &TreasureDefinition) -> bool {
+    match obj.category_id {
+        TV_CHEST | TV_BOW | TV_POLEARM | TV_HARD_ARMOR | TV_SOFT_ARMOR | TV_STAFF => true,
+        TV_HAFTED | TV_SWORD | TV_DIGGING => obj.weight > 150,
+        _ => false,
+    }
+}
+
+pub struct TreasureTables {
+    pub sorted_objects: [usize; MAX_DUNGEON_OBJECTS],
+    pub treasure_levels: [usize; TREASURE_MAX_LEVELS + 1],
+}
+
+impl Default for TreasureTables {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TreasureTables {
+    pub fn new() -> Self {
+        let mut treasure_levels = [0usize; TREASURE_MAX_LEVELS + 1];
+        for obj in &GAME_OBJECTS[..MAX_DUNGEON_OBJECTS] {
+            let lvl = (obj.depth_first_found as usize).min(TREASURE_MAX_LEVELS);
+            treasure_levels[lvl] += 1;
+        }
+        for i in 1..=TREASURE_MAX_LEVELS {
+            treasure_levels[i] += treasure_levels[i - 1];
+        }
+
+        let mut indexes = [1usize; TREASURE_MAX_LEVELS + 1];
+        let mut sorted_objects = [0usize; MAX_DUNGEON_OBJECTS];
+
+        for (i, obj) in GAME_OBJECTS[..MAX_DUNGEON_OBJECTS].iter().enumerate() {
+            let level = (obj.depth_first_found as usize).min(TREASURE_MAX_LEVELS);
+            let object_id = treasure_levels[level] - indexes[level];
+            sorted_objects[object_id] = i;
+            indexes[level] += 1;
+        }
+
+        Self {
+            sorted_objects,
+            treasure_levels,
+        }
+    }
+
+    pub fn get_random_object_id<R: rand::Rng>(
+        &self,
+        mut level: usize,
+        must_be_small: bool,
+        rng: &mut R,
+    ) -> usize {
+        if level == 0 {
+            let max_idx = self.treasure_levels[0].max(1);
+            let sorted_idx = rng.gen_range(0..max_idx);
+            return self.sorted_objects[sorted_idx];
+        }
+
+        if level >= TREASURE_MAX_LEVELS {
+            level = TREASURE_MAX_LEVELS;
+        } else if rng.gen_range(1..=12) == 1 {
+            let denom = rng.gen_range(1..=TREASURE_MAX_LEVELS);
+            level = (level * TREASURE_MAX_LEVELS / denom) + 1;
+            if level > TREASURE_MAX_LEVELS {
+                level = TREASURE_MAX_LEVELS;
             }
         }
-        ItemType::Armor { .. } => {
-            let n_lower = item.name.to_lowercase();
-            if n_lower.contains("boots") || n_lower.contains("shoes") {
-                match rng.gen_range(1..=3) {
-                    1 => {
-                        item.ego_name = Some("of Speed".to_string());
-                        item.flags |= TR_SPEED;
-                        item.cost += 5000;
-                    }
-                    2 => {
-                        item.ego_name = Some("of Slow Descent".to_string());
-                        item.flags |= TR_FFALL;
-                        item.cost += 250;
-                    }
-                    _ => {
-                        item.ego_name = Some("of Stealth".to_string());
-                        item.flags |= TR_STEALTH;
-                        item.cost += 500;
-                    }
-                }
-            } else if n_lower.contains("gloves") || n_lower.contains("gauntlets") {
-                if rng.gen_bool(0.5) {
-                    item.ego_name = Some("of Free Action".to_string());
-                    item.flags |= TR_FREE_ACT;
-                    item.cost += 1000;
-                } else {
-                    item.ego_name = Some("of Slaying".to_string());
-                    item.to_hit += 2;
-                    item.to_damage += 2;
-                    item.cost += 1000;
-                }
-            } else if n_lower.contains("helm")
-                || n_lower.contains("crown")
-                || n_lower.contains("cap")
-            {
-                match rng.gen_range(1..=4) {
-                    1 => {
-                        item.ego_name = Some("of Seeing".to_string());
-                        item.flags |= TR_SEE_INVIS | TR_SEARCH;
-                        item.cost += 1000;
-                    }
-                    2 => {
-                        item.ego_name = Some("of Regeneration".to_string());
-                        item.flags |= TR_REGEN;
-                        item.cost += 1500;
-                    }
-                    3 => {
-                        item.ego_name = Some("of Might".to_string());
-                        item.flags |= TR_STR | TR_DEX | TR_CON | TR_FREE_ACT;
-                        item.cost += 3000;
-                    }
-                    _ => {
-                        item.ego_name = Some("of the Magi".to_string());
-                        item.flags |= TR_INT | TR_FREE_ACT;
-                        item.cost += 3000;
-                    }
-                }
-            } else if rng.gen_range(0..100) < 15 {
-                let ego_roll = rng.gen_range(1..=5);
-                match ego_roll {
-                    1 => {
-                        item.ego_name = Some("(RA)".to_string());
-                        item.flags |= TR_RES_ACID;
-                        item.to_ac += rng.gen_range(1..=4);
-                        item.cost += 1000;
-                    }
-                    2 => {
-                        item.ego_name = Some("(RF)".to_string());
-                        item.flags |= TR_RES_FIRE;
-                        item.to_ac += rng.gen_range(1..=4);
-                        item.cost += 1000;
-                    }
-                    3 => {
-                        item.ego_name = Some("(RC)".to_string());
-                        item.flags |= TR_RES_COLD;
-                        item.to_ac += rng.gen_range(1..=4);
-                        item.cost += 1000;
-                    }
-                    4 => {
-                        item.ego_name = Some("(RL)".to_string());
-                        item.flags |= TR_RES_LIGHT;
-                        item.to_ac += rng.gen_range(1..=4);
-                        item.cost += 1000;
-                    }
-                    _ => {
-                        item.ego_name = Some("(R)".to_string());
-                        item.flags |= TR_RES_ACID | TR_RES_FIRE | TR_RES_COLD | TR_RES_LIGHT;
-                        item.to_ac += rng.gen_range(2..=5);
-                        item.cost += 3000;
-                    }
-                }
+
+        let max_idx = self.treasure_levels[level].max(1);
+        let mut object_id;
+
+        loop {
+            if rng.gen_range(1..=2) == 1 {
+                object_id = rng.gen_range(0..max_idx);
             } else {
-                item.to_ac += rng.gen_range(1..=3) as i16;
-                item.cost = item.cost.saturating_add(item.to_ac.max(0) as u32 * 100);
+                let mut choice = rng.gen_range(0..max_idx);
+                let j = rng.gen_range(0..max_idx);
+                if choice < j {
+                    choice = j;
+                }
+                let k = rng.gen_range(0..max_idx);
+                if choice < k {
+                    choice = k;
+                }
+
+                let found_level = (GAME_OBJECTS[self.sorted_objects[choice]].depth_first_found
+                    as usize)
+                    .min(TREASURE_MAX_LEVELS);
+                if found_level == 0 {
+                    let zero_max = self.treasure_levels[0].max(1);
+                    object_id = rng.gen_range(0..zero_max);
+                } else {
+                    let span =
+                        self.treasure_levels[found_level] - self.treasure_levels[found_level - 1];
+                    let offset = if span > 0 { rng.gen_range(0..span) } else { 0 };
+                    object_id = self.treasure_levels[found_level - 1] + offset;
+                }
+            }
+
+            let candidate_game_obj_id = self.sorted_objects[object_id.min(MAX_DUNGEON_OBJECTS - 1)];
+            if !(must_be_small && item_bigger_than_chest(&GAME_OBJECTS[candidate_game_obj_id])) {
+                return candidate_game_obj_id;
+            }
+        }
+    }
+}
+
+pub static TREASURE_TABLES: std::sync::LazyLock<TreasureTables> =
+    std::sync::LazyLock::new(TreasureTables::new);
+
+pub fn magic_enchantment_bonus<R: rand::Rng>(
+    base: i32,
+    max_standard: i32,
+    level: i32,
+    rng: &mut R,
+) -> i32 {
+    let mut stand_deviation = (125 * level / 100) + 7;
+    if stand_deviation > max_standard || level > max_standard {
+        stand_deviation = max_standard;
+    }
+    let tmp = (0..8).map(|_| rng.gen_range(1..=99)).sum::<i32>();
+    let diff = (tmp - 400) * stand_deviation / 81;
+    let abs_dist = diff.abs();
+    let bonus = (abs_dist / 10) + base;
+    bonus.max(base)
+}
+
+fn magic_should_be_enchanted<R: rand::Rng>(chance: i32, rng: &mut R) -> bool {
+    rng.gen_range(1..=100) <= chance
+}
+
+pub fn magical_armor<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_ac += magic_enchantment_bonus(1, 30, level, rng) as i16;
+    if !magic_should_be_enchanted(special, rng) {
+        return;
+    }
+
+    match rng.gen_range(1..=9) {
+        1 => {
+            item.flags |= TR_RES_LIGHT | TR_RES_COLD | TR_RES_ACID | TR_RES_FIRE;
+            set_special_name(item, SN_R);
+            item.to_ac += 5;
+            item.cost += 2500;
+        }
+        2 => {
+            item.flags |= TR_RES_ACID;
+            set_special_name(item, SN_RA);
+            item.cost += 1000;
+        }
+        3 | 4 => {
+            item.flags |= TR_RES_FIRE;
+            set_special_name(item, SN_RF);
+            item.cost += 600;
+        }
+        5 | 6 => {
+            item.flags |= TR_RES_COLD;
+            set_special_name(item, SN_RC);
+            item.cost += 600;
+        }
+        _ => {
+            item.flags |= TR_RES_LIGHT;
+            set_special_name(item, SN_RL);
+            item.cost += 500;
+        }
+    }
+}
+
+pub fn cursed_armor<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.to_ac -= magic_enchantment_bonus(1, 40, level, rng) as i16;
+    item.cost = 0;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+}
+
+pub fn magical_sword<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_hit += magic_enchantment_bonus(0, 40, level, rng) as i16;
+    let damage_bonus = match &item.item_type {
+        ItemType::Weapon { damage } => (damage.num * damage.sides) as i32,
+        _ => 10,
+    };
+    item.to_damage +=
+        magic_enchantment_bonus(0, 4 * damage_bonus, damage_bonus * level / 10, rng) as i16;
+
+    if magic_should_be_enchanted(3 * special / 2, rng) {
+        match rng.gen_range(1..=16) {
+            1 => {
+                // Holy Avenger
+                item.flags |= TR_SEE_INVIS | TR_SUST_STAT | TR_SLAY_UNDEAD | TR_SLAY_EVIL | TR_STR;
+                item.to_hit += 5;
+                item.to_damage += 5;
+                item.to_ac += rng.gen_range(1..=4) as i16;
+                item.misc_use = rng.gen_range(1..=4);
+                set_special_name(item, SN_HA);
+                item.cost += (item.misc_use as u32 * 500) + 10000;
+            }
+            2 => {
+                // Defender
+                item.flags |= TR_FFALL
+                    | TR_RES_LIGHT
+                    | TR_SEE_INVIS
+                    | TR_FREE_ACT
+                    | TR_RES_COLD
+                    | TR_RES_ACID
+                    | TR_RES_FIRE
+                    | TR_REGEN
+                    | TR_STEALTH;
+                item.to_hit += 3;
+                item.to_damage += 3;
+                item.to_ac += 5 + rng.gen_range(1..=5) as i16;
+                item.misc_use = rng.gen_range(1..=3);
+                set_special_name(item, SN_DF);
+                item.cost += (item.misc_use as u32 * 500) + 7500;
+            }
+            3 | 4 => {
+                item.flags |= TR_SLAY_ANIMAL;
+                item.to_hit += 2;
+                item.to_damage += 2;
+                set_special_name(item, SN_SA);
+                item.cost += 3000;
+            }
+            5 | 6 => {
+                item.flags |= TR_SLAY_DRAGON;
+                item.to_hit += 3;
+                item.to_damage += 3;
+                set_special_name(item, SN_SD);
+                item.cost += 4000;
+            }
+            7 | 8 => {
+                item.flags |= TR_SLAY_EVIL;
+                item.to_hit += 3;
+                item.to_damage += 3;
+                set_special_name(item, SN_SE);
+                item.cost += 4000;
+            }
+            9 | 10 => {
+                item.flags |= TR_SEE_INVIS | TR_SLAY_UNDEAD;
+                item.to_hit += 3;
+                item.to_damage += 3;
+                set_special_name(item, SN_SU);
+                item.cost += 5000;
+            }
+            11..=13 => {
+                item.flags |= TR_FLAME_TONGUE;
+                item.to_hit += 1;
+                item.to_damage += 3;
+                set_special_name(item, SN_FT);
+                item.cost += 2000;
+            }
+            _ => {
+                item.flags |= TR_FROST_BRAND;
+                item.to_hit += 1;
+                item.to_damage += 1;
+                set_special_name(item, SN_FB);
+                item.cost += 1200;
+            }
+        }
+    }
+}
+
+pub fn cursed_sword<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.to_hit -= magic_enchantment_bonus(1, 55, level, rng) as i16;
+    let damage_bonus = match &item.item_type {
+        ItemType::Weapon { damage } => (damage.num * damage.sides) as i32,
+        _ => 10,
+    };
+    item.to_damage -=
+        magic_enchantment_bonus(1, 11 * damage_bonus / 2, damage_bonus * level / 10, rng) as i16;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+    item.cost = 0;
+}
+
+pub fn magical_bow<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.to_hit += magic_enchantment_bonus(1, 30, level, rng) as i16;
+    item.to_damage += magic_enchantment_bonus(1, 20, level, rng) as i16;
+}
+
+pub fn cursed_bow<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.to_hit -= magic_enchantment_bonus(1, 50, level, rng) as i16;
+    item.to_damage -= magic_enchantment_bonus(1, 30, level, rng) as i16;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+    item.cost = 0;
+}
+
+pub fn magical_digging_tool<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.misc_use += magic_enchantment_bonus(0, 25, level, rng);
+}
+
+pub fn cursed_digging_tool<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    item.misc_use = -magic_enchantment_bonus(1, 30, level, rng);
+    item.cost = 0;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+}
+
+pub fn magical_gloves<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+    if !magic_should_be_enchanted(special, rng) {
+        return;
+    }
+
+    if rng.gen_range(1..=2) == 1 {
+        item.flags |= TR_FREE_ACT;
+        set_special_name(item, SN_FREE_ACTION);
+        item.cost += 1000;
+    } else {
+        item.to_hit += 1 + rng.gen_range(1..=3) as i16;
+        item.to_damage += 1 + rng.gen_range(1..=3) as i16;
+        set_special_name(item, SN_SLAYING);
+        item.cost += (item.to_hit.max(0) as u32 + item.to_damage.max(0) as u32) * 250;
+    }
+}
+
+pub fn cursed_gloves<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    if magic_should_be_enchanted(special, rng) {
+        if rng.gen_range(1..=2) == 1 {
+            item.flags |= TR_DEX;
+            set_special_name(item, SN_CLUMSINESS);
+        } else {
+            item.flags |= TR_STR;
+            set_special_name(item, SN_WEAKNESS);
+        }
+        item.misc_use = -magic_enchantment_bonus(1, 10, level, rng);
+    }
+    item.to_ac -= magic_enchantment_bonus(1, 40, level, rng) as i16;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+    item.cost = 0;
+}
+
+pub fn magical_boots<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+    if !magic_should_be_enchanted(special, rng) {
+        return;
+    }
+
+    match rng.gen_range(1..=12) {
+        1 => {
+            item.flags |= TR_SPEED;
+            set_special_name(item, SN_SPEED);
+            item.misc_use = 1;
+            item.cost += 5000;
+        }
+        2..=5 => {
+            item.flags |= TR_STEALTH;
+            item.misc_use = rng.gen_range(1..=3);
+            set_special_name(item, SN_STEALTH);
+            item.cost += 500;
+        }
+        _ => {
+            item.flags |= TR_FFALL;
+            set_special_name(item, SN_SLOW_DESCENT);
+            item.cost += 250;
+        }
+    }
+}
+
+pub fn cursed_boots<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    match rng.gen_range(1..=3) {
+        1 => {
+            item.flags |= TR_SPEED;
+            set_special_name(item, SN_SLOWNESS);
+            item.misc_use = -1;
+        }
+        2 => {
+            item.flags |= TR_AGGRAVATE;
+            set_special_name(item, SN_NOISE);
+        }
+        _ => {
+            set_special_name(item, SN_GREAT_MASS);
+            item.weight = item.weight.saturating_mul(5);
+        }
+    }
+    item.cost = 0;
+    item.to_ac -= magic_enchantment_bonus(2, 45, level, rng) as i16;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+}
+
+pub fn magical_helms<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+    if !magic_should_be_enchanted(special, rng) {
+        return;
+    }
+
+    if item.sub_category_id < 6 {
+        match rng.gen_range(1..=3) {
+            1 => {
+                item.misc_use = rng.gen_range(1..=2);
+                item.flags |= TR_INT;
+                set_special_name(item, SN_INTELLIGENCE);
+                item.cost += item.misc_use as u32 * 500;
+            }
+            2 => {
+                item.misc_use = rng.gen_range(1..=2);
+                item.flags |= TR_WIS;
+                set_special_name(item, SN_WISDOM);
+                item.cost += item.misc_use as u32 * 500;
+            }
+            _ => {
+                item.misc_use = 1 + rng.gen_range(1..=4);
+                item.flags |= TR_INFRA;
+                set_special_name(item, SN_INFRAVISION);
+                item.cost += item.misc_use as u32 * 250;
+            }
+        }
+        return;
+    }
+
+    // Crowns (sub_category_id >= 6)
+    match rng.gen_range(1..=6) {
+        1 => {
+            item.misc_use = rng.gen_range(1..=3);
+            item.flags |= TR_FREE_ACT | TR_CON | TR_DEX | TR_STR;
+            set_special_name(item, SN_MIGHT);
+            item.cost += 1000 + item.misc_use as u32 * 500;
+        }
+        2 => {
+            item.misc_use = rng.gen_range(1..=3);
+            item.flags |= TR_CHR | TR_WIS;
+            set_special_name(item, SN_LORDLINESS);
+            item.cost += 1000 + item.misc_use as u32 * 500;
+        }
+        3 => {
+            item.misc_use = rng.gen_range(1..=3);
+            item.flags |= TR_RES_LIGHT | TR_RES_COLD | TR_RES_ACID | TR_RES_FIRE | TR_INT;
+            set_special_name(item, SN_MAGI);
+            item.cost += 3000 + item.misc_use as u32 * 500;
+        }
+        4 => {
+            item.misc_use = rng.gen_range(1..=3);
+            item.flags |= TR_CHR;
+            set_special_name(item, SN_BEAUTY);
+            item.cost += 750;
+        }
+        5 => {
+            item.misc_use = 5 * (1 + rng.gen_range(1..=4));
+            item.flags |= TR_SEE_INVIS | TR_SEARCH;
+            set_special_name(item, SN_SEEING);
+            item.cost += 1000 + item.misc_use as u32 * 100;
+        }
+        _ => {
+            item.flags |= TR_REGEN;
+            set_special_name(item, SN_REGENERATION);
+            item.cost += 1500;
+        }
+    }
+}
+
+pub fn cursed_helms<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    item.to_ac -= magic_enchantment_bonus(1, 45, level, rng) as i16;
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+    item.cost = 0;
+
+    if !magic_should_be_enchanted(special, rng) {
+        return;
+    }
+
+    match rng.gen_range(1..=7) {
+        1 => {
+            item.misc_use = -rng.gen_range(1..=5);
+            item.flags |= TR_INT;
+            set_special_name(item, SN_STUPIDITY);
+        }
+        2 => {
+            item.misc_use = -rng.gen_range(1..=5);
+            item.flags |= TR_WIS;
+            set_special_name(item, SN_DULLNESS);
+        }
+        3 => {
+            item.flags |= TR_BLIND;
+            set_special_name(item, SN_BLINDNESS);
+        }
+        4 => {
+            item.flags |= TR_TIMID;
+            set_special_name(item, SN_TIMIDNESS);
+        }
+        5 => {
+            item.misc_use = -rng.gen_range(1..=5);
+            item.flags |= TR_STR;
+            set_special_name(item, SN_WEAKNESS);
+        }
+        6 => {
+            item.flags |= TR_TELEPORT;
+            set_special_name(item, SN_TELEPORTATION);
+        }
+        _ => {
+            item.misc_use = -rng.gen_range(1..=5);
+            item.flags |= TR_CHR;
+            set_special_name(item, SN_UGLINESS);
+        }
+    }
+}
+
+pub fn process_rings<R: rand::Rng>(item: &mut Item, level: i32, cursed: i32, rng: &mut R) {
+    match item.sub_category_id {
+        0..=3 => {
+            if magic_should_be_enchanted(cursed, rng) {
+                item.misc_use = -magic_enchantment_bonus(1, 20, level, rng);
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            } else {
+                item.misc_use = magic_enchantment_bonus(1, 10, level, rng);
+                item.cost = item.cost.saturating_add(item.misc_use as u32 * 100);
+            }
+        }
+        4 => {
+            if magic_should_be_enchanted(cursed, rng) {
+                item.misc_use = -rng.gen_range(1..=3);
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            } else {
+                item.misc_use = 1;
+            }
+        }
+        5 => {
+            item.misc_use = 5 * magic_enchantment_bonus(1, 20, level, rng);
+            item.cost = item.cost.saturating_add(item.misc_use as u32 * 50);
+            if magic_should_be_enchanted(cursed, rng) {
+                item.misc_use = -item.misc_use;
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            }
+        }
+        19 => {
+            // Increase damage
+            item.to_damage += magic_enchantment_bonus(1, 20, level, rng) as i16;
+            item.cost = item.cost.saturating_add(item.to_damage.max(0) as u32 * 100);
+            if magic_should_be_enchanted(cursed, rng) {
+                item.to_damage = -item.to_damage;
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            }
+        }
+        20 => {
+            // Increase To-Hit
+            item.to_hit += magic_enchantment_bonus(1, 20, level, rng) as i16;
+            item.cost = item.cost.saturating_add(item.to_hit.max(0) as u32 * 100);
+            if magic_should_be_enchanted(cursed, rng) {
+                item.to_hit = -item.to_hit;
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            }
+        }
+        21 => {
+            // Protection
+            item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+            item.cost = item.cost.saturating_add(item.to_ac.max(0) as u32 * 100);
+            if magic_should_be_enchanted(cursed, rng) {
+                item.to_ac = -item.to_ac;
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
+            }
+        }
+        30 => {
+            // Slaying
+            item.to_damage += magic_enchantment_bonus(1, 25, level, rng) as i16;
+            item.to_hit += magic_enchantment_bonus(1, 25, level, rng) as i16;
+            item.cost = item
+                .cost
+                .saturating_add((item.to_hit.max(0) as u32 + item.to_damage.max(0) as u32) * 100);
+            if magic_should_be_enchanted(cursed, rng) {
+                item.to_hit = -item.to_hit;
+                item.to_damage = -item.to_damage;
+                item.flags |= TR_CURSED;
+                item.is_cursed = true;
             }
         }
         _ => {}
+    }
+}
+
+pub fn process_amulets<R: rand::Rng>(item: &mut Item, level: i32, cursed: i32, rng: &mut R) {
+    if item.sub_category_id < 2 {
+        if magic_should_be_enchanted(cursed, rng) {
+            item.misc_use = -magic_enchantment_bonus(1, 20, level, rng);
+            item.flags |= TR_CURSED;
+            item.is_cursed = true;
+        } else {
+            item.misc_use = magic_enchantment_bonus(1, 10, level, rng);
+            item.cost = item.cost.saturating_add(item.misc_use as u32 * 100);
+        }
+    } else if item.sub_category_id == 2 {
+        item.misc_use = 5 * magic_enchantment_bonus(1, 25, level, rng);
+        if magic_should_be_enchanted(cursed, rng) {
+            item.misc_use = -item.misc_use;
+            item.flags |= TR_CURSED;
+            item.is_cursed = true;
+        } else {
+            item.cost = item.cost.saturating_add(item.misc_use as u32 * 50);
+        }
+    } else if item.sub_category_id == 8 {
+        // Amulet of the Magi is never cursed
+        item.misc_use = 5 * magic_enchantment_bonus(1, 25, level, rng);
+        item.cost = item.cost.saturating_add(item.misc_use as u32 * 20);
+    }
+}
+
+pub fn wand_magic<R: rand::Rng>(sub_cat: u16, rng: &mut R) -> i32 {
+    match sub_cat {
+        0 => rng.gen_range(1..=10) + 6,
+        1 => rng.gen_range(1..=8) + 6,
+        2 => rng.gen_range(1..=5) + 6,
+        3 => rng.gen_range(1..=8) + 6,
+        4 => rng.gen_range(1..=4) + 3,
+        5 => rng.gen_range(1..=8) + 6,
+        6 | 7 => rng.gen_range(1..=20) + 12,
+        8 => rng.gen_range(1..=10) + 6,
+        9 => rng.gen_range(1..=12) + 6,
+        10 => rng.gen_range(1..=10) + 12,
+        11 => rng.gen_range(1..=3) + 3,
+        12 => rng.gen_range(1..=8) + 6,
+        13 => rng.gen_range(1..=10) + 6,
+        14 | 15 => rng.gen_range(1..=5) + 3,
+        16 => rng.gen_range(1..=5) + 6,
+        17 => rng.gen_range(1..=5) + 4,
+        18 => rng.gen_range(1..=8) + 4,
+        19 => rng.gen_range(1..=6) + 2,
+        20 => rng.gen_range(1..=4) + 2,
+        21 => rng.gen_range(1..=8) + 6,
+        22 => rng.gen_range(1..=5) + 2,
+        23 => rng.gen_range(1..=12) + 12,
+        _ => -1,
+    }
+}
+
+pub fn staff_magic<R: rand::Rng>(sub_cat: u16, rng: &mut R) -> i32 {
+    match sub_cat {
+        0 => rng.gen_range(1..=20) + 12,
+        1 => rng.gen_range(1..=8) + 6,
+        2 => rng.gen_range(1..=5) + 6,
+        3 => rng.gen_range(1..=20) + 12,
+        4 => rng.gen_range(1..=15) + 6,
+        5 => rng.gen_range(1..=4) + 5,
+        6 => rng.gen_range(1..=5) + 3,
+        7 | 8 => rng.gen_range(1..=3) + 1,
+        9 => rng.gen_range(1..=5) + 6,
+        10 => rng.gen_range(1..=10) + 12,
+        11..=13 => rng.gen_range(1..=5) + 6,
+        14 => rng.gen_range(1..=10) + 12,
+        15 => rng.gen_range(1..=3) + 4,
+        16 | 17 => rng.gen_range(1..=5) + 6,
+        18 => rng.gen_range(1..=3) + 4,
+        19 => rng.gen_range(1..=10) + 12,
+        20 | 21 => rng.gen_range(1..=3) + 4,
+        22 => rng.gen_range(1..=10) + 6,
+        _ => -1,
+    }
+}
+
+pub fn magical_cloak<R: rand::Rng>(item: &mut Item, special: i32, level: i32, rng: &mut R) {
+    if !magic_should_be_enchanted(special, rng) {
+        item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+        return;
+    }
+
+    if rng.gen_range(1..=2) == 1 {
+        set_special_name(item, SN_PROTECTION);
+        item.to_ac += magic_enchantment_bonus(2, 40, level, rng) as i16;
+        item.cost += 250;
+        return;
+    }
+
+    item.to_ac += magic_enchantment_bonus(1, 20, level, rng) as i16;
+    item.misc_use = rng.gen_range(1..=3);
+    item.flags |= TR_STEALTH;
+    set_special_name(item, SN_STEALTH);
+    item.cost += 500;
+}
+
+pub fn cursed_cloak<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    match rng.gen_range(1..=3) {
+        1 => {
+            item.flags |= TR_AGGRAVATE;
+            set_special_name(item, SN_IRRITATION);
+            item.to_ac -= magic_enchantment_bonus(1, 10, level, rng) as i16;
+            item.to_hit -= magic_enchantment_bonus(1, 10, level, rng) as i16;
+            item.to_damage -= magic_enchantment_bonus(1, 10, level, rng) as i16;
+            item.cost = 0;
+        }
+        2 => {
+            set_special_name(item, SN_VULNERABILITY);
+            item.to_ac -= magic_enchantment_bonus(10, 100, level + 50, rng) as i16;
+            item.cost = 0;
+        }
+        _ => {
+            set_special_name(item, SN_ENVELOPING);
+            item.to_ac -= magic_enchantment_bonus(1, 10, level, rng) as i16;
+            item.to_hit -= magic_enchantment_bonus(2, 40, level + 10, rng) as i16;
+            item.to_damage -= magic_enchantment_bonus(2, 40, level + 10, rng) as i16;
+            item.cost = 0;
+        }
+    }
+    item.flags |= TR_CURSED;
+    item.is_cursed = true;
+}
+
+pub fn magical_chests<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    let magic_type = rng.gen_range(1..=(level + 4));
+    match magic_type {
+        1 => {
+            item.flags = 0;
+            set_special_name(item, SN_EMPTY);
+        }
+        2 => {
+            item.flags |= CH_LOCKED;
+            set_special_name(item, SN_LOCKED_DESC);
+        }
+        3 | 4 => {
+            item.flags |= CH_LOSE_STR | CH_LOCKED;
+            set_special_name(item, SN_POISON_NEEDLE);
+        }
+        5 | 6 => {
+            item.flags |= CH_POISON | CH_LOCKED;
+            set_special_name(item, SN_POISON_NEEDLE);
+        }
+        7..=9 => {
+            item.flags |= CH_PARALYSED | CH_LOCKED;
+            set_special_name(item, SN_GAS_TRAP);
+        }
+        10 | 11 => {
+            item.flags |= CH_EXPLODE | CH_LOCKED;
+            set_special_name(item, SN_EXPLOSION_DEVICE);
+        }
+        12..=14 => {
+            item.flags |= CH_SUMMON | CH_LOCKED;
+            set_special_name(item, SN_SUMMONING_RUNES);
+        }
+        15..=17 => {
+            item.flags |= CH_PARALYSED | CH_POISON | CH_LOSE_STR | CH_LOCKED;
+            set_special_name(item, SN_MULTIPLE_TRAPS);
+        }
+        _ => {
+            item.flags |= CH_SUMMON | CH_EXPLODE | CH_LOCKED;
+            set_special_name(item, SN_MULTIPLE_TRAPS);
+        }
+    }
+}
+
+pub fn magical_projectile<R: rand::Rng>(
+    item: &mut Item,
+    special: i32,
+    level: i32,
+    chance: i32,
+    cursed: i32,
+    rng: &mut R,
+) {
+    if matches!(
+        item.category_id,
+        TV_SLING_AMMO | TV_BOLT | TV_ARROW | TV_SPIKE
+    ) {
+        if magic_should_be_enchanted(chance, rng) {
+            item.to_hit += magic_enchantment_bonus(1, 35, level, rng) as i16;
+            item.to_damage += magic_enchantment_bonus(1, 35, level, rng) as i16;
+
+            if magic_should_be_enchanted(3 * special / 2, rng) {
+                match rng.gen_range(1..=10) {
+                    1..=3 => {
+                        set_special_name(item, SN_SLAYING);
+                        item.to_hit += 5;
+                        item.to_damage += 5;
+                        item.cost += 20;
+                    }
+                    4 | 5 => {
+                        item.flags |= TR_FLAME_TONGUE;
+                        item.to_hit += 2;
+                        item.to_damage += 4;
+                        set_special_name(item, SN_FIRE);
+                        item.cost += 25;
+                    }
+                    6 | 7 => {
+                        item.flags |= TR_SLAY_EVIL;
+                        item.to_hit += 3;
+                        item.to_damage += 3;
+                        set_special_name(item, SN_SLAY_EVIL);
+                        item.cost += 25;
+                    }
+                    8 | 9 => {
+                        item.flags |= TR_SLAY_ANIMAL;
+                        item.to_hit += 2;
+                        item.to_damage += 2;
+                        set_special_name(item, SN_SLAY_ANIMAL);
+                        item.cost += 30;
+                    }
+                    _ => {
+                        item.flags |= TR_SLAY_DRAGON;
+                        item.to_hit += 3;
+                        item.to_damage += 3;
+                        set_special_name(item, SN_DRAGON_SLAYING);
+                        item.cost += 35;
+                    }
+                }
+            }
+        } else if magic_should_be_enchanted(cursed, rng) {
+            item.to_hit -= magic_enchantment_bonus(5, 55, level, rng) as i16;
+            item.to_damage -= magic_enchantment_bonus(5, 55, level, rng) as i16;
+            item.flags |= TR_CURSED;
+            item.is_cursed = true;
+            item.cost = 0;
+        }
+    }
+
+    let mut count = 0;
+    for _ in 0..7 {
+        count += rng.gen_range(1..=6);
+    }
+    item.count = count;
+
+    let ctr = MISSILES_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    item.misc_use = ctr as i32;
+}
+
+pub fn apply_magical_ability<R: rand::Rng>(item: &mut Item, level: i32, rng: &mut R) {
+    let mut chance = (15 + level).min(70);
+    let mut special = chance / 6;
+    let cursed = (10 * chance) / 13;
+
+    match item.category_id {
+        TV_SHIELD | TV_HARD_ARMOR | TV_SOFT_ARMOR => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_armor(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_armor(item, level, rng);
+            }
+        }
+        TV_HAFTED | TV_POLEARM | TV_SWORD => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_sword(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_sword(item, level, rng);
+            }
+        }
+        TV_BOW => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_bow(item, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_bow(item, level, rng);
+            }
+        }
+        TV_DIGGING => {
+            if magic_should_be_enchanted(chance, rng) {
+                if rng.gen_range(1..=3) < 3 {
+                    magical_digging_tool(item, level, rng);
+                } else {
+                    cursed_digging_tool(item, level, rng);
+                }
+            }
+        }
+        TV_GLOVES => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_gloves(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_gloves(item, special, level, rng);
+            }
+        }
+        TV_BOOTS => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_boots(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_boots(item, level, rng);
+            }
+        }
+        TV_HELM => {
+            if item.sub_category_id >= 6 && item.sub_category_id <= 8 {
+                chance += (item.cost / 100) as i32;
+                special += special;
+            }
+            if magic_should_be_enchanted(chance, rng) {
+                magical_helms(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_helms(item, special, level, rng);
+            }
+        }
+        TV_RING => {
+            process_rings(item, level, cursed, rng);
+        }
+        TV_AMULET => {
+            process_amulets(item, level, cursed, rng);
+        }
+        TV_LIGHT => {
+            if (item.sub_category_id % 2) == 1 {
+                if item.misc_use > 0 {
+                    item.misc_use = rng.gen_range(1..=item.misc_use);
+                }
+                item.sub_category_id = item.sub_category_id.saturating_sub(1);
+            }
+        }
+        TV_WAND => {
+            let magic_amount = wand_magic(item.sub_category_id, rng);
+            if magic_amount != -1 {
+                item.misc_use = magic_amount;
+                if let ItemType::Wand {
+                    ref mut charges, ..
+                } = item.item_type
+                {
+                    *charges = magic_amount as u32;
+                }
+            }
+        }
+        TV_STAFF => {
+            let magic_amount = staff_magic(item.sub_category_id, rng);
+            if magic_amount != -1 {
+                item.misc_use = magic_amount;
+                if let ItemType::Staff {
+                    ref mut charges, ..
+                } = item.item_type
+                {
+                    *charges = magic_amount as u32;
+                }
+            }
+        }
+        TV_CLOAK => {
+            if magic_should_be_enchanted(chance, rng) {
+                magical_cloak(item, special, level, rng);
+            } else if magic_should_be_enchanted(cursed, rng) {
+                cursed_cloak(item, level, rng);
+            }
+        }
+        TV_CHEST => {
+            magical_chests(item, level, rng);
+        }
+        TV_SLING_AMMO | TV_SPIKE | TV_BOLT | TV_ARROW => {
+            magical_projectile(item, special, level, chance, cursed, rng);
+        }
+        _ => {}
+    }
+}
+
+pub fn apply_slaying_damage(
+    weapon_flags: u32,
+    base_damage: i32,
+    monster_creature_id: usize,
+) -> i32 {
+    if monster_creature_id >= crate::entity::monster_data::CREATURES_LIST.len() {
+        return base_damage;
+    }
+    let creature = &crate::entity::monster_data::CREATURES_LIST[monster_creature_id];
+    let defs = creature.defenses;
+
+    if (defs & crate::entity::monster_data::CD_DRAGON) != 0 && (weapon_flags & TR_SLAY_DRAGON) != 0
+    {
+        base_damage * 4
+    } else if (defs & crate::entity::monster_data::CD_UNDEAD) != 0
+        && (weapon_flags & TR_SLAY_UNDEAD) != 0
+    {
+        base_damage * 3
+    } else if ((defs & crate::entity::monster_data::CD_ANIMAL) != 0
+        && (weapon_flags & TR_SLAY_ANIMAL) != 0)
+        || ((defs & crate::entity::monster_data::CD_EVIL) != 0
+            && (weapon_flags & TR_SLAY_EVIL) != 0)
+    {
+        base_damage * 2
+    } else if ((defs & crate::entity::monster_data::CD_FROST) != 0
+        && (weapon_flags & TR_FROST_BRAND) != 0)
+        || ((defs & crate::entity::monster_data::CD_FIRE) != 0
+            && (weapon_flags & TR_FLAME_TONGUE) != 0)
+    {
+        base_damage * 3 / 2
+    } else {
+        base_damage
     }
 }
 
@@ -7658,10 +8523,6 @@ pub fn calculate_slaying_multiplier(weapon_flags: u32, monster_creature_id: usiz
         && (weapon_flags & TR_SLAY_ANIMAL) != 0)
         || ((defs & crate::entity::monster_data::CD_EVIL) != 0
             && (weapon_flags & TR_SLAY_EVIL) != 0)
-        || ((defs & crate::entity::monster_data::CD_FROST) != 0
-            && (weapon_flags & TR_FROST_BRAND) != 0)
-        || ((defs & crate::entity::monster_data::CD_FIRE) != 0
-            && (weapon_flags & TR_FLAME_TONGUE) != 0)
     {
         2
     } else {
@@ -7769,40 +8630,45 @@ pub fn get_canonical_shop_item(shop_type: ShopType, slot_idx: usize) -> Option<I
 pub fn generate_canonical_floor_item<R: rand::Rng>(depth: u32, rng: &mut R) -> Item {
     let roll = rng.gen_range(0..100);
     if roll < 15 {
-        let gold_amount = rng.gen_range(15..=40) * (depth + 1);
+        let gold_names = [
+            ("copper", 3),
+            ("copper", 4),
+            ("copper", 5),
+            ("silver", 6),
+            ("silver", 7),
+            ("silver", 8),
+            ("garnets", 9),
+            ("garnets", 10),
+            ("gold", 12),
+            ("gold", 14),
+            ("gold", 16),
+            ("opals", 18),
+            ("sapphires", 20),
+            ("rubies", 24),
+            ("diamonds", 28),
+            ("emeralds", 32),
+            ("mithril", 40),
+            ("adamantite", 80),
+        ];
+        let mut gold_type_id =
+            (((rng.gen_range(1..=(depth as i32 + 2)) + 2) / 2) - 1).max(0) as usize;
+        if rng.gen_range(1..=12) == 1 {
+            gold_type_id += rng.gen_range(1..=(depth as i32 + 1)) as usize;
+        }
+        if gold_type_id >= gold_names.len() {
+            gold_type_id = gold_names.len() - 1;
+        }
+        let (_, base_cost) = gold_names[gold_type_id];
+        let amount = (base_cost + 8 * rng.gen_range(1..=base_cost) + rng.gen_range(1..=8)) as u32;
         return Item::new(
-            &format!("Gold Pile [{} gp]", gold_amount),
+            &format!("Gold Pile [{} gp]", amount),
             1,
             1,
             ItemType::Food { nutrition: 0 },
         );
     }
 
-    let candidates: Vec<usize> = (0..344)
-        .filter(|&idx| {
-            let def = &GAME_OBJECTS[idx];
-            def.category_id != TV_NOTHING
-                && def.category_id != TV_GOLD
-                && def.category_id != TV_OPEN_DOOR
-                && def.category_id != TV_CLOSED_DOOR
-                && def.category_id != TV_SECRET_DOOR
-                && def.category_id != TV_UP_STAIR
-                && def.category_id != TV_DOWN_STAIR
-                && def.category_id != TV_STORE_DOOR
-                && def.category_id != TV_RUBBLE
-                && def.category_id != TV_INVIS_TRAP
-                && def.category_id != TV_VIS_TRAP
-                && def.category_id != TV_MISC
-                && (def.depth_first_found as u32) <= depth + 3
-        })
-        .collect();
-
-    let chosen_idx = if !candidates.is_empty() {
-        candidates[rng.gen_range(0..candidates.len())]
-    } else {
-        28 // Fallback to Dagger
-    };
-
+    let chosen_idx = TREASURE_TABLES.get_random_object_id(depth as usize, false, rng);
     let def = &GAME_OBJECTS[chosen_idx];
     let count = match def.category_id {
         TV_ARROW | TV_BOLT | TV_SLING_AMMO => rng.gen_range(10..=25),
@@ -7812,10 +8678,7 @@ pub fn generate_canonical_floor_item<R: rand::Rng>(depth: u32, rng: &mut R) -> I
     };
 
     let mut item = create_item_from_index(chosen_idx, count);
-    let magic_chance = 15 + depth.min(50);
-    if rng.gen_range(0..100) < magic_chance {
-        apply_magical_ability(&mut item, depth, rng);
-    }
+    apply_magical_ability(&mut item, depth as i32, rng);
 
     match def.category_id {
         TV_POTION1 | TV_POTION2 | TV_SCROLL1 | TV_SCROLL2 | TV_WAND | TV_STAFF | TV_RING

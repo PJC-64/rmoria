@@ -182,6 +182,218 @@ pub enum ScreenMode {
     HighScores,
 }
 
+fn test_being_hit<R: rand::Rng>(
+    base_to_hit: i32,
+    level: i32,
+    plus_to_hit: i32,
+    armor_class: i32,
+    class_adj: i32,
+    rng: &mut R,
+) -> bool {
+    let hit_chance = base_to_hit + plus_to_hit * 3 + level * class_adj;
+    let die = rng.gen_range(1..=20);
+    die != 1 && (die == 20 || (hit_chance > 0 && rng.gen_range(1..=hit_chance) > armor_class))
+}
+
+fn trigger_trap_effect<R: rand::Rng>(
+    trap_type: TrapType,
+    player: &mut Player,
+    level: &mut DungeonLevel,
+    monsters: &mut Vec<Monster>,
+    rng: &mut R,
+    tx: usize,
+    ty: usize,
+) -> String {
+    let mut msg = String::new();
+    match trap_type {
+        TrapType::OpenPit => {
+            msg.push_str("You fell into a pit!");
+            if player.flags.free_fall {
+                msg.push_str(" You gently float down.");
+            } else {
+                let dmg = Dice::new(2, 6).roll(rng) as i32;
+                player.hp -= dmg;
+                msg.push_str(&format!(" You take {} damage.", dmg));
+            }
+        }
+        TrapType::ArrowPit => {
+            let hit = test_being_hit(125, 0, 0, player.calculate_ac(), 0, rng);
+            if hit {
+                let dmg = Dice::new(1, 8).roll(rng) as i32;
+                player.hp -= dmg;
+                msg.push_str(&format!("An arrow hits you for {} damage!", dmg));
+            } else {
+                msg.push_str("An arrow barely misses you.");
+            }
+        }
+        TrapType::CoveredPit => {
+            msg.push_str("You fell into a covered pit.");
+            if player.flags.free_fall {
+                msg.push_str(" You gently float down.");
+            } else {
+                let dmg = Dice::new(2, 6).roll(rng) as i32;
+                player.hp -= dmg;
+                msg.push_str(&format!(" You take {} damage.", dmg));
+            }
+            if let Some(t) = level.get_tile_mut(tx, ty) {
+                t.tile_type = TileType::Trap {
+                    detected: true,
+                    trap_type: TrapType::OpenPit,
+                };
+            }
+        }
+        TrapType::TrapDoor => {
+            msg.push_str("You fell through a trap door!");
+            if player.flags.free_fall {
+                msg.push_str(" You gently float down.");
+            } else {
+                let dmg = Dice::new(2, 8).roll(rng) as i32;
+                player.hp -= dmg;
+                msg.push_str(&format!(" You take {} damage.", dmg));
+            }
+            level.depth += 1;
+            level.generate_simple_floor();
+            let (px, py) = level.find_random_floor_tile();
+            player.x = px;
+            player.y = py;
+        }
+        TrapType::SleepingGas => {
+            msg.push_str("A strange white mist surrounds you!");
+            if player.flags.free_action {
+                msg.push_str(" You are unaffected.");
+            } else {
+                player.flags.paralysis += rng.gen_range(1..=10) + 4;
+                msg.push_str(" You fall asleep.");
+            }
+        }
+        TrapType::HiddenObject => {
+            msg.push_str("Hmmm, there was something under this rock.");
+            let item =
+                crate::entity::treasure_data::generate_canonical_floor_item(level.depth, rng);
+            level.items.push(FloorItem { x: tx, y: ty, item });
+        }
+        TrapType::DartOfStr => {
+            let hit = test_being_hit(125, 0, 0, player.calculate_ac(), 0, rng);
+            if hit {
+                let dmg = Dice::new(1, 4).roll(rng) as i32;
+                player.hp -= dmg;
+                if player.drain_stat(0, rng) {
+                    msg.push_str(&format!(
+                        "A small dart weakens you! You take {} damage.",
+                        dmg
+                    ));
+                } else {
+                    msg.push_str(&format!("A small dart hits you for {} damage.", dmg));
+                }
+            } else {
+                msg.push_str("A small dart barely misses you.");
+            }
+        }
+        TrapType::Teleport => {
+            msg.push_str("You hit a teleport trap!");
+            let dest = level.find_random_floor_tile();
+            player.move_to(dest.0, dest.1);
+        }
+        TrapType::Rockfall => {
+            let dmg = Dice::new(2, 6).roll(rng) as i32;
+            player.hp -= dmg;
+            msg.push_str(&format!("You are hit by falling rock for {} damage.", dmg));
+            if let Some(t) = level.get_tile_mut(tx, ty) {
+                t.tile_type = TileType::Rubble;
+            }
+        }
+        TrapType::CorrodingGas => {
+            msg.push_str("A strange red gas surrounds you.");
+            let dmg = Dice::new(1, 4).roll(rng) as i32;
+            player.hp -= dmg;
+            msg.push_str(&format!(" You take {} corrosion damage.", dmg));
+        }
+        TrapType::SummonMonster => {
+            msg.push_str("You are enveloped in a strange rune! Monsters appear!");
+            let num = 2 + rng.gen_range(1..=3);
+            for _ in 0..num {
+                let (sx, sy) = level.find_random_floor_tile_near(tx, ty, 3);
+                let c_idx = crate::entity::monster_data::get_monster_for_level(level.depth, rng);
+                monsters.push(Monster::from_creature_id(c_idx, sx, sy, false, rng));
+            }
+        }
+        TrapType::FireTrap => {
+            msg.push_str("You are enveloped in flames!");
+            let mut dmg = Dice::new(4, 6).roll(rng) as i32;
+            if player.flags.resistant_to_fire || player.flags.heat_resistance > 0 {
+                dmg /= 3;
+                msg.push_str(" Your fire resistance protects you!");
+            }
+            player.hp -= dmg;
+            msg.push_str(&format!(" You take {} fire damage.", dmg));
+        }
+        TrapType::AcidTrap => {
+            msg.push_str("You are splashed with acid!");
+            let mut dmg = Dice::new(4, 6).roll(rng) as i32;
+            if player.flags.resistant_to_acid {
+                dmg /= 3;
+                msg.push_str(" Your acid resistance protects you!");
+            }
+            player.hp -= dmg;
+            msg.push_str(&format!(" You take {} acid damage.", dmg));
+        }
+        TrapType::PoisonGas => {
+            msg.push_str("A pungent green gas surrounds you!");
+            let dmg = Dice::new(2, 6).roll(rng) as i32;
+            player.flags.poisoned += rng.gen_range(10..=30);
+            player.hp -= dmg;
+            msg.push_str(&format!(" You take {} poison damage.", dmg));
+        }
+        TrapType::BlindGas => {
+            msg.push_str("A black gas surrounds you! You are blinded!");
+            player.flags.blind += rng.gen_range(1..=50) + 50;
+        }
+        TrapType::ConfuseGas => {
+            msg.push_str("A gas of scintillating colors surrounds you! You are confused!");
+            player.flags.confused += rng.gen_range(1..=15) + 15;
+        }
+        TrapType::SlowDart => {
+            let hit = test_being_hit(125, 0, 0, player.calculate_ac(), 0, rng);
+            if hit {
+                let dmg = Dice::new(1, 8).roll(rng) as i32;
+                player.hp -= dmg;
+                if player.flags.free_action {
+                    msg.push_str(&format!(
+                        "A small dart hits you for {} damage! You are unaffected.",
+                        dmg
+                    ));
+                } else {
+                    player.flags.slow += rng.gen_range(10..=30);
+                    msg.push_str(&format!(
+                        "A small dart hits you for {} damage! You feel slowed.",
+                        dmg
+                    ));
+                }
+            } else {
+                msg.push_str("A small dart barely misses you.");
+            }
+        }
+        TrapType::DartOfCon => {
+            let hit = test_being_hit(125, 0, 0, player.calculate_ac(), 0, rng);
+            if hit {
+                let dmg = Dice::new(1, 8).roll(rng) as i32;
+                player.hp -= dmg;
+                if player.drain_stat(4, rng) {
+                    msg.push_str(&format!(
+                        "A small dart saps your health! You take {} damage.",
+                        dmg
+                    ));
+                } else {
+                    msg.push_str(&format!("A small dart hits you for {} damage.", dmg));
+                }
+            } else {
+                msg.push_str("A small dart barely misses you.");
+            }
+        }
+    }
+    msg
+}
+
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
 fn process_end_of_turn(
     player: &mut Player,
@@ -1510,53 +1722,21 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     }
 
                                                     if let Some(tt) = trigger_trap {
-                                                        match tt {
-                                                            TrapType::Arrow => {
-                                                                let dmg = rng.gen_range(1..=6);
-                                                                player.hp -= dmg;
-                                                                status_msg = format!(
-                                                                    "Click! You set off an arrow trap! You take {} damage!",
-                                                                    dmg
-                                                                );
-                                                            }
-                                                            TrapType::PoisonGas => {
-                                                                let dmg = rng.gen_range(2..=8);
-                                                                player.hp -= dmg;
-                                                                player.flags.poisoned +=
-                                                                    rng.gen_range(10..=30);
-                                                                status_msg = format!(
-                                                                    "Click! Poison gas fills the corridor! You take {} damage and are poisoned!",
-                                                                    dmg
-                                                                );
-                                                            }
-                                                            TrapType::Teleport => {
-                                                                let dest =
-                                                                    level.find_random_floor_tile();
-                                                                player.move_to(dest.0, dest.1);
-                                                                status_msg = "Click! A teleport trap warps you to another location!".to_string();
-                                                            }
-                                                            TrapType::SleepingGas => {
-                                                                if player.flags.free_action {
-                                                                    status_msg = "Click! A strange white mist surrounds you! You are unaffected.".to_string();
-                                                                } else {
-                                                                    player.flags.paralysis +=
-                                                                        rng.gen_range(1..=10) + 4;
-                                                                    status_msg = "Click! A strange white mist surrounds you! You fall asleep.".to_string();
-                                                                }
-                                                            }
-                                                            TrapType::BlindGas => {
-                                                                player.flags.blind +=
-                                                                    rng.gen_range(1..=50) + 50;
-                                                                status_msg = "Click! Black gas surrounds you! You are blinded!".to_string();
-                                                            }
-                                                            TrapType::ConfusionGas => {
-                                                                player.flags.confused +=
-                                                                    rng.gen_range(1..=15) + 15;
-                                                                status_msg = "Click! Gas of scintillating colors surrounds you! You are confused!".to_string();
-                                                            }
-                                                        }
-                                                        if let Some(t) =
-                                                            level.get_tile_mut(player.x, player.y)
+                                                        let (px, py) = (player.x, player.y);
+                                                        let trap_msg = trigger_trap_effect(
+                                                            tt,
+                                                            &mut player,
+                                                            &mut level,
+                                                            &mut monsters,
+                                                            &mut rng,
+                                                            px,
+                                                            py,
+                                                        );
+                                                        status_msg = trap_msg;
+                                                        if tt != TrapType::CoveredPit
+                                                            && tt != TrapType::Rockfall
+                                                            && let Some(t) =
+                                                                level.get_tile_mut(px, py)
                                                         {
                                                             t.tile_type = TileType::Floor;
                                                         }
@@ -1567,9 +1747,14 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                             i.x == player.x && i.y == player.y
                                                         });
                                                     if let Some(idx) = item_idx {
-                                                        let floor_item = level.items.remove(idx);
-                                                        let mut item = floor_item.item;
-                                                        if item.name.contains("Gold Pile") {
+                                                        let is_gold = level.items[idx]
+                                                            .item
+                                                            .name
+                                                            .contains("Gold Pile");
+                                                        if is_gold {
+                                                            let floor_item =
+                                                                level.items.remove(idx);
+                                                            let item = floor_item.item;
                                                             let gold_amount = item
                                                                 .name
                                                                 .split('[')
@@ -1582,7 +1767,19 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                                 "You picked up {} gold pieces.",
                                                                 gold_amount
                                                             );
+                                                        } else if !player
+                                                            .can_carry_item(&level.items[idx].item)
+                                                        {
+                                                            status_msg = format!(
+                                                                "You can't carry {}.",
+                                                                level.items[idx]
+                                                                    .item
+                                                                    .display_name()
+                                                            );
                                                         } else {
+                                                            let floor_item =
+                                                                level.items.remove(idx);
+                                                            let mut item = floor_item.item;
                                                             if !item.identified {
                                                                 player.flavors.assign_flavor(
                                                                     &mut item, &mut rng,
@@ -2277,11 +2474,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                         } else if screen_mode == ScreenMode::BarterBuyMenu
                             || screen_mode == ScreenMode::BarterSellMenu
                         {
-                            let closed_turn_opt = level
-                                .shops
-                                .iter_mut()
-                                .find(|s| s.shop_type == active_shop)
-                                .map(|s| &mut s.closed_until_turn);
+                            let shop_info =
+                                level.shops.iter_mut().find(|s| s.shop_type == active_shop);
                             handle_haggle_input(
                                 key_event,
                                 &mut screen_mode,
@@ -2289,7 +2483,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 &mut player,
                                 &mut status_msg,
                                 game_turn,
-                                closed_turn_opt,
+                                shop_info,
                             );
                         } else {
                             match key_event.code {
@@ -2351,13 +2545,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                             if let Some((trapped, locked)) = chest_ref {
                                                 if trapped {
-                                                    let check_chance =
-                                                        if player.class == Class::Rogue {
-                                                            0.85
-                                                        } else {
-                                                            0.40
-                                                        };
-                                                    if rng.gen_bool(check_chance) {
+                                                    let total = player.trap_disarm_ability();
+                                                    let level_diff = level.depth as i32;
+                                                    if total + 100 - level_diff
+                                                        > rng.gen_range(1..=100)
+                                                    {
                                                         if let Some(tile) =
                                                             level.get_tile_mut(sx, sy)
                                                         {
@@ -2366,7 +2558,15 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                                 locked,
                                                             };
                                                         }
+                                                        player
+                                                            .add_experience(level.depth.max(1) * 2);
                                                         status_msg = "You successfully disarmed the chest trap.".to_string();
+                                                    } else if total > 5
+                                                        && rng.gen_range(1..=total) > 5
+                                                    {
+                                                        status_msg =
+                                                            "You failed to disarm the chest trap."
+                                                                .to_string();
                                                     } else {
                                                         status_msg = "You set off the chest trap while trying to disarm it!".to_string();
                                                         level.trigger_chest_trap(
@@ -2379,13 +2579,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         );
                                                     }
                                                 } else if locked {
-                                                    let check_chance =
-                                                        if player.class == Class::Rogue {
-                                                            0.75
-                                                        } else {
-                                                            0.30
-                                                        };
-                                                    if rng.gen_bool(check_chance) {
+                                                    let total = player.trap_disarm_ability();
+                                                    let level_diff = level.depth as i32;
+                                                    if total + 100 - level_diff
+                                                        > rng.gen_range(1..=100)
+                                                    {
                                                         if let Some(tile) =
                                                             level.get_tile_mut(sx, sy)
                                                         {
@@ -2394,6 +2592,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                                 locked: false,
                                                             };
                                                         }
+                                                        player.add_experience(level.depth.max(1));
                                                         status_msg =
                                                             "You picked the lock on the chest."
                                                                 .to_string();
@@ -2417,66 +2616,44 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 }
 
                                                 if let Some(trap_type) = trap_info {
-                                                    let is_rogue = player.class == Class::Rogue;
-                                                    let check_chance =
-                                                        if is_rogue { 0.85 } else { 0.40 };
-                                                    if rng.gen_bool(check_chance) {
+                                                    let total = player.trap_disarm_ability();
+                                                    let level_diff = trap_type.difficulty();
+                                                    if total + 100 - level_diff
+                                                        > rng.gen_range(1..=100)
+                                                    {
                                                         if let Some(tile) =
                                                             level.get_tile_mut(sx, sy)
                                                         {
                                                             tile.tile_type = TileType::Floor;
                                                         }
+                                                        player.add_experience(
+                                                            trap_type.disarm_exp() as u32,
+                                                        );
                                                         status_msg =
                                                             "You successfully disarmed the trap."
                                                                 .to_string();
+                                                    } else if total > 5
+                                                        && rng.gen_range(1..=total) > 5
+                                                    {
+                                                        status_msg =
+                                                            "You failed to disarm the trap."
+                                                                .to_string();
                                                     } else {
-                                                        status_msg = "You set off the trap while trying to disarm it!".to_string();
-                                                        match trap_type {
-                                                            TrapType::Arrow => {
-                                                                let dmg = rng.gen_range(1..=6);
-                                                                player.hp -= dmg;
-                                                                status_msg.push_str(&format!(
-                                                                    " Arrow hits you for {}!",
-                                                                    dmg
-                                                                ));
-                                                            }
-                                                            TrapType::PoisonGas => {
-                                                                let dmg = rng.gen_range(2..=8);
-                                                                player.hp -= dmg;
-                                                                player.flags.poisoned +=
-                                                                    rng.gen_range(10..=30);
-                                                                status_msg.push_str(&format!(" Poison gas hits you for {}! You are poisoned!", dmg));
-                                                            }
-                                                            TrapType::Teleport => {
-                                                                let dest =
-                                                                    level.find_random_floor_tile();
-                                                                player.move_to(dest.0, dest.1);
-                                                                status_msg.push_str(
-                                                                    " You are teleported!",
-                                                                );
-                                                            }
-                                                            TrapType::SleepingGas => {
-                                                                if player.flags.free_action {
-                                                                    status_msg.push_str(" A strange white mist surrounds you! You are unaffected.");
-                                                                } else {
-                                                                    player.flags.paralysis +=
-                                                                        rng.gen_range(1..=10) + 4;
-                                                                    status_msg.push_str(" A strange white mist surrounds you! You fall asleep.");
-                                                                }
-                                                            }
-                                                            TrapType::BlindGas => {
-                                                                player.flags.blind +=
-                                                                    rng.gen_range(1..=50) + 50;
-                                                                status_msg.push_str(" Black gas surrounds you! You are blinded!");
-                                                            }
-                                                            TrapType::ConfusionGas => {
-                                                                player.flags.confused +=
-                                                                    rng.gen_range(1..=15) + 15;
-                                                                status_msg.push_str(" Scintillating colors swirl! You are confused!");
-                                                            }
-                                                        }
-                                                        if let Some(tile) =
-                                                            level.get_tile_mut(sx, sy)
+                                                        status_msg = "You set off the trap while trying to disarm it! ".to_string();
+                                                        let trap_msg = trigger_trap_effect(
+                                                            trap_type,
+                                                            &mut player,
+                                                            &mut level,
+                                                            &mut monsters,
+                                                            &mut rng,
+                                                            sx,
+                                                            sy,
+                                                        );
+                                                        status_msg.push_str(&trap_msg);
+                                                        if trap_type != TrapType::CoveredPit
+                                                            && trap_type != TrapType::Rockfall
+                                                            && let Some(tile) =
+                                                                level.get_tile_mut(sx, sy)
                                                         {
                                                             tile.tile_type = TileType::Floor;
                                                         }
@@ -2773,18 +2950,48 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             let monster_idx = monsters
                                                 .iter()
                                                 .position(|m| m.x == sx && m.y == sy);
-                                            if let Some(m_idx) = monster_idx {
+                                            if player.flags.afraid > 0 {
+                                                status_msg = "You are afraid!".to_string();
+                                                player_acted = true;
+                                            } else if let Some(m_idx) = monster_idx {
                                                 let monster_name = monsters[m_idx].name.clone();
-                                                let check_chance = 0.40
-                                                    + (player.stats.strength as f64 - 10.0) * 0.05
-                                                    + (player.stats.dexterity as f64 - 10.0) * 0.02;
-                                                let check_chance = check_chance.clamp(0.10, 0.95);
+                                                let mut base_to_hit = player.stats.strength as i32;
+                                                let shield_weight = player
+                                                    .equipment
+                                                    .iter()
+                                                    .find(|i| i.get_equipment_slot() == "On arm")
+                                                    .map(|i| i.weight)
+                                                    .unwrap_or(0);
+                                                base_to_hit += (shield_weight / 2) as i32;
+                                                base_to_hit += (player.body_weight / 10) as i32;
 
-                                                if rng.gen_bool(check_chance) {
-                                                    let base_dmg = rng.gen_range(1..=6);
-                                                    let str_bonus =
-                                                        (player.stats.strength as i32 - 10) / 2;
-                                                    let damage = (base_dmg + str_bonus).max(1);
+                                                let hit = test_being_hit(
+                                                    base_to_hit,
+                                                    player.level as i32,
+                                                    player.stats.dexterity as i32,
+                                                    monsters[m_idx].ac as i32,
+                                                    0,
+                                                    &mut rng,
+                                                );
+
+                                                if hit {
+                                                    let shield_dice = player
+                                                        .equipment
+                                                        .iter()
+                                                        .find_map(|i| {
+                                                            if i.get_equipment_slot() == "On arm" {
+                                                                Some(Dice::new(1, 4))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .unwrap_or(Dice::new(1, 1));
+                                                    let mut damage =
+                                                        shield_dice.roll(&mut rng) as i32;
+                                                    damage += (player.body_weight / 60) as i32 + 3;
+                                                    if damage < 0 {
+                                                        damage = 0;
+                                                    }
 
                                                     status_msg = format!(
                                                         "You bash the {} for {} damage!",
@@ -2792,10 +2999,19 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                     );
 
                                                     let can_stun = !(monster_name == "The Balrog"
-                                                        || monster_name.contains("Lich"));
-                                                    if can_stun {
-                                                        let stun_turns = rng.gen_range(1..=3) + 1;
-                                                        monsters[m_idx].stunned += stun_turns;
+                                                        || monsters[m_idx].is_win_creature());
+                                                    let avg_max_hp = monsters[m_idx].max_hp;
+                                                    if can_stun
+                                                        && (100
+                                                            + rng.gen_range(1..=400)
+                                                            + rng.gen_range(1..=400)
+                                                            > monsters[m_idx].hp + avg_max_hp)
+                                                    {
+                                                        monsters[m_idx].stunned = (monsters[m_idx]
+                                                            .stunned
+                                                            + rng.gen_range(1..=3)
+                                                            + 1)
+                                                        .min(24);
                                                         status_msg.push_str(" It appears stunned!");
                                                     }
 
@@ -2920,63 +3136,58 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         "You swing and miss the {}.",
                                                         monster_name
                                                     );
-                                                    if rng.gen_range(0..150)
+                                                    if rng.gen_range(1..=150)
                                                         > player.stats.dexterity as i32
                                                     {
                                                         status_msg
                                                             .push_str(" You are off-balance.");
+                                                        player.flags.paralysis +=
+                                                            1 + rng.gen_range(1..=2);
                                                     }
                                                 }
                                                 player_acted = true;
                                             } else if let Some(tile) = level.get_tile_mut(sx, sy) {
                                                 match tile.tile_type {
                                                     TileType::DoorClosed { ref mut spikes } => {
-                                                        let chance = player.stats.strength as f64;
-                                                        let diff = 8.0 + (*spikes as f64) * 4.0;
+                                                        let chance = player.stats.strength as i32
+                                                            + (player.body_weight as i32 / 2);
+                                                        let abs_spikes = (*spikes as i32).abs();
+                                                        let roll = rng.gen_range(
+                                                            0..=(chance * (20 + abs_spikes)).max(1),
+                                                        );
+                                                        let target =
+                                                            (10 * (chance - abs_spikes)).max(1);
 
-                                                        if rng.gen_range(0.0..chance) > diff {
+                                                        if roll < target {
                                                             tile.tile_type = TileType::DoorOpen;
                                                             status_msg = "The door crashes open!"
                                                                 .to_string();
                                                             player.move_to(sx, sy);
                                                         } else {
-                                                            status_msg =
-                                                                "The door holds firm.".to_string();
-                                                            if rng.gen_range(0..150)
+                                                            if rng.gen_range(1..=150)
                                                                 > player.stats.dexterity as i32
                                                             {
-                                                                status_msg.push_str(
-                                                                    " You are off-balance.",
-                                                                );
+                                                                status_msg =
+                                                                    "The door holds firm. You are off-balance."
+                                                                        .to_string();
+                                                                player.flags.paralysis +=
+                                                                    1 + rng.gen_range(1..=2);
+                                                            } else {
+                                                                status_msg = "The door holds firm."
+                                                                    .to_string();
                                                             }
                                                         }
                                                         player_acted = true;
                                                     }
                                                     TileType::Chest { trapped: _, locked } => {
-                                                        if rng.gen_bool(0.10) {
+                                                        if rng.gen_range(1..=10) == 1 {
                                                             tile.tile_type = TileType::Floor;
                                                             status_msg = "You have destroyed the chest and its contents!".to_string();
-                                                        } else if locked {
-                                                            let chance =
-                                                                player.stats.strength as f64;
-                                                            if rng.gen_range(0.0..chance) > 12.0 {
-                                                                status_msg = "You break the lock!"
-                                                                    .to_string();
-                                                                level.open_chest(
-                                                                    sx,
-                                                                    sy,
-                                                                    &mut player,
-                                                                    &mut rng,
-                                                                    &mut status_msg,
-                                                                    &mut monsters,
-                                                                );
-                                                            } else {
-                                                                status_msg = "The lock holds firm."
-                                                                    .to_string();
-                                                            }
-                                                        } else {
-                                                            status_msg = "You bash the chest open!"
-                                                                .to_string();
+                                                        } else if locked
+                                                            && rng.gen_range(1..=10) == 1
+                                                        {
+                                                            status_msg =
+                                                                "The lock breaks open!".to_string();
                                                             level.open_chest(
                                                                 sx,
                                                                 sy,
@@ -2985,6 +3196,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                                 &mut status_msg,
                                                                 &mut monsters,
                                                             );
+                                                        } else {
+                                                            status_msg =
+                                                                "The chest holds firm.".to_string();
                                                         }
                                                         player_acted = true;
                                                     }
@@ -3924,6 +4138,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             &mut screen_mode,
                                             &mut active_haggle,
                                             &mut status_msg,
+                                            shop_info,
                                         );
                                     } else if screen_mode == ScreenMode::ShopSellMenu {
                                         let idx = c as usize - 'a' as usize;
@@ -3990,25 +4205,40 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                         if idx < equippable_indices.len() {
                                             let inv_idx = equippable_indices[idx];
-                                            let mut item = player.inventory.remove(inv_idx);
+                                            let item = &player.inventory[inv_idx];
+
                                             let target_slot = match &item.item_type {
                                                 ItemType::Ring { .. } => {
-                                                    let right_taken =
-                                                        player.equipment.iter().any(|eq| {
+                                                    let right_idx =
+                                                        player.equipment.iter().position(|eq| {
                                                             eq.get_equipment_slot()
                                                                 == "On right hand"
                                                         });
-                                                    let left_taken =
-                                                        player.equipment.iter().any(|eq| {
+                                                    let left_idx =
+                                                        player.equipment.iter().position(|eq| {
                                                             eq.get_equipment_slot()
                                                                 == "On left hand"
                                                         });
-                                                    if !right_taken {
+                                                    if right_idx.is_none() {
                                                         "On right hand".to_string()
-                                                    } else if !left_taken {
+                                                    } else if left_idx.is_none() {
                                                         "On left hand".to_string()
                                                     } else {
-                                                        "On right hand".to_string()
+                                                        let right_cursed = right_idx
+                                                            .map(|i| {
+                                                                player.equipment[i].is_cursed()
+                                                            })
+                                                            .unwrap_or(false);
+                                                        let left_cursed = left_idx
+                                                            .map(|i| {
+                                                                player.equipment[i].is_cursed()
+                                                            })
+                                                            .unwrap_or(false);
+                                                        if right_cursed && !left_cursed {
+                                                            "On left hand".to_string()
+                                                        } else {
+                                                            "On right hand".to_string()
+                                                        }
                                                     }
                                                 }
                                                 ItemType::Amulet { .. } => {
@@ -4016,12 +4246,25 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 }
                                                 _ => item.get_equipment_slot().to_string(),
                                             };
-                                            item.equipped_slot = Some(target_slot.clone());
 
                                             let already_equipped =
                                                 player.equipment.iter().position(|eq| {
                                                     eq.get_equipment_slot() == target_slot
                                                 });
+
+                                            if let Some(eq_idx) = already_equipped
+                                                && player.equipment[eq_idx].is_cursed()
+                                            {
+                                                status_msg = format!(
+                                                    "The {} you are wearing appears to be cursed.",
+                                                    player.equipment[eq_idx].display_name()
+                                                );
+                                                screen_mode = ScreenMode::Dungeon;
+                                                continue 'game_loop;
+                                            }
+
+                                            let mut item = player.inventory.remove(inv_idx);
+                                            item.equipped_slot = Some(target_slot.clone());
 
                                             if let Some(eq_idx) = already_equipped {
                                                 let mut old = player.equipment.remove(eq_idx);
@@ -4044,13 +4287,20 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     } else if screen_mode == ScreenMode::TakeOffMenu {
                                         let idx = c as usize - 'a' as usize;
                                         if idx < player.equipment.len() {
-                                            let mut item = player.equipment.remove(idx);
-                                            item.equipped_slot = None;
-                                            status_msg = format!("You took off {}.", item.name);
-                                            player.inventory.push(item);
-                                            player.update_equipment_bonuses();
+                                            if player.equipment[idx].is_cursed() {
+                                                status_msg =
+                                                    "Hmmm, it seems to be cursed.".to_string();
+                                            } else if player.inventory.len() >= 22 {
+                                                status_msg = "You can't carry it.".to_string();
+                                            } else {
+                                                let mut item = player.equipment.remove(idx);
+                                                item.equipped_slot = None;
+                                                status_msg = format!("You took off {}.", item.name);
+                                                player.inventory.push(item);
+                                                player.update_equipment_bonuses();
+                                                player_acted = true;
+                                            }
                                             screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
                                         }
                                     } else if screen_mode == ScreenMode::QuaffMenu {
                                         let idx = c as usize - 'a' as usize;

@@ -34,6 +34,12 @@ pub struct ShopInfo {
     pub insults: u32,
     #[serde(default)]
     pub closed_until_turn: u64,
+    #[serde(default)]
+    pub inventory: Vec<Item>,
+    #[serde(default)]
+    pub good_purchases: u16,
+    #[serde(default)]
+    pub bad_purchases: u16,
 }
 
 impl ShopInfo {
@@ -46,14 +52,19 @@ impl ShopInfo {
         let store_offset = shop_type as usize;
         let owner_variant = rng.gen_range(0..3);
         let owner_index = store_offset + owner_variant * 6;
-        Self {
+        let mut info = Self {
             door_x,
             door_y,
             shop_type,
             owner_index,
             insults: 0,
             closed_until_turn: 0,
-        }
+            inventory: Vec::with_capacity(24),
+            good_purchases: 0,
+            bad_purchases: 0,
+        };
+        info.ensure_stocked(rng);
+        info
     }
 
     pub fn owner(&self) -> &'static StoreOwner {
@@ -64,11 +75,76 @@ impl ShopInfo {
         turn < self.closed_until_turn
     }
 
+    pub fn no_need_to_bargain(&self, min_price: u32) -> bool {
+        if self.good_purchases == u16::MAX {
+            return true;
+        }
+        let record = self.good_purchases as i32 - 3 * self.bad_purchases as i32 - 5;
+        record > 0 && (record * record) > (min_price as i32 / 50)
+    }
+
+    pub fn update_bargaining_skills(&mut self, price: u32, min_price: u32) {
+        if min_price < 10 {
+            return;
+        }
+        if price == min_price {
+            self.good_purchases = self.good_purchases.saturating_add(1);
+        } else {
+            self.bad_purchases = self.bad_purchases.saturating_add(1);
+        }
+    }
+
+    pub fn ensure_stocked(&mut self, rng: &mut impl rand::Rng) {
+        let max_cost = self.owner().max_cost;
+        while self.inventory.len() < 20 {
+            if let Some(item) = shop::create_store_item(self.shop_type, max_cost, rng) {
+                shop::store_carry_item(&mut self.inventory, item);
+            }
+        }
+    }
+
     pub fn maintain(&mut self, turn: u64, rng: &mut impl rand::Rng) {
-        self.insults = self.insults.saturating_sub(1);
+        self.insults = 0;
         if self.closed_until_turn > 0 && turn >= self.closed_until_turn {
             self.closed_until_turn = 0;
         }
+
+        // Canonical umoria storeMaintenance:
+        if self.inventory.len() >= 20 {
+            let mut turnaround = rng.gen_range(1..=4);
+            if self.inventory.len() >= 22 {
+                turnaround += self.inventory.len() - 22 + 1;
+            }
+            for _ in 0..turnaround {
+                if !self.inventory.is_empty() {
+                    let remove_idx = rng.gen_range(0..self.inventory.len());
+                    if self.inventory[remove_idx].count > 1 {
+                        self.inventory[remove_idx].count = rng
+                            .gen_range(1..=self.inventory[remove_idx].count / 2)
+                            .max(1);
+                        if rng.gen_bool(0.5) {
+                            self.inventory.remove(remove_idx);
+                        }
+                    } else {
+                        self.inventory.remove(remove_idx);
+                    }
+                }
+            }
+        }
+
+        if self.inventory.len() <= 22 {
+            let max_cost = self.owner().max_cost;
+            let turnaround = rng.gen_range(1..=4);
+            for _ in 0..turnaround {
+                if self.inventory.len() >= 24 {
+                    break;
+                }
+                if let Some(item) = shop::create_store_item(self.shop_type, max_cost, rng) {
+                    shop::store_carry_item(&mut self.inventory, item);
+                }
+            }
+        }
+
         if self.insults >= self.owner().max_insults && rng.gen_bool(0.20) {
             let store_offset = self.shop_type as usize;
             let owner_variant = rng.gen_range(0..3);
@@ -218,14 +294,7 @@ fn rand_normal<R: Rng>(mean: i32, std: i32, rng: &mut R) -> i32 {
 }
 
 fn random_trap_type<R: Rng>(rng: &mut R) -> TrapType {
-    match rng.gen_range(0..6) {
-        0 => TrapType::Arrow,
-        1 => TrapType::PoisonGas,
-        2 => TrapType::Teleport,
-        3 => TrapType::SleepingGas,
-        4 => TrapType::BlindGas,
-        _ => TrapType::ConfusionGas,
-    }
+    TrapType::ALL[rng.gen_range(0..TrapType::ALL.len())]
 }
 
 struct CaveGen {

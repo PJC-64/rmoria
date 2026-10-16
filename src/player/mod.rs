@@ -550,6 +550,10 @@ impl Item {
         }
     }
 
+    pub fn is_cursed(&self) -> bool {
+        self.is_cursed || (self.flags & crate::entity::treasure_data::TR_CURSED) != 0
+    }
+
     pub fn get_equipment_slot(&self) -> &str {
         if let Some(ref slot) = self.equipped_slot {
             return slot.as_str();
@@ -1532,40 +1536,51 @@ impl Player {
                 self.flags.sustain_dex = true;
                 self.flags.sustain_chr = true;
             }
+            let stat_amt = if item.misc_use != 0 { item.misc_use } else { 1 };
             if (flags & TR_STR) != 0 {
-                str_mod += item.misc_use.max(1);
+                str_mod += stat_amt;
             }
             if (flags & TR_INT) != 0 {
-                int_mod += item.misc_use.max(1);
+                int_mod += stat_amt;
             }
             if (flags & TR_WIS) != 0 {
-                wis_mod += item.misc_use.max(1);
+                wis_mod += stat_amt;
             }
             if (flags & TR_DEX) != 0 {
-                dex_mod += item.misc_use.max(1);
+                dex_mod += stat_amt;
             }
             if (flags & TR_CON) != 0 {
-                con_mod += item.misc_use.max(1);
+                con_mod += stat_amt;
             }
             if (flags & TR_CHR) != 0 {
-                chr_mod += item.misc_use.max(1);
+                chr_mod += stat_amt;
             }
 
             match &item.item_type {
                 ItemType::Ring { bonus } => {
-                    if name_lower.contains("strength") && !name_lower.contains("sustain") {
+                    if (flags & TR_STR) == 0
+                        && name_lower.contains("strength")
+                        && !name_lower.contains("sustain")
+                    {
                         str_mod += bonus;
-                    } else if name_lower.contains("dexterity") && !name_lower.contains("sustain") {
+                    } else if (flags & TR_DEX) == 0
+                        && name_lower.contains("dexterity")
+                        && !name_lower.contains("sustain")
+                    {
                         dex_mod += bonus;
-                    } else if name_lower.contains("constitution") && !name_lower.contains("sustain")
+                    } else if (flags & TR_CON) == 0
+                        && name_lower.contains("constitution")
+                        && !name_lower.contains("sustain")
                     {
                         con_mod += bonus;
-                    } else if name_lower.contains("intelligence") && !name_lower.contains("sustain")
+                    } else if (flags & TR_INT) == 0
+                        && name_lower.contains("intelligence")
+                        && !name_lower.contains("sustain")
                     {
                         int_mod += bonus;
-                    } else if name_lower.contains("weakness") {
+                    } else if (flags & TR_STR) == 0 && name_lower.contains("weakness") {
                         str_mod -= bonus.abs().max(1);
-                    } else if name_lower.contains("stupidity") {
+                    } else if (flags & TR_INT) == 0 && name_lower.contains("stupidity") {
                         int_mod -= bonus.abs().max(1);
                     } else if name_lower.contains("woe") {
                         str_mod -= 5;
@@ -2940,9 +2955,8 @@ impl Player {
 
         let mut dice_roll = base_dice.roll(rng) as i32;
         if let Some(c_id) = target_creature_id.filter(|_| weapon_flags != 0) {
-            let multiplier =
-                crate::entity::treasure_data::calculate_slaying_multiplier(weapon_flags, c_id);
-            dice_roll *= multiplier as i32;
+            dice_roll =
+                crate::entity::treasure_data::apply_slaying_damage(weapon_flags, dice_roll, c_id);
         }
 
         let mut damage = dice_roll + self.str_damage_adj() + weapon_to_dam;
@@ -2990,6 +3004,24 @@ impl Player {
         total_damage
     }
 
+    pub fn can_carry_item(&self, item: &Item) -> bool {
+        if self.inventory.len() < 22 {
+            return true;
+        }
+        for inv_item in &self.inventory {
+            let same_name = inv_item.name == item.name;
+            let same_type = inv_item.item_type == item.item_type;
+            let same_sub = inv_item.sub_category_id == item.sub_category_id;
+            let same_id = inv_item.identified == item.identified;
+            let same_group = item.sub_category_id < 192 || inv_item.misc_use == item.misc_use;
+            let can_stack = inv_item.count + item.count < 256;
+            if same_name && same_type && same_sub && same_id && same_group && can_stack {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn digging_ability(&self) -> i32 {
         let wielded = self
             .equipment
@@ -2997,20 +3029,26 @@ impl Player {
             .find(|i| matches!(i.item_type, ItemType::Weapon { .. }));
         match wielded {
             Some(weapon) => {
-                let is_digging_tool = weapon.name.contains("Shovel")
-                    || weapon.name.contains("Pick")
-                    || weapon.name.contains("Mattock");
-                let base_ability = self.stats.strength as i32;
-                if is_digging_tool {
-                    let tool_bonus = if weapon.name.contains("Pick") { 50 } else { 25 };
-                    base_ability + tool_bonus
+                let mut digging_ability = self.stats.strength as i32;
+                if (weapon.flags & crate::entity::treasure_data::TR_TUNNEL) != 0 {
+                    digging_ability += 25 + weapon.misc_use * 50;
                 } else {
                     let weapon_max_dmg = match &weapon.item_type {
-                        ItemType::Weapon { damage } => damage.num * damage.sides,
+                        ItemType::Weapon { damage } => (damage.num * damage.sides) as i32,
                         _ => 4,
-                    } as i32;
-                    (base_ability + weapon_max_dmg) / 2
+                    };
+                    digging_ability +=
+                        weapon_max_dmg + weapon.to_hit as i32 + weapon.to_damage as i32;
+                    digging_ability /= 2;
                 }
+                let heavy_limit = self.stats.strength as i32 * 15;
+                if weapon.weight as i32 > heavy_limit {
+                    digging_ability += heavy_limit - weapon.weight as i32;
+                    if digging_ability < 0 {
+                        digging_ability = 0;
+                    }
+                }
+                digging_ability
             }
             None => 0,
         }
@@ -3096,6 +3134,24 @@ impl Player {
             Class::Paladin => (20, 2),
         };
         race_dis + class_dis + self.dex_disarm_adj() + ((class_lvl_adj * self.level as i32) / 3)
+    }
+
+    pub fn trap_disarm_ability(&self) -> i32 {
+        let mut ability = self.disarm_skill() + self.int_wis_stat_adj(false);
+        let has_light = self.equipment.iter().any(|i| {
+            if let ItemType::Light { fuel } = i.item_type {
+                fuel > 0
+            } else {
+                false
+            }
+        });
+        if self.flags.blind > 0 || !has_light {
+            ability /= 10;
+        }
+        if self.flags.confused > 0 {
+            ability /= 10;
+        }
+        ability.max(0)
     }
 
     pub fn search_chance(&self) -> i32 {
@@ -3486,7 +3542,12 @@ impl Player {
 
         for item in &self.equipment {
             if (item.flags & crate::entity::treasure_data::TR_SPEED) != 0 {
-                speed -= 1;
+                let spd = if item.misc_use != 0 {
+                    item.misc_use as i16
+                } else {
+                    1
+                };
+                speed -= spd;
             } else {
                 let name_lower = item.name.to_lowercase();
                 if name_lower.contains("speed") {

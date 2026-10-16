@@ -2519,14 +2519,7 @@ pub fn spell_surround_player_with_traps<R: rand::Rng>(
     rng: &mut R,
 ) -> bool {
     let mut created = false;
-    let trap_types = [
-        TrapType::Arrow,
-        TrapType::PoisonGas,
-        TrapType::Teleport,
-        TrapType::SleepingGas,
-        TrapType::BlindGas,
-        TrapType::ConfusionGas,
-    ];
+    let trap_types = TrapType::ALL;
     for dy in -1..=1 {
         for dx in -1..=1 {
             if dx == 0 && dy == 0 {
