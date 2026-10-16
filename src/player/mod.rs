@@ -707,6 +707,24 @@ pub struct Player {
     pub base_hp_levels: Vec<i32>,
     pub exp_factor: u32,
     pub history: String,
+    #[serde(default = "default_auto_pickup")]
+    pub auto_pickup: bool,
+    #[serde(default)]
+    pub max_score: i64,
+    #[serde(default)]
+    pub keybinding_mode: crate::input::KeybindingMode,
+    #[serde(default)]
+    pub identified_symbol: Option<char>,
+    #[serde(default)]
+    pub high_score_page: usize,
+    #[serde(default)]
+    pub died_from: String,
+    #[serde(default)]
+    pub locate_offset: (isize, isize),
+}
+
+fn default_auto_pickup() -> bool {
+    true
 }
 
 pub fn generate_history_with_social_class<R: rand::Rng>(race: Race, rng: &mut R) -> (String, i16) {
@@ -1287,6 +1305,13 @@ impl Player {
             base_hp_levels,
             exp_factor,
             history,
+            auto_pickup: true,
+            max_score: 0,
+            keybinding_mode: crate::input::KeybindingMode::default(),
+            identified_symbol: None,
+            high_score_page: 0,
+            died_from: String::new(),
+            locate_offset: (0, 0),
         };
 
         player.flavors.identify("Potion of Cure Light Wounds");
@@ -3274,6 +3299,96 @@ impl Player {
         }
     }
 
+    pub fn calculate_total_points(&self, current_depth: u32) -> i64 {
+        let mut total: i64 =
+            self.max_exp.max(self.exp) as i64 + (100 * self.max_depth_reached as i64);
+        total += self.gold as i64 / 100;
+        for item in &self.inventory {
+            total += item.cost as i64 * item.count as i64;
+        }
+        for item in &self.equipment {
+            total += item.cost as i64 * item.count as i64;
+        }
+        total += current_depth as i64 * 50;
+        if self.max_score > total {
+            self.max_score
+        } else {
+            total
+        }
+    }
+
+    pub fn generate_character_record(&self, current_depth: u32) -> String {
+        let mut out = String::new();
+        out.push_str(
+            "==============================================================================\n",
+        );
+        out.push_str(&format!("Character Record for {}\n", self.name));
+        out.push_str(&format!(
+            "Race: {:?}   Class: {:?}   Title: '{}'\n",
+            self.race,
+            self.class,
+            self.rank_title()
+        ));
+        out.push_str(&format!(
+            "Level: {}   EXP: {}   Gold: {}   Max Depth: {} ft\n",
+            self.level,
+            self.exp,
+            self.gold,
+            self.max_depth_reached * 50
+        ));
+        out.push_str(&format!(
+            "HP: {}/{}   Mana: {}/{}   AC: {}\n",
+            self.hp,
+            self.max_hp,
+            self.mana,
+            self.max_mana,
+            self.calculate_ac()
+        ));
+        out.push_str(&format!(
+            "STR: {}  INT: {}  WIS: {}  DEX: {}  CON: {}  CHR: {}\n",
+            format_stat(self.stats.strength),
+            format_stat(self.stats.intelligence),
+            format_stat(self.stats.wisdom),
+            format_stat(self.stats.dexterity),
+            format_stat(self.stats.constitution),
+            format_stat(self.stats.charisma)
+        ));
+        out.push_str(&format!(
+            "Died from: {} on Level {}\n",
+            if self.died_from.is_empty() {
+                "Quitting"
+            } else {
+                &self.died_from
+            },
+            current_depth
+        ));
+        out.push_str(
+            "------------------------------------------------------------------------------\n",
+        );
+        out.push_str("Equipment:\n");
+        for (i, item) in self.equipment.iter().enumerate() {
+            let label = (b'a' + i as u8) as char;
+            out.push_str(&format!(
+                "  {}) [Slot: {}] {}\n",
+                label,
+                item.get_equipment_slot(),
+                item.display_name()
+            ));
+        }
+        out.push_str(
+            "------------------------------------------------------------------------------\n",
+        );
+        out.push_str("Inventory:\n");
+        for (i, item) in self.inventory.iter().enumerate() {
+            let label = (b'a' + i as u8) as char;
+            out.push_str(&format!("  {}) {}\n", label, item.display_name()));
+        }
+        out.push_str(
+            "==============================================================================\n",
+        );
+        out
+    }
+
     pub fn damage_pack_items<R: rand::Rng, F: Fn(&Item) -> bool>(
         &mut self,
         rng: &mut R,
@@ -4421,5 +4536,37 @@ mod tests {
         assert_eq!(player.speed_modifier(), -2);
         player.tick_digestion_and_regen(false);
         assert_eq!(player.food, 992);
+    }
+
+    #[test]
+    fn test_character_record_dump() {
+        let mut player =
+            Player::new_with_gender("Aragorn", Race::Human, Class::Ranger, Gender::Male, 10, 10);
+        player.level = 30;
+        player.exp = 80000;
+        player.gold = 50000;
+        player.died_from = "Quitting".to_string();
+        let dump = player.generate_character_record(25);
+        assert!(dump.contains("Aragorn"));
+        assert!(dump.contains("Human"));
+        assert!(dump.contains("Ranger"));
+        assert!(dump.contains("STR:"));
+        assert!(dump.contains("Equipment:"));
+        assert!(dump.contains("Inventory:"));
+    }
+
+    #[test]
+    fn test_rank_title_mapping() {
+        let mut warrior = Player::new("Conan", Race::Human, Class::Warrior, 10, 10);
+        warrior.level = 1;
+        assert_eq!(warrior.rank_title(), "Rookie");
+        warrior.level = 40;
+        assert_eq!(warrior.rank_title(), "Lord Noble");
+
+        let mut mage = Player::new("Gandalf", Race::Elf, Class::Mage, 10, 10);
+        mage.level = 1;
+        assert_eq!(mage.rank_title(), "Novice");
+        mage.level = 40;
+        assert_eq!(mage.rank_title(), "Wizard Lord");
     }
 }

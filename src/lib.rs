@@ -5,8 +5,10 @@ pub mod flavor;
 pub mod input;
 pub mod magic;
 pub mod player;
+pub mod player_run;
 pub mod rendering;
 mod save;
+pub mod scores;
 
 pub use rendering::draw_map;
 
@@ -78,6 +80,25 @@ pub fn get_save_path() -> std::path::PathBuf {
     path
 }
 
+pub fn get_scores_path() -> std::path::PathBuf {
+    let mut path = if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home)
+    } else if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        std::path::PathBuf::from(userprofile)
+    } else {
+        std::path::PathBuf::from(".")
+    };
+
+    path.push(".config");
+    path.push("rmoria");
+
+    // Ensure the directories exist
+    let _ = std::fs::create_dir_all(&path);
+
+    path.push("scores.json");
+    path
+}
+
 mod event {
     #[allow(unused_imports)]
     pub use crossterm::event::{Event, KeyCode, KeyModifiers};
@@ -129,10 +150,11 @@ use dungeon::{
     handle_haggle_input, tile::TrapType,
 };
 use entity::monster::Monster;
-use input::{Action, Direction, InputMapper, KeyboardProfile};
+use input::{Action, Direction, InputMapper, KeybindingMode};
 use player::{Class, InscribeState, Item, ItemType, Player, Race};
 use rand::Rng;
 use save::GameState;
+use scores::{DEFAULT_SCORES_FILE, HighScoreEntry, record_high_score};
 use std::fs;
 use std::io::{self};
 
@@ -180,6 +202,10 @@ pub enum ScreenMode {
     IdentifySymbol,
     OptionsMenu,
     HighScores,
+    ReducedMap,
+    LocateMap,
+    RoyalCoronation,
+    Tombstone,
 }
 
 fn test_being_hit<R: rand::Rng>(
@@ -437,11 +463,13 @@ fn process_end_of_turn(
         if save_path.exists() {
             let _ = std::fs::remove_file(save_path);
         }
-        *screen_mode = ScreenMode::GameOver;
-        *status_msg = format!(
-            "{} You have died from poison! Game Over. Press [r] to restart, or [q] to quit.",
-            status_msg
-        );
+        player.died_from = "poison".to_string();
+        *screen_mode = if player.balrog_killed || player.total_winner {
+            ScreenMode::RoyalCoronation
+        } else {
+            ScreenMode::Tombstone
+        };
+        *status_msg = format!("{} You have died from poison!", status_msg);
         draw_map(
             level,
             player,
@@ -494,11 +522,13 @@ fn process_end_of_turn(
         if save_path.exists() {
             let _ = std::fs::remove_file(save_path);
         }
-        *screen_mode = ScreenMode::GameOver;
-        *status_msg = format!(
-            "{} You have starved to death! Game Over. Press [r] to restart, or [q] to quit.",
-            status_msg
-        );
+        player.died_from = "starvation".to_string();
+        *screen_mode = if player.balrog_killed || player.total_winner {
+            ScreenMode::RoyalCoronation
+        } else {
+            ScreenMode::Tombstone
+        };
+        *status_msg = format!("{} You have starved to death!", status_msg);
         draw_map(
             level,
             player,
@@ -581,9 +611,13 @@ fn process_end_of_turn(
                 if save_path.exists() {
                     let _ = std::fs::remove_file(save_path);
                 }
-                *screen_mode = ScreenMode::GameOver;
-                status_msg
-                    .push_str(" You have died! Game Over. Press [r] to restart, or [q] to quit.");
+                player.died_from = monsters[m_idx].name.clone();
+                *screen_mode = if player.balrog_killed || player.total_winner {
+                    ScreenMode::RoyalCoronation
+                } else {
+                    ScreenMode::Tombstone
+                };
+                status_msg.push_str(" You have died!");
                 break;
             }
 
@@ -603,10 +637,13 @@ fn process_end_of_turn(
                     if save_path.exists() {
                         let _ = std::fs::remove_file(save_path);
                     }
-                    *screen_mode = ScreenMode::GameOver;
-                    status_msg.push_str(
-                        " You have died! Game Over. Press [r] to restart, or [q] to quit.",
-                    );
+                    player.died_from = monsters[m_idx].name.clone();
+                    *screen_mode = if player.balrog_killed || player.total_winner {
+                        ScreenMode::RoyalCoronation
+                    } else {
+                        ScreenMode::Tombstone
+                    };
+                    status_msg.push_str(" You have died!");
                     break;
                 }
             }
@@ -711,6 +748,227 @@ fn process_end_of_turn(
     }
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments, clippy::ptr_arg)]
+fn execute_player_run(
+    direction: Direction,
+    player: &mut Player,
+    level: &mut DungeonLevel,
+    monsters: &mut Vec<Monster>,
+    status_msg: &mut String,
+    screen_mode: &mut ScreenMode,
+    save_path: &std::path::Path,
+    active_shop: ShopType,
+    active_haggle: Option<&HaggleState>,
+    game_turn: &mut u64,
+    max_depth: u32,
+    level_cache: &mut std::collections::HashMap<u32, (DungeonLevel, Vec<Monster>)>,
+) -> Result<bool, std::io::Error> {
+    if player.flags.paralysis > 0 {
+        *status_msg = "You are paralyzed!".to_string();
+        return Ok(false);
+    }
+    if player.flags.confused > 0 {
+        *status_msg = "You are confused!".to_string();
+        return Ok(false);
+    }
+    if player.flags.blind > 0 {
+        *status_msg = "You can't see to run!".to_string();
+        return Ok(false);
+    }
+
+    let mut run_state = crate::player_run::init_run(direction, player.x, player.y, level, false);
+    if !run_state.is_running {
+        *status_msg = "You cannot run in that direction.".to_string();
+        return Ok(false);
+    }
+
+    let mut ran_any_step = false;
+    let mut rng = rand::thread_rng();
+
+    while run_state.is_running && run_state.steps < 100 {
+        let (dx, dy) = run_state.direction.to_dx_dy();
+        let next_x = (player.x as isize + dx).clamp(0, level.width as isize - 1) as usize;
+        let next_y = (player.y as isize + dy).clamp(0, level.height as isize - 1) as usize;
+
+        if let Some(m_idx) = monsters
+            .iter()
+            .position(|m| m.x == next_x && m.y == next_y && m.hp > 0)
+        {
+            if player.flags.afraid > 0 {
+                *status_msg = "You are too afraid!".to_string();
+            } else {
+                let damage =
+                    player.roll_melee_damage_against(&mut rng, Some(monsters[m_idx].creature_id));
+                if damage == 0 {
+                    *status_msg = format!("You miss {}.", monsters[m_idx].name);
+                } else {
+                    *status_msg =
+                        format!("You hit {} for {} damage!", monsters[m_idx].name, damage);
+                }
+                monsters[m_idx].was_attacked = true;
+                let monster_name = monsters[m_idx].name.clone();
+                let exp_reward = monsters[m_idx].experience_reward;
+                let m_lvl = monsters[m_idx].level;
+                let is_win = monsters[m_idx].is_win_creature() || monster_name == "The Balrog";
+
+                if monsters[m_idx].take_damage(damage) {
+                    if level.depth == 0 {
+                        player.killed_town_npcs += 1;
+                    }
+                    status_msg.push_str(&format!(" You killed {}!", monster_name));
+                    let old_exp = player.exp;
+                    let old_lvl = player.level;
+                    let leveled_up = player.gain_kill_experience(exp_reward, m_lvl);
+                    let gained = player.exp.saturating_sub(old_exp);
+                    if leveled_up || player.level > old_lvl {
+                        status_msg.push_str(&format!(
+                            " Congratulations! You reached level {}.",
+                            player.level
+                        ));
+                    } else if gained > 0 {
+                        status_msg.push_str(&format!(" Gained {} EXP.", gained));
+                    }
+                    if is_win {
+                        player.balrog_killed = true;
+                        player.total_winner = true;
+                    }
+                    monsters.remove(m_idx);
+                }
+            }
+            run_state.is_running = false;
+            ran_any_step = true;
+        } else {
+            let is_passable = level
+                .get_tile(next_x, next_y)
+                .map(|t| t.is_passable())
+                .unwrap_or(false);
+            if !is_passable {
+                break;
+            }
+
+            let mut trigger_trap = None;
+            if let Some(tile) = level.get_tile(next_x, next_y)
+                && let TileType::Trap { trap_type, .. } = tile.tile_type
+            {
+                trigger_trap = Some(trap_type);
+            }
+
+            player.move_to(next_x, next_y);
+            run_state.steps += 1;
+            ran_any_step = true;
+
+            if let Some(tt) = trigger_trap {
+                let (px, py) = (player.x, player.y);
+                let trap_msg = trigger_trap_effect(tt, player, level, monsters, &mut rng, px, py);
+                *status_msg = trap_msg;
+                if tt != TrapType::CoveredPit
+                    && tt != TrapType::Rockfall
+                    && let Some(t) = level.get_tile_mut(px, py)
+                {
+                    t.tile_type = TileType::Floor;
+                }
+                run_state.is_running = false;
+            }
+
+            let item_idx = level
+                .items
+                .iter()
+                .position(|i| i.x == player.x && i.y == player.y);
+            if let Some(idx) = item_idx {
+                let is_gold = level.items[idx].item.name.contains("Gold Pile");
+                if is_gold {
+                    let floor_item = level.items.remove(idx);
+                    let gold_amount = floor_item
+                        .item
+                        .name
+                        .split('[')
+                        .nth(1)
+                        .and_then(|s| s.split(' ').next())
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(20);
+                    player.gold += gold_amount;
+                    *status_msg = format!("You picked up {} gold pieces.", gold_amount);
+                } else if player.auto_pickup {
+                    if !player.can_carry_item(&level.items[idx].item) {
+                        *status_msg =
+                            format!("You can't carry {}.", level.items[idx].item.display_name());
+                        run_state.is_running = false;
+                    } else {
+                        let floor_item = level.items.remove(idx);
+                        let mut item = floor_item.item;
+                        if !item.identified {
+                            player.flavors.assign_flavor(&mut item, &mut rng);
+                            if player.flavors.is_identified(&item.name) {
+                                item.identified = true;
+                            }
+                        }
+                        let dname = item.display_name();
+                        *status_msg = format!("You picked up {}.", dname);
+                        player.add_item_to_inventory(item);
+                        run_state.is_running = false;
+                    }
+                } else {
+                    *status_msg = format!("You see {}.", level.items[idx].item.display_name());
+                    run_state.is_running = false;
+                }
+            }
+        }
+
+        *game_turn += 1;
+        process_end_of_turn(
+            player,
+            level,
+            monsters,
+            status_msg,
+            screen_mode,
+            save_path,
+            active_shop,
+            active_haggle,
+            false,
+            *game_turn,
+            max_depth,
+            level_cache,
+        )?;
+
+        if *screen_mode != ScreenMode::Dungeon {
+            break;
+        }
+
+        if run_state.is_running {
+            let still_running = crate::player_run::update_run_after_step(
+                &mut run_state,
+                player.x,
+                player.y,
+                level,
+                monsters,
+                player.flags.blind > 0,
+            );
+            if !still_running {
+                run_state.is_running = false;
+            }
+        }
+
+        draw_map(
+            level,
+            player,
+            monsters,
+            status_msg,
+            *screen_mode,
+            active_shop,
+            active_haggle,
+            None,
+        )?;
+
+        if event::poll(std::time::Duration::from_millis(0))? {
+            let _ = event::read()?;
+            *status_msg = "Run stopped by keypress.".to_string();
+            break;
+        }
+    }
+
+    Ok(ran_any_step)
 }
 
 #[allow(deprecated)]
@@ -1093,7 +1351,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
             active_inscribe.as_ref(),
         )?;
 
-        let mapper = InputMapper::new(KeyboardProfile::StandardQweasd);
+        let mut mapper = InputMapper::new(player.keybinding_mode);
 
         'game_loop: loop {
             if CHEAT_ACTIVE.swap(false, std::sync::atomic::Ordering::Relaxed) {
@@ -1153,7 +1411,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                 player.food = 15000;
             }
 
-            if screen_mode != ScreenMode::GameOver && player.flags.paralysis > 0 {
+            if screen_mode != ScreenMode::GameOver
+                && screen_mode != ScreenMode::Tombstone
+                && screen_mode != ScreenMode::RoyalCoronation
+                && player.flags.paralysis > 0
+            {
                 resting_turns = None;
                 resting_until_healed = false;
                 status_msg = "You are paralyzed!".to_string();
@@ -1406,22 +1668,381 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if screen_mode == ScreenMode::Dungeon {
-                            if key_event.code == KeyCode::Char('p')
-                                && key_event.modifiers.contains(KeyModifiers::CONTROL)
-                            {
-                                screen_mode = ScreenMode::MessageHistory;
-                                draw_map(
-                                    &mut level,
-                                    &player,
-                                    &monsters,
-                                    &status_msg,
-                                    screen_mode,
-                                    active_shop,
-                                    active_haggle.as_ref(),
-                                    active_inscribe.as_ref(),
-                                )?;
-                                continue 'game_loop;
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                                match key_event.code {
+                                    KeyCode::Char('p') => {
+                                        screen_mode = ScreenMode::MessageHistory;
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('w') => {
+                                        player.is_wizard = !player.is_wizard;
+                                        status_msg = if player.is_wizard {
+                                            "Wizard mode enabled!".to_string()
+                                        } else {
+                                            "Wizard mode disabled.".to_string()
+                                        };
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('x') => {
+                                        if player.is_wizard {
+                                            status_msg = "TEST MODE ACTIVE: Character cannot be saved. Quitting...".to_string();
+                                            draw_map(
+                                                &mut level,
+                                                &player,
+                                                &monsters,
+                                                &status_msg,
+                                                screen_mode,
+                                                active_shop,
+                                                active_haggle.as_ref(),
+                                                active_inscribe.as_ref(),
+                                            )?;
+                                            std::thread::sleep(std::time::Duration::from_millis(
+                                                1500,
+                                            ));
+                                            break 'game_loop;
+                                        }
+                                        status_msg = "Saving game and quitting...".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+
+                                        let state = GameState::new(
+                                            player.clone(),
+                                            level.clone(),
+                                            monsters.clone(),
+                                            max_depth,
+                                            level_cache.clone(),
+                                        );
+                                        if let Err(e) = state.save_to_file(&save_path) {
+                                            status_msg = format!("Save failed: {}", e);
+                                            draw_map(
+                                                &mut level,
+                                                &player,
+                                                &monsters,
+                                                &status_msg,
+                                                screen_mode,
+                                                active_shop,
+                                                active_haggle.as_ref(),
+                                                active_inscribe.as_ref(),
+                                            )?;
+                                            std::thread::sleep(std::time::Duration::from_secs(2));
+                                        } else {
+                                            std::thread::sleep(std::time::Duration::from_millis(
+                                                800,
+                                            ));
+                                        }
+                                        break 'game_loop;
+                                    }
+                                    KeyCode::Char('a') if player.is_wizard => {
+                                        player.flags.poisoned = 0;
+                                        player.flags.blind = 0;
+                                        player.flags.confused = 0;
+                                        player.flags.afraid = 0;
+                                        player.flags.paralysis = 0;
+                                        player.flags.image = 0;
+                                        player.food = 15000;
+                                        player.hp = player.max_hp;
+                                        player.mana = player.max_mana;
+                                        status_msg = "Wizard: Cured all afflictions and restored HP/Mana/Food.".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('e') if player.is_wizard => {
+                                        player.stats.strength = 118;
+                                        player.stats.intelligence = 118;
+                                        player.stats.wisdom = 118;
+                                        player.stats.dexterity = 118;
+                                        player.stats.constitution = 118;
+                                        player.stats.charisma = 118;
+                                        player.max_hp = 999;
+                                        player.hp = 999;
+                                        player.max_mana = 999;
+                                        player.mana = 999;
+                                        player.gold += 50000;
+                                        status_msg = "Wizard: Stats set to 18/100, HP/Mana to 999, +50,000 gold.".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('f') if player.is_wizard => {
+                                        let count = monsters
+                                            .iter()
+                                            .filter(|m| m.name != "The Balrog")
+                                            .count();
+                                        monsters.retain(|m| m.name == "The Balrog");
+                                        status_msg = format!(
+                                            "Wizard: Mass genocide eliminated {} monsters!",
+                                            count
+                                        );
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('g') if player.is_wizard => {
+                                        for _ in 0..5 {
+                                            let item = generate_random_floor_item(
+                                                level.depth.max(30),
+                                                &mut rng,
+                                            );
+                                            level.items.push(FloorItem {
+                                                x: player.x,
+                                                y: player.y,
+                                                item,
+                                            });
+                                        }
+                                        status_msg =
+                                            "Wizard: Generated 5 magical items at player tile."
+                                                .to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('d') if player.is_wizard => {
+                                        let new_depth = (level.depth + 5).min(50);
+                                        level = DungeonLevel::new(
+                                            level.width,
+                                            level.height,
+                                            new_depth,
+                                            max_depth,
+                                        );
+                                        level.generate_simple_floor();
+                                        monsters = level.generate_monsters(player.balrog_killed);
+                                        let (px, py) = level.find_random_floor_tile();
+                                        player.move_to(px, py);
+                                        level.update_fov(&player);
+                                        status_msg = format!(
+                                            "Wizard: Jumped to depth {} ({} ft).",
+                                            new_depth,
+                                            new_depth * 50
+                                        );
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('i') if player.is_wizard => {
+                                        for item in player
+                                            .inventory
+                                            .iter_mut()
+                                            .chain(player.equipment.iter_mut())
+                                        {
+                                            item.identified = true;
+                                            player.flavors.identify(&item.name);
+                                        }
+                                        status_msg =
+                                            "Wizard: Identified all inventory and equipment items."
+                                                .to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('t') if player.is_wizard => {
+                                        let (nx, ny) = level.find_random_floor_tile();
+                                        player.move_to(nx, ny);
+                                        level.update_fov(&player);
+                                        status_msg =
+                                            "Wizard: Teleported to a random location.".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    _ => {}
+                                }
                             }
+
+                            if player.is_wizard {
+                                match key_event.code {
+                                    KeyCode::Char('*') => {
+                                        for tile in level.tiles.iter_mut() {
+                                            tile.is_lit = true;
+                                            tile.visible = true;
+                                            tile.remembered = true;
+                                        }
+                                        status_msg =
+                                            "Wizard: Illuminated entire dungeon level.".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char(':') => {
+                                        let (top, bottom, left, right) =
+                                            level.get_viewport_bounds(player.x, player.y);
+                                        for y in top..bottom {
+                                            for x in left..right {
+                                                if let Some(tile) = level.get_tile_mut(x, y) {
+                                                    tile.remembered = true;
+                                                }
+                                            }
+                                        }
+                                        status_msg = "Wizard: Mapped current panel.".to_string();
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('+') => {
+                                        player.add_experience(10000);
+                                        status_msg = format!(
+                                            "Wizard: Gained 10,000 EXP! (Total: {})",
+                                            player.exp
+                                        );
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    KeyCode::Char('&') => {
+                                        let cid = rng.gen_range(
+                                            1..crate::entity::monster_data::CREATURES_LIST.len(),
+                                        );
+                                        let mut summoned = Monster::from_creature_id(
+                                            cid, player.x, player.y, false, &mut rng,
+                                        );
+                                        for dy in -1..=1 {
+                                            for dx in -1..=1 {
+                                                let tx = (player.x as isize + dx)
+                                                    .clamp(0, level.width as isize - 1)
+                                                    as usize;
+                                                let ty = (player.y as isize + dy)
+                                                    .clamp(0, level.height as isize - 1)
+                                                    as usize;
+                                                if level
+                                                    .get_tile(tx, ty)
+                                                    .map(|t| t.is_passable())
+                                                    .unwrap_or(false)
+                                                    && !monsters
+                                                        .iter()
+                                                        .any(|m| m.x == tx && m.y == ty)
+                                                {
+                                                    summoned.x = tx;
+                                                    summoned.y = ty;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        status_msg = format!("Wizard: Summoned {}!", summoned.name);
+                                        monsters.push(summoned);
+                                        draw_map(
+                                            &mut level,
+                                            &player,
+                                            &monsters,
+                                            &status_msg,
+                                            screen_mode,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            active_inscribe.as_ref(),
+                                        )?;
+                                        continue 'game_loop;
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             if key_event.code == KeyCode::Char('=') {
                                 screen_mode = ScreenMode::OptionsMenu;
                                 draw_map(
@@ -1437,6 +2058,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 continue 'game_loop;
                             }
                             if key_event.code == KeyCode::Char('/') {
+                                player.identified_symbol = None;
                                 screen_mode = ScreenMode::IdentifySymbol;
                                 draw_map(
                                     &mut level,
@@ -1451,6 +2073,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 continue 'game_loop;
                             }
                             if key_event.code == KeyCode::Char('V') {
+                                player.high_score_page = 0;
                                 screen_mode = ScreenMode::HighScores;
                                 draw_map(
                                     &mut level,
@@ -1467,7 +2090,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             if let KeyCode::Char(c) = key_event.code {
                                 let action = mapper.map_key(c);
                                 match action {
-                                    Action::Move(mut direction) => {
+                                    Action::Move(mut direction)
+                                    | Action::MoveWithoutPickup(mut direction) => {
                                         if player.flags.confused > 0
                                             && direction != Direction::Rest
                                             && rng.gen_bool(0.75)
@@ -1632,44 +2256,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                                         if monster_name == "The Balrog" {
                                                             player.balrog_killed = true;
-                                                            draw_map(
-                                                                &mut level,
-                                                                &player,
-                                                                &monsters,
-                                                                &status_msg,
-                                                                screen_mode,
-                                                                active_shop,
-                                                                active_haggle.as_ref(),
-                                                                active_inscribe.as_ref(),
-                                                            )?;
-                                                            std::thread::sleep(
-                                                                std::time::Duration::from_secs(1),
-                                                            );
-
-                                                            execute!(
-                                                                stdout,
-                                                                Show,
-                                                                LeaveAlternateScreen
-                                                            )?;
-                                                            disable_raw_mode()?;
-
-                                                            println!(
-                                                                "============================================================"
-                                                            );
-                                                            println!(
-                                                                "         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        "
-                                                            );
-                                                            println!(
-                                                                "        You have completed the quest and won rmoria!        "
-                                                            );
-                                                            println!(
-                                                                "============================================================"
-                                                            );
-
-                                                            if save_path.exists() {
-                                                                let _ = fs::remove_file(&save_path);
-                                                            }
-                                                            break 'game_loop;
+                                                            player.total_winner = true;
+                                                            status_msg.push_str(" CONGRATULATIONS! YOU HAVE SLAIN THE BALROG! You are a Total Winner! Use 'Q' when you wish to retire.");
                                                         }
                                                         monsters.remove(m_idx);
                                                     }
@@ -1740,6 +2328,21 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                         {
                                                             t.tile_type = TileType::Floor;
                                                         }
+                                                        if player.hp <= 0 {
+                                                            player.hp = 0;
+                                                            if save_path.exists() {
+                                                                let _ = fs::remove_file(&save_path);
+                                                            }
+                                                            player.died_from = "a trap".to_string();
+                                                            screen_mode = if player.balrog_killed
+                                                                || player.total_winner
+                                                            {
+                                                                ScreenMode::RoyalCoronation
+                                                            } else {
+                                                                ScreenMode::Tombstone
+                                                            };
+                                                            status_msg.push_str(" You have died!");
+                                                        }
                                                     }
 
                                                     let item_idx =
@@ -1751,6 +2354,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                             .item
                                                             .name
                                                             .contains("Gold Pile");
+                                                        let should_pickup =
+                                                            matches!(action, Action::Move(_))
+                                                                && player.auto_pickup;
                                                         if is_gold {
                                                             let floor_item =
                                                                 level.items.remove(idx);
@@ -1766,6 +2372,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                             status_msg = format!(
                                                                 "You picked up {} gold pieces.",
                                                                 gold_amount
+                                                            );
+                                                        } else if !should_pickup {
+                                                            status_msg = format!(
+                                                                "You see a {}.",
+                                                                level.items[idx]
+                                                                    .item
+                                                                    .display_name()
                                                             );
                                                         } else if !player
                                                             .can_carry_item(&level.items[idx].item)
@@ -2425,7 +3038,37 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 active_inscribe.as_ref(),
                                             )?;
                                             std::thread::sleep(std::time::Duration::from_millis(
-                                                1500,
+                                                800,
+                                            ));
+                                            break 'game_loop;
+                                        }
+                                        if save_path.exists() {
+                                            let _ = fs::remove_file(&save_path);
+                                        }
+                                        if player.balrog_killed || player.total_winner {
+                                            player.died_from = "Ripe Old Age".to_string();
+                                            player.total_winner = true;
+                                            screen_mode = ScreenMode::RoyalCoronation;
+                                        } else {
+                                            player.died_from = "Quitting".to_string();
+                                            screen_mode = ScreenMode::Tombstone;
+                                        }
+                                    }
+                                    Action::SaveAndExit => {
+                                        if player.is_wizard {
+                                            status_msg = "TEST MODE ACTIVE: Character cannot be saved. Quitting...".to_string();
+                                            draw_map(
+                                                &mut level,
+                                                &player,
+                                                &monsters,
+                                                &status_msg,
+                                                screen_mode,
+                                                active_shop,
+                                                active_haggle.as_ref(),
+                                                active_inscribe.as_ref(),
+                                            )?;
+                                            std::thread::sleep(std::time::Duration::from_millis(
+                                                800,
                                             ));
                                             break 'game_loop;
                                         }
@@ -2468,6 +3111,45 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                         break 'game_loop;
                                     }
+                                    Action::Run(dir) => {
+                                        execute_player_run(
+                                            dir,
+                                            &mut player,
+                                            &mut level,
+                                            &mut monsters,
+                                            &mut status_msg,
+                                            &mut screen_mode,
+                                            &save_path,
+                                            active_shop,
+                                            active_haggle.as_ref(),
+                                            &mut game_turn,
+                                            max_depth,
+                                            &mut level_cache,
+                                        )?;
+                                        player_acted = true;
+                                    }
+                                    Action::ReducedMap => {
+                                        screen_mode = ScreenMode::ReducedMap;
+                                    }
+                                    Action::LocateMap => {
+                                        if player.flags.blind > 0 {
+                                            status_msg = "You can't see your map.".to_string();
+                                        } else {
+                                            player.locate_offset = (0, 0);
+                                            screen_mode = ScreenMode::LocateMap;
+                                        }
+                                    }
+                                    Action::IdentifySymbol => {
+                                        player.identified_symbol = None;
+                                        screen_mode = ScreenMode::IdentifySymbol;
+                                    }
+                                    Action::OptionsMenu => {
+                                        screen_mode = ScreenMode::OptionsMenu;
+                                    }
+                                    Action::HighScores => {
+                                        player.high_score_page = 0;
+                                        screen_mode = ScreenMode::HighScores;
+                                    }
                                     _ => {}
                                 }
                             }
@@ -2496,10 +3178,86 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             .map(|s| s.owner().name.trim())
                                             .unwrap_or("Store");
                                         status_msg = format!("{} - Buy Menu.", owner_name);
+                                    } else if screen_mode == ScreenMode::HighScores {
+                                        if player.hp <= 0 || !player.died_from.is_empty() {
+                                            break 'game_loop;
+                                        } else {
+                                            player.high_score_page = 0;
+                                            screen_mode = ScreenMode::Dungeon;
+                                            status_msg = "Returned to dungeon.".to_string();
+                                        }
+                                    } else if screen_mode == ScreenMode::Tombstone
+                                        || screen_mode == ScreenMode::GameOver
+                                    {
+                                        let entry = HighScoreEntry::from_player(
+                                            &player,
+                                            level.depth,
+                                            &player.died_from,
+                                        );
+                                        let _ =
+                                            record_high_score(entry.clone(), DEFAULT_SCORES_FILE);
+                                        let _ = record_high_score(entry, get_scores_path());
+                                        screen_mode = ScreenMode::HighScores;
+                                    } else if screen_mode == ScreenMode::RoyalCoronation {
+                                        screen_mode = ScreenMode::Tombstone;
+                                    } else if screen_mode == ScreenMode::LocateMap {
+                                        player.locate_offset = (0, 0);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        status_msg = "Returned to dungeon.".to_string();
                                     } else {
+                                        player.identified_symbol = None;
                                         screen_mode = ScreenMode::Dungeon;
                                         status_msg = "Returned to dungeon.".to_string();
                                         active_haggle = None;
+                                    }
+                                }
+                                KeyCode::PageDown => {
+                                    if screen_mode == ScreenMode::HighScores {
+                                        player.high_score_page += 1;
+                                    }
+                                }
+                                KeyCode::PageUp => {
+                                    if screen_mode == ScreenMode::HighScores {
+                                        player.high_score_page =
+                                            player.high_score_page.saturating_sub(1);
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if screen_mode == ScreenMode::HighScores {
+                                        if player.hp <= 0 || !player.died_from.is_empty() {
+                                            break 'game_loop;
+                                        } else {
+                                            player.high_score_page = 0;
+                                            screen_mode = ScreenMode::Dungeon;
+                                            status_msg = "Returned to dungeon.".to_string();
+                                        }
+                                    } else if screen_mode == ScreenMode::RoyalCoronation {
+                                        screen_mode = ScreenMode::Tombstone;
+                                    } else if screen_mode == ScreenMode::Tombstone
+                                        || screen_mode == ScreenMode::GameOver
+                                    {
+                                        let entry = HighScoreEntry::from_player(
+                                            &player,
+                                            level.depth,
+                                            &player.died_from,
+                                        );
+                                        let _ =
+                                            record_high_score(entry.clone(), DEFAULT_SCORES_FILE);
+                                        let _ = record_high_score(entry, get_scores_path());
+                                        screen_mode = ScreenMode::HighScores;
+                                    } else if screen_mode == ScreenMode::LocateMap {
+                                        player.locate_offset = (0, 0);
+                                        screen_mode = ScreenMode::Dungeon;
+                                        status_msg = "Returned to dungeon.".to_string();
+                                    } else if screen_mode == ScreenMode::ReducedMap
+                                        || screen_mode == ScreenMode::OptionsMenu
+                                    {
+                                        screen_mode = ScreenMode::Dungeon;
+                                        status_msg = "Returned to dungeon.".to_string();
+                                    } else if screen_mode == ScreenMode::IdentifySymbol {
+                                        player.identified_symbol = None;
+                                        screen_mode = ScreenMode::Dungeon;
+                                        status_msg = "Returned to dungeon.".to_string();
                                     }
                                 }
                                 KeyCode::Char(c) => {
@@ -2508,13 +3266,108 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         || screen_mode == ScreenMode::HelpMenu
                                         || screen_mode == ScreenMode::CombatLog
                                         || screen_mode == ScreenMode::MessageHistory
-                                        || screen_mode == ScreenMode::IdentifySymbol
-                                        || screen_mode == ScreenMode::OptionsMenu
-                                        || screen_mode == ScreenMode::HighScores
                                         || screen_mode == ScreenMode::BrowseBookMenu
+                                        || screen_mode == ScreenMode::ReducedMap
                                     {
                                         screen_mode = ScreenMode::Dungeon;
                                         status_msg = "Returned to dungeon.".to_string();
+                                    } else if screen_mode == ScreenMode::LocateMap {
+                                        let dir_opt = mapper.map_direction_key(c).or_else(|| {
+                                            match mapper.map_key(c) {
+                                                Action::Move(d)
+                                                | Action::Run(d)
+                                                | Action::MoveWithoutPickup(d) => Some(d),
+                                                _ => None,
+                                            }
+                                        });
+                                        if let Some(dir) = dir_opt {
+                                            let (dx, dy) = match dir {
+                                                Direction::NorthWest => (-20, -10),
+                                                Direction::North => (0, -10),
+                                                Direction::NorthEast => (20, -10),
+                                                Direction::West => (-20, 0),
+                                                Direction::East => (20, 0),
+                                                Direction::SouthWest => (-20, 10),
+                                                Direction::South => (0, 10),
+                                                Direction::SouthEast => (20, 10),
+                                                Direction::Rest => (0, 0),
+                                            };
+                                            player.locate_offset.0 = (player.locate_offset.0 + dx)
+                                                .clamp(
+                                                    -(level.width as isize),
+                                                    level.width as isize,
+                                                );
+                                            player.locate_offset.1 = (player.locate_offset.1 + dy)
+                                                .clamp(
+                                                    -(level.height as isize),
+                                                    level.height as isize,
+                                                );
+                                        } else if c == ' '
+                                            || c == 'q'
+                                            || c == 'Q'
+                                            || c == '\n'
+                                            || c == '\r'
+                                        {
+                                            player.locate_offset = (0, 0);
+                                            screen_mode = ScreenMode::Dungeon;
+                                            status_msg = "Returned to dungeon.".to_string();
+                                        }
+                                    } else if screen_mode == ScreenMode::IdentifySymbol {
+                                        if player.identified_symbol.is_none() {
+                                            player.identified_symbol = Some(c);
+                                        } else {
+                                            player.identified_symbol = None;
+                                            screen_mode = ScreenMode::Dungeon;
+                                            status_msg = "Returned to dungeon.".to_string();
+                                        }
+                                    } else if screen_mode == ScreenMode::OptionsMenu {
+                                        if c == '1' {
+                                            player.keybinding_mode = match player.keybinding_mode {
+                                                KeybindingMode::Original => {
+                                                    KeybindingMode::Roguelike
+                                                }
+                                                KeybindingMode::Roguelike => {
+                                                    KeybindingMode::ModernWasd
+                                                }
+                                                KeybindingMode::ModernWasd => {
+                                                    KeybindingMode::Original
+                                                }
+                                            };
+                                            mapper.mode = player.keybinding_mode;
+                                            status_msg = format!(
+                                                "Keybinding profile: {:?}",
+                                                player.keybinding_mode
+                                            );
+                                        } else if c == '2' {
+                                            player.auto_pickup = !player.auto_pickup;
+                                            status_msg =
+                                                format!("Auto-pickup: {}", player.auto_pickup);
+                                        } else if c == ' '
+                                            || c == 'q'
+                                            || c == 'Q'
+                                            || c == '\n'
+                                            || c == '\r'
+                                        {
+                                            screen_mode = ScreenMode::Dungeon;
+                                            status_msg = "Returned to dungeon.".to_string();
+                                        }
+                                    } else if screen_mode == ScreenMode::HighScores {
+                                        if c == ' ' || c == 'n' || c == 'N' {
+                                            player.high_score_page += 1;
+                                        } else if c == 'p' || c == 'P' {
+                                            player.high_score_page =
+                                                player.high_score_page.saturating_sub(1);
+                                        } else if c == 'q' || c == 'Q' || c == '\n' || c == '\r' {
+                                            if player.hp <= 0 || !player.died_from.is_empty() {
+                                                break 'game_loop;
+                                            } else {
+                                                player.high_score_page = 0;
+                                                screen_mode = ScreenMode::Dungeon;
+                                                status_msg = "Returned to dungeon.".to_string();
+                                            }
+                                        }
+                                    } else if screen_mode == ScreenMode::RoyalCoronation {
+                                        screen_mode = ScreenMode::Tombstone;
                                     } else if screen_mode == ScreenMode::CharacterStatsMenu {
                                         // Exit sheet via ESC
                                     } else if screen_mode == ScreenMode::SelectDisarmDirection {
@@ -2719,17 +3572,52 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 "Inscribing... type characters and press ENTER."
                                                     .to_string();
                                         }
-                                    } else if screen_mode == ScreenMode::GameOver {
-                                        match c {
-                                            'r' | 'R' => {
-                                                restart_game = true;
-                                                break 'game_loop;
-                                            }
-                                            'q' | 'Q' | '\u{1b}' => {
-                                                // 'q', 'Q', or Esc
-                                                break 'game_loop;
-                                            }
-                                            _ => {}
+                                    } else if screen_mode == ScreenMode::GameOver
+                                        || screen_mode == ScreenMode::Tombstone
+                                    {
+                                        if c == 'y' || c == 'Y' {
+                                            let dump =
+                                                player.generate_character_record(level.depth);
+                                            let _ = fs::write("rmoria_char.txt", dump);
+                                            let entry = HighScoreEntry::from_player(
+                                                &player,
+                                                level.depth,
+                                                &player.died_from,
+                                            );
+                                            let _ = record_high_score(
+                                                entry.clone(),
+                                                DEFAULT_SCORES_FILE,
+                                            );
+                                            let _ = record_high_score(entry, get_scores_path());
+                                            status_msg =
+                                                "Character dump written to rmoria_char.txt."
+                                                    .to_string();
+                                            screen_mode = ScreenMode::HighScores;
+                                        } else if c == 'r' || c == 'R' {
+                                            let entry = HighScoreEntry::from_player(
+                                                &player,
+                                                level.depth,
+                                                &player.died_from,
+                                            );
+                                            let _ = record_high_score(
+                                                entry.clone(),
+                                                DEFAULT_SCORES_FILE,
+                                            );
+                                            let _ = record_high_score(entry, get_scores_path());
+                                            restart_game = true;
+                                            break 'game_loop;
+                                        } else {
+                                            let entry = HighScoreEntry::from_player(
+                                                &player,
+                                                level.depth,
+                                                &player.died_from,
+                                            );
+                                            let _ = record_high_score(
+                                                entry.clone(),
+                                                DEFAULT_SCORES_FILE,
+                                            );
+                                            let _ = record_high_score(entry, get_scores_path());
+                                            screen_mode = ScreenMode::HighScores;
                                         }
                                     } else if screen_mode == ScreenMode::SelectOpenDirection {
                                         let action = mapper.map_key(c);
@@ -3093,41 +3981,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
                                                         if monster_name == "The Balrog" {
                                                             player.balrog_killed = true;
-                                                            draw_map(
-                                                                &mut level,
-                                                                &player,
-                                                                &monsters,
-                                                                &status_msg,
-                                                                screen_mode,
-                                                                active_shop,
-                                                                active_haggle.as_ref(),
-                                                                active_inscribe.as_ref(),
-                                                            )?;
-                                                            std::thread::sleep(
-                                                                std::time::Duration::from_secs(1),
-                                                            );
-                                                            execute!(
-                                                                stdout,
-                                                                Show,
-                                                                LeaveAlternateScreen
-                                                            )?;
-                                                            disable_raw_mode()?;
-                                                            println!(
-                                                                "============================================================"
-                                                            );
-                                                            println!(
-                                                                "         CONGRATULATIONS! YOU HAVE SLAIN THE BALROG!        "
-                                                            );
-                                                            println!(
-                                                                "        You have completed the quest and won rmoria!        "
-                                                            );
-                                                            println!(
-                                                                "============================================================"
-                                                            );
-                                                            if save_path.exists() {
-                                                                let _ = fs::remove_file(&save_path);
-                                                            }
-                                                            break 'game_loop;
+                                                            player.total_winner = true;
+                                                            status_msg.push_str(" CONGRATULATIONS! YOU HAVE SLAIN THE BALROG! You are a Total Winner! Use 'Q' when you wish to retire.");
                                                         }
                                                         monsters.remove(m_idx);
                                                     }

@@ -119,8 +119,17 @@ pub fn render_gui_screen(
     active_haggle: Option<&HaggleState>,
     active_inscribe: Option<&InscribeState>,
 ) -> Vec<String> {
+    let (center_x, center_y) = if mode == ScreenMode::LocateMap {
+        let cx = (player.x as isize + player.locate_offset.0)
+            .clamp(0, level.width.saturating_sub(1) as isize) as usize;
+        let cy = (player.y as isize + player.locate_offset.1)
+            .clamp(0, level.height.saturating_sub(1) as isize) as usize;
+        (cx, cy)
+    } else {
+        (player.x, player.y)
+    };
     let (view_top, view_bottom, view_left, view_right) =
-        level.get_viewport_bounds(player.x, player.y);
+        level.get_viewport_bounds(center_x, center_y);
     let view_h = view_bottom.saturating_sub(view_top);
     let mut screen = Vec::new();
     for screen_y in 0..view_h {
@@ -130,7 +139,7 @@ pub fn render_gui_screen(
             || mode == ScreenMode::SelectRestCount
             || mode == ScreenMode::SelectBashDirection
             || mode == ScreenMode::SelectTunnelDirection
-            || mode == ScreenMode::GameOver
+            || mode == ScreenMode::LocateMap
         {
             for map_x in view_left..view_right {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
@@ -212,7 +221,15 @@ pub fn render_gui_screen(
         } else {
             map_part = format!(
                 "{:<66}",
-                get_overlay_row_text(screen_y, mode, player, shop, active_haggle, active_inscribe)
+                get_overlay_row_text(
+                    screen_y,
+                    mode,
+                    player,
+                    shop,
+                    active_haggle,
+                    active_inscribe,
+                    level
+                )
             );
         }
         screen.push(map_part);
@@ -246,13 +263,10 @@ fn get_item_symbol(item: &Item) -> char {
 }
 
 fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String {
-    let rank = match player.class {
-        Class::Warrior => "Rookie",
-        Class::Mage => "Apprentice",
-        Class::Priest => "Believer",
-        Class::Rogue => "Footpad",
-        Class::Ranger => "Runner",
-        Class::Paladin => "Gallant",
+    let rank = if player.total_winner || player.balrog_killed {
+        "Magnificent"
+    } else {
+        player.rank_title()
     };
 
     let text = match y {
@@ -266,21 +280,28 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
         10 => format!("CON: {}", format_stat(player.stats.constitution)),
         11 => format!("CHR: {}", format_stat(player.stats.charisma)),
         13 => format!("LEV:  {:>5}", player.level),
-        14 => format!("MANA: {:>2}/{:<2}", player.mana, player.max_mana),
-        15 => format!("MHP:  {:>5}", player.max_hp),
-        16 => format!("CHP:  {:>5}", player.hp),
-        17 => format!("AC:   {:>5}", player.calculate_ac()),
-        18 => format!("GOLD: {:>5}", player.gold),
-        20 => {
-            let feet = level.depth * 50;
-            if feet == 0 {
-                "Town Level".to_string()
+        14 => format!("EXP:  {:>5}", player.exp),
+        15 => format!("MANA: {:>2}/{:<2}", player.mana, player.max_mana),
+        16 => format!("MHP:  {:>5}", player.max_hp),
+        17 => format!("CHP:  {:>5}", player.hp),
+        18 => format!("AC:   {:>5}", player.calculate_ac()),
+        19 => format!("GOLD: {:>5}", player.gold),
+        21 => {
+            if player.total_winner || player.balrog_killed {
+                "*Winner*".to_string()
             } else {
-                format!("{} feet", feet)
+                let feet = level.depth * 50;
+                if feet == 0 {
+                    "Town Level".to_string()
+                } else {
+                    format!("{} feet", feet)
+                }
             }
         }
-        21 => {
-            if player.food < 0 {
+        22 => {
+            if player.searching {
+                "SEARCHING".to_string()
+            } else if player.food < 0 {
                 "STARVING".to_string()
             } else if player.food < 300 {
                 "FAINT".to_string()
@@ -290,13 +311,6 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
                 "HUNGRY".to_string()
             } else if player.food >= 10000 {
                 "FULL".to_string()
-            } else {
-                "".to_string()
-            }
-        }
-        22 => {
-            if player.searching {
-                "SEARCHING".to_string()
             } else {
                 "".to_string()
             }
@@ -328,6 +342,345 @@ pub fn wrap_text(text: &str, limit: usize) -> Vec<String> {
     lines
 }
 
+pub const TOMBSTONE_ASCII: [&str; 20] = [
+    "               _______________________",
+    "              /                       \\         ___",
+    "             /                         \\ ___   /   \\      ___",
+    "            /            RIP            \\   \\  :   :     /   \\",
+    "           /                             \\  : _;,,,;_    :   :",
+    "          /                               \\,;_          _;,,,;_",
+    "         |               the               |   ___",
+    "         |                                 |  /   \\",
+    "         |                                 |  :   :",
+    "         |                                 | _;,,,;_   ____",
+    "         |            Level :              |          /    \\",
+    "         |                                 |          :    :",
+    "         |                                 |          :    :",
+    "         |        Died on Level :          |         _;,,,,;_",
+    "         |            killed by            |",
+    "         |                                 |",
+    "         |                                 |",
+    "        *|   *     *     *    *   *     *  | *",
+    "________)/\\_)_/___(\\/___(//_\\)/_\\//__\\\\(/_|_)_______",
+    "",
+];
+
+pub const ROYAL_ASCII: [&str; 19] = [
+    "                                     #",
+    "                                   #####",
+    "                                     #",
+    "                               ,,,  $$$  ,,,",
+    "                           ,,=$   \"$$$$$\"   $=,,",
+    "                         ,$$        $$$        $$,",
+    "                         *>         <*>         <*",
+    "                         $$         $$$         $$",
+    "                         \"$$        $$$        $$\"",
+    "                          \"$$       $$$       $$\"",
+    "                           *#########*#########*",
+    "                           *#########*#########*",
+    "",
+    "                             Veni, Vidi, Vici!",
+    "                        I came, I saw, I conquered!",
+    "                         All Hail the Mighty",
+    "",
+    "",
+    "                   [ Press any key to continue ]",
+];
+
+pub fn chrono_or_simple_date() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = now / 86400;
+    let mut year = 1970;
+    let mut d = days;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let days_in_year = if leap { 366 } else { 365 };
+        if d >= days_in_year {
+            d -= days_in_year;
+            year += 1;
+        } else {
+            break;
+        }
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut month = 1;
+    for &md in &month_days {
+        if d >= md {
+            d -= md;
+            month += 1;
+        } else {
+            break;
+        }
+    }
+    let day = d + 1;
+    format!("{:04}-{:02}-{:02}", year, month, day)
+}
+
+fn get_tombstone_row_text(row: usize, player: &Player) -> String {
+    let center_at = |base_line: &str, text: &str, target_center: usize| -> String {
+        let text_len = text.len();
+        let start = target_center.saturating_sub(text_len / 2);
+        let mut chars: Vec<char> = base_line.chars().collect();
+        while chars.len() < 66 {
+            chars.push(' ');
+        }
+        for (i, c) in text.chars().enumerate() {
+            if start + i < chars.len() {
+                chars[start + i] = c;
+            }
+        }
+        chars.into_iter().collect()
+    };
+
+    let title = if player.total_winner || player.balrog_killed {
+        "Magnificent"
+    } else {
+        player.rank_title()
+    };
+
+    let class_title = if player.total_winner || player.balrog_killed {
+        match player.gender {
+            crate::player::Gender::Male => "*King*",
+            crate::player::Gender::Female => "*Queen*",
+        }
+    } else {
+        match player.class {
+            Class::Warrior => "Warrior",
+            Class::Mage => "Mage",
+            Class::Priest => "Priest",
+            Class::Rogue => "Rogue",
+            Class::Ranger => "Ranger",
+            Class::Paladin => "Paladin",
+        }
+    };
+
+    let died_str = if player.died_from.is_empty() {
+        "Quitting"
+    } else {
+        &player.died_from
+    };
+
+    match row {
+        0..=3 => TOMBSTONE_ASCII[row].to_string(),
+        4 => center_at(TOMBSTONE_ASCII[4], &player.name, 26),
+        5 => TOMBSTONE_ASCII[5].to_string(),
+        6 => center_at(TOMBSTONE_ASCII[6], title, 26),
+        7 => TOMBSTONE_ASCII[7].to_string(),
+        8 => center_at(TOMBSTONE_ASCII[8], class_title, 26),
+        9 => center_at(TOMBSTONE_ASCII[9], &player.level.to_string(), 32),
+        10 => center_at(TOMBSTONE_ASCII[10], &format!("{} Exp", player.exp), 26),
+        11 => center_at(TOMBSTONE_ASCII[11], &format!("{} Au", player.gold), 26),
+        12 => {
+            let depth_str = if player.max_depth_reached == 0 {
+                "Town".to_string()
+            } else {
+                player.max_depth_reached.to_string()
+            };
+            center_at(TOMBSTONE_ASCII[12], &depth_str, 35)
+        }
+        13 => TOMBSTONE_ASCII[13].to_string(),
+        14 => center_at(TOMBSTONE_ASCII[14], died_str, 26),
+        15 => {
+            let date = chrono_or_simple_date();
+            center_at(TOMBSTONE_ASCII[15], &date, 26)
+        }
+        16..=18 => TOMBSTONE_ASCII[row].to_string(),
+        19 => "".to_string(),
+        20 => "Character record? [y: dump to rmoria_char.txt, ESC/other: continue]".to_string(),
+        _ => "".to_string(),
+    }
+}
+
+fn get_coronation_row_text(row: usize, player: &Player) -> String {
+    if row == 16 {
+        let title = match player.gender {
+            crate::player::Gender::Male => "*King*",
+            crate::player::Gender::Female => "*Queen*",
+        };
+        format!("{:^66}", format!("{} {}!", title, player.name))
+    } else if row < ROYAL_ASCII.len() {
+        format!("{:^66}", ROYAL_ASCII[row])
+    } else {
+        "".to_string()
+    }
+}
+
+pub fn get_symbol_description(command: char) -> &'static str {
+    match command {
+        ' ' => "  - An open pit or unseen space.",
+        '!' => "! - A potion.",
+        '"' => "\" - An amulet, periapt, or necklace.",
+        '#' => "# - A stone wall.",
+        '$' => "$ - Treasure.",
+        '%' => "% - A magma or quartz vein.",
+        '&' => "& - Treasure chest.",
+        '\'' => "' - An open door.",
+        '(' => "( - Soft armor.",
+        ')' => ") - A shield or weapon.",
+        '*' => "* - Gems or rubble.",
+        '+' => "+ - A closed door.",
+        ',' => ", - Food or mushroom patch.",
+        '-' => "- - A wand.",
+        '.' => ". - Floor.",
+        '/' => "/ - A pole weapon.",
+        '1' => "1 - Entrance to General Store.",
+        '2' => "2 - Entrance to Armory.",
+        '3' => "3 - Entrance to Weaponsmith.",
+        '4' => "4 - Entrance to Temple.",
+        '5' => "5 - Entrance to Alchemy shop.",
+        '6' => "6 - Entrance to Magic-Users store.",
+        ':' => ": - Rubble.",
+        ';' => "; - A loose rock or glyph of warding.",
+        '<' => "< - An up staircase.",
+        '=' => "= - A ring.",
+        '>' => "> - A down staircase.",
+        '?' => "? - A scroll or book.",
+        '@' => "@ - The player.",
+        'A' => "A - Giant Ant Lion.",
+        'B' => "B - The Balrog.",
+        'C' => "C - Gelatinous Cube.",
+        'D' => "D - An Ancient Dragon (Beware).",
+        'E' => "E - Elemental.",
+        'F' => "F - Giant Fly.",
+        'G' => "G - Ghost.",
+        'H' => "H - Hobgoblin.",
+        'I' => "I - Invisible Stalker.",
+        'J' => "J - Jelly.",
+        'K' => "K - Killer Beetle.",
+        'L' => "L - Lich.",
+        'M' => "M - Mummy.",
+        'N' => "N - Naga.",
+        'O' => "O - Ogre.",
+        'P' => "P - Giant.",
+        'Q' => "Q - Quylthulg.",
+        'R' => "R - Reptile.",
+        'S' => "S - Scorpion.",
+        'T' => "T - Troll.",
+        'U' => "U - Umber Hulk.",
+        'V' => "V - Vampire.",
+        'W' => "W - Wight or Wraith.",
+        'X' => "X - Xorn.",
+        'Y' => "Y - Yeti.",
+        'Z' => "Z - Zephyr Hound.",
+        'a' => "a - Giant Ant.",
+        'b' => "b - Giant Bat.",
+        'c' => "c - Giant Centipede.",
+        'd' => "d - Dragon.",
+        'e' => "e - Floating Eye.",
+        'f' => "f - Giant Frog.",
+        'g' => "g - Golem.",
+        'h' => "h - Harpy.",
+        'i' => "i - Icky Thing.",
+        'j' => "j - Jackal.",
+        'k' => "k - Kobold.",
+        'l' => "l - Giant Louse.",
+        'm' => "m - Mold.",
+        'n' => "n - Naga.",
+        'o' => "o - Orc.",
+        'p' => "p - Person.",
+        'q' => "q - Quadruped.",
+        'r' => "r - Giant Rat.",
+        's' => "s - Skeleton.",
+        't' => "t - Giant Tick.",
+        'u' => "u - Minor demon.",
+        'v' => "v - Vortex.",
+        'w' => "w - Worm or Worm Mass.",
+        'y' => "y - Yeek.",
+        'z' => "z - Zombie.",
+        _ => "Unknown symbol.",
+    }
+}
+
+fn get_reduced_map_row_text(row: usize, level: &DungeonLevel, player: &Player) -> String {
+    if row == 0 || row == 21 {
+        let mut s = String::with_capacity(66);
+        s.push('+');
+        for _ in 0..64 {
+            s.push('-');
+        }
+        s.push('+');
+        return s;
+    }
+
+    if row > 21 {
+        return "".to_string();
+    }
+
+    let mut line = String::with_capacity(66);
+    line.push('|');
+
+    let map_y_start = (row - 1) * level.height / 20;
+    let map_y_end = row * level.height / 20;
+
+    for col in 0..64 {
+        let map_x_start = col * level.width / 64;
+        let map_x_end = (col + 1) * level.width / 64;
+
+        let mut best_ch = ' ';
+        let mut best_priority = -20;
+
+        for y in map_y_start..map_y_end.min(level.height) {
+            for x in map_x_start..map_x_end.min(level.width) {
+                if x == player.x && y == player.y {
+                    if 10 > best_priority {
+                        best_priority = 10;
+                        best_ch = '@';
+                    }
+                } else if let Some(tile) = level.get_tile(x, y)
+                    && (tile.visible || tile.remembered)
+                {
+                    let (ch, prio) = match tile.tile_type {
+                        TileType::StairsUp => ('<', 5),
+                        TileType::StairsDown => ('>', 5),
+                        TileType::Wall => ('#', -5),
+                        TileType::Floor => ('.', -10),
+                        TileType::DoorClosed { .. } => ('+', 0),
+                        TileType::DoorOpen => ('\'', 0),
+                        TileType::SecretDoor => ('#', -5),
+                        TileType::MagmaVein { .. } | TileType::QuartzVein { .. } => ('%', 0),
+                        TileType::Rubble => ('*', 0),
+                        TileType::Trap { detected, .. } => {
+                            if detected {
+                                ('^', 0)
+                            } else {
+                                ('.', -10)
+                            }
+                        }
+                        TileType::Chest { .. } => ('&', 0),
+                        TileType::GlyphOfWarding => (';', 0),
+                        TileType::ShopDoor(id) => ((b'1' + id.min(5)) as char, 0),
+                        TileType::Empty => (' ', -15),
+                    };
+                    if prio > best_priority {
+                        best_priority = prio;
+                        best_ch = ch;
+                    }
+                }
+            }
+        }
+        line.push(best_ch);
+    }
+    line.push('|');
+    line
+}
+
 fn get_overlay_row_text(
     row: usize,
     mode: ScreenMode,
@@ -335,6 +688,7 @@ fn get_overlay_row_text(
     shop: ShopType,
     active_haggle: Option<&HaggleState>,
     active_inscribe: Option<&InscribeState>,
+    level: &DungeonLevel,
 ) -> String {
     match mode {
         ScreenMode::InscribeMenu => {
@@ -1360,7 +1714,15 @@ fn get_overlay_row_text(
         ScreenMode::SelectRestCount => "".to_string(),
         ScreenMode::SelectBashDirection => "".to_string(),
         ScreenMode::SelectTunnelDirection => "".to_string(),
-        ScreenMode::GameOver => "".to_string(),
+        ScreenMode::LocateMap => {
+            if row == 22 {
+                return "[Use movement keys to pan map, ESC to return]".to_string();
+            }
+            "".to_string()
+        }
+        ScreenMode::ReducedMap => get_reduced_map_row_text(row, level, player),
+        ScreenMode::GameOver | ScreenMode::Tombstone => get_tombstone_row_text(row, player),
+        ScreenMode::RoyalCoronation => get_coronation_row_text(row, player),
         ScreenMode::MessageHistory => {
             if row == 0 {
                 return "--- MESSAGE HISTORY ---".to_string();
@@ -1379,13 +1741,39 @@ fn get_overlay_row_text(
         }
         ScreenMode::IdentifySymbol => {
             if row == 0 {
-                return "--- IDENTIFY SYMBOL ---".to_string();
+                return "--- IDENTIFY A SYMBOL ---".to_string();
             }
             if row == 2 {
-                return "Enter a character to identify:".to_string();
+                return "Enter character to be identified:".to_string();
+            }
+            if let Some(ch) = player.identified_symbol {
+                if row == 4 {
+                    return format!("Symbol: '{}'", ch);
+                }
+                if row == 5 {
+                    return format!("Description: {}", get_symbol_description(ch));
+                }
+                if row == 7 {
+                    return "Matching monsters:".to_string();
+                }
+                let matching: Vec<&str> = crate::entity::monster_data::CREATURES_LIST
+                    .iter()
+                    .filter(|c| c.symbol == ch)
+                    .map(|c| c.name)
+                    .collect();
+                if matching.is_empty() {
+                    if row == 8 {
+                        return "  (No matching monsters)".to_string();
+                    }
+                } else {
+                    let m_idx = row.saturating_sub(8);
+                    if m_idx < matching.len() && row < 21 {
+                        return format!("  - {}", matching[m_idx]);
+                    }
+                }
             }
             if row == 22 {
-                return "[Press ESC to return]".to_string();
+                return "[Press any key to return]".to_string();
             }
             "".to_string()
         }
@@ -1394,25 +1782,70 @@ fn get_overlay_row_text(
                 return "--- OPTIONS MENU ---".to_string();
             }
             if row == 2 {
-                return "1) Toggle Roguelike Keys (Currently: false)".to_string();
+                return format!(
+                    "1) Keybinding Profile: {:?} (Press [1] to cycle)",
+                    player.keybinding_mode
+                );
             }
             if row == 3 {
-                return "2) Toggle Auto-Pickup (Currently: true)".to_string();
+                return format!(
+                    "2) Auto-Pickup: {} (Press [2] to toggle)",
+                    player.auto_pickup
+                );
+            }
+            if row == 5 {
+                return "Available profiles: Original (1-9), Roguelike (hjklyubn), ModernWasd (wasd)".to_string();
             }
             if row == 22 {
-                return "[Press ESC to return]".to_string();
+                return "[Press 1 to change profile, 2 to toggle pickup, ESC to return]"
+                    .to_string();
             }
             "".to_string()
         }
         ScreenMode::HighScores => {
+            let scores = crate::scores::load_high_scores(crate::scores::DEFAULT_SCORES_FILE);
             if row == 0 {
-                return "--- HALL OF FAME ---".to_string();
+                return "Rank  Points Name              Sex Race       Class  Lvl Killed By"
+                    .to_string();
             }
-            if row == 2 {
-                return "1. Player - Level 50 Warrior - Killed by Balrog on depth 50".to_string();
+            if row == 1 {
+                return "------------------------------------------------------------------"
+                    .to_string();
+            }
+            let total_pages = scores.len().max(1).div_ceil(20);
+            let current_page = player.high_score_page.min(total_pages.saturating_sub(1));
+            let start_idx = current_page * 20;
+
+            if (2..=21).contains(&row) {
+                let entry_idx = start_idx + (row - 2);
+                if entry_idx < scores.len() {
+                    let entry = &scores[entry_idx];
+                    let rank = entry_idx + 1;
+                    let name_trunc: String = entry.name.chars().take(17).collect();
+                    let race_trunc: String = entry.race.chars().take(10).collect();
+                    let class_trunc: String = entry.character_class.chars().take(6).collect();
+                    let killed_trunc: String = entry.died_from.chars().take(15).collect();
+                    return format!(
+                        "{:<4} {:>7} {:<17} {:^3} {:<10} {:<6} {:>3} {:<15}",
+                        rank,
+                        entry.points,
+                        name_trunc,
+                        entry.gender,
+                        race_trunc,
+                        class_trunc,
+                        entry.level,
+                        killed_trunc
+                    );
+                } else if scores.is_empty() && row == 3 {
+                    return "                (No high scores recorded yet)".to_string();
+                }
             }
             if row == 22 {
-                return "[Press ESC to return]".to_string();
+                return format!(
+                    "[ Page {}/{} - Press Space/PgDn for next, ESC to return ]",
+                    current_page + 1,
+                    total_pages
+                );
             }
             "".to_string()
         }
@@ -1525,8 +1958,17 @@ pub fn draw_map(
     let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
     print!("{}", msg_line);
 
+    let (center_x, center_y) = if mode == ScreenMode::LocateMap {
+        let cx = (player.x as isize + player.locate_offset.0)
+            .clamp(0, level.width.saturating_sub(1) as isize) as usize;
+        let cy = (player.y as isize + player.locate_offset.1)
+            .clamp(0, level.height.saturating_sub(1) as isize) as usize;
+        (cx, cy)
+    } else {
+        (player.x, player.y)
+    };
     let (view_top, view_bottom, view_left, view_right) =
-        level.get_viewport_bounds(player.x, player.y);
+        level.get_viewport_bounds(center_x, center_y);
     let view_h = view_bottom.saturating_sub(view_top);
 
     for screen_y in 0..view_h {
@@ -1538,7 +1980,7 @@ pub fn draw_map(
             || mode == ScreenMode::SelectRestCount
             || mode == ScreenMode::SelectBashDirection
             || mode == ScreenMode::SelectTunnelDirection
-            || mode == ScreenMode::GameOver
+            || mode == ScreenMode::LocateMap
         {
             for map_x in view_left..view_right {
                 if let Some(tile) = level.get_tile(map_x, map_y) {
@@ -1620,7 +2062,15 @@ pub fn draw_map(
         } else {
             map_part = format!(
                 "{:<66}",
-                get_overlay_row_text(screen_y, mode, player, shop, active_haggle, active_inscribe)
+                get_overlay_row_text(
+                    screen_y,
+                    mode,
+                    player,
+                    shop,
+                    active_haggle,
+                    active_inscribe,
+                    level
+                )
             );
         }
 
@@ -1641,4 +2091,118 @@ pub fn draw_map(
 
     io::stdout().flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::player::{Class, Gender, Player, Race};
+
+    #[test]
+    fn test_tombstone_rows_content() {
+        let mut player =
+            Player::new_with_gender("Gimli", Race::Dwarf, Class::Warrior, Gender::Male, 10, 10);
+        player.level = 25;
+        player.exp = 45000;
+        player.gold = 12500;
+        player.max_depth_reached = 30;
+        player.died_from = "a Balrog".to_string();
+
+        let row4 = get_tombstone_row_text(4, &player);
+        assert!(
+            row4.contains("Gimli"),
+            "Row 4 should contain player name: {}",
+            row4
+        );
+
+        let row8 = get_tombstone_row_text(8, &player);
+        assert!(
+            row8.contains("Warrior"),
+            "Row 8 should contain class: {}",
+            row8
+        );
+
+        let row9 = get_tombstone_row_text(9, &player);
+        assert!(row9.contains("25"), "Row 9 should contain level: {}", row9);
+
+        let row10 = get_tombstone_row_text(10, &player);
+        assert!(
+            row10.contains("45000 Exp"),
+            "Row 10 should contain exp: {}",
+            row10
+        );
+
+        let row11 = get_tombstone_row_text(11, &player);
+        assert!(
+            row11.contains("12500 Au"),
+            "Row 11 should contain gold: {}",
+            row11
+        );
+
+        let row14 = get_tombstone_row_text(14, &player);
+        assert!(
+            row14.contains("a Balrog"),
+            "Row 14 should contain cause of death: {}",
+            row14
+        );
+    }
+
+    #[test]
+    fn test_coronation_rows_content() {
+        let mut king =
+            Player::new_with_gender("Arthur", Race::Human, Class::Paladin, Gender::Male, 10, 10);
+        king.balrog_killed = true;
+        king.total_winner = true;
+        let coronation_row = get_coronation_row_text(16, &king);
+        assert!(
+            coronation_row.contains("*King* Arthur!"),
+            "Coronation row 16 should acclaim King: {}",
+            coronation_row
+        );
+
+        let mut queen =
+            Player::new_with_gender("Guinevere", Race::Elf, Class::Mage, Gender::Female, 10, 10);
+        queen.balrog_killed = true;
+        queen.total_winner = true;
+        let queen_row = get_coronation_row_text(16, &queen);
+        assert!(
+            queen_row.contains("*Queen* Guinevere!"),
+            "Coronation row 16 should acclaim Queen: {}",
+            queen_row
+        );
+    }
+
+    #[test]
+    fn test_symbol_descriptions() {
+        assert!(
+            get_symbol_description('@')
+                .to_lowercase()
+                .contains("player")
+        );
+        assert!(
+            get_symbol_description('$')
+                .to_lowercase()
+                .contains("treasure")
+        );
+        assert!(
+            get_symbol_description('!')
+                .to_lowercase()
+                .contains("potion")
+        );
+        assert!(
+            get_symbol_description('?')
+                .to_lowercase()
+                .contains("scroll")
+        );
+        assert!(get_symbol_description('#').to_lowercase().contains("wall"));
+        assert!(get_symbol_description('.').to_lowercase().contains("floor"));
+    }
+
+    #[test]
+    fn test_reduced_map_row_length() {
+        let player = Player::new("Scout", Race::Elf, Class::Ranger, 10, 10);
+        let level = crate::dungeon::DungeonLevel::new(66, 22, 1, 50);
+        let row_text = get_reduced_map_row_text(5, &level, &player);
+        assert_eq!(row_text.len(), 66);
+    }
 }

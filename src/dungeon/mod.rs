@@ -1484,6 +1484,12 @@ impl DungeonLevel {
         }
     }
 
+    pub fn set_tile(&mut self, x: usize, y: usize, tile_type: TileType) {
+        if x < self.width && y < self.height {
+            self.tiles[y * self.width + x].tile_type = tile_type;
+        }
+    }
+
     pub fn is_in_room(&self, x: usize, y: usize) -> bool {
         self.rooms
             .iter()
