@@ -2967,7 +2967,7 @@ mod tests {
                             && let Some(tile) = level.get_tile(x, y)
                             && matches!(
                                 tile.tile_type,
-                                TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. }
+                                TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. } | TileType::SecretDoor
                             )
                         {
                             has_accessible_entrance = true;
