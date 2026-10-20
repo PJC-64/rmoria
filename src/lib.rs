@@ -1322,6 +1322,12 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Err(e) => return Err(e),
                         };
+                        if !is_gui {
+                            let _ = execute!(
+                                stdout,
+                                crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+                            );
+                        }
                         let start_pos = lvl.find_random_floor_tile();
                         let mut player = p;
                         player.move_to(start_pos.0, start_pos.1);
@@ -1347,6 +1353,12 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(e) => return Err(e),
                 };
+                if !is_gui {
+                    let _ = execute!(
+                        stdout,
+                        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+                    );
+                }
                 let start_pos = lvl.find_random_floor_tile();
                 let mut player = p;
                 player.move_to(start_pos.0, start_pos.1);

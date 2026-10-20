@@ -21,7 +21,7 @@ fn get_food_status_str(food: i32) -> &'static str {
     }
 }
 
-pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> String {
+pub fn get_bottom_status_line(player: &Player, _depth: u32, is_resting: bool) -> String {
     let hunger_str = if player.food < 0 {
         "Starve"
     } else if player.food < 300 {
@@ -65,13 +65,13 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
     };
 
     let movement_str = if player.flags.paralysis > 0 {
-        "Paralysed "
+        "Paralysed"
     } else if is_resting {
-        "Rest      "
+        "Resting  "
     } else if player.searching {
-        "Searching "
+        "Searching"
     } else {
-        "          "
+        "         "
     };
 
     let speed_str = player.speed_status_string();
@@ -88,14 +88,8 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         "      "
     };
 
-    let depth_str = if depth == 0 {
-        "Town".to_string()
-    } else {
-        format!("{:>4} FT", depth * 50)
-    };
-
     format!(
-        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<6} {:<10} {:<9} {:<5} {:<6} {:>7}",
+        "{:<6} {:<5} {:<8} {:<6} {:<8} {:<6} {:<9} {:<9} {:<5} {:<6}",
         hunger_str,
         blind_str,
         confused_str,
@@ -105,8 +99,7 @@ pub fn get_bottom_status_line(player: &Player, depth: u32, is_resting: bool) -> 
         movement_str,
         speed_str,
         study_str,
-        recall_str,
-        depth_str
+        recall_str
     )
 }
 
@@ -318,7 +311,7 @@ fn get_lhs_stat_line(y: usize, player: &Player, level: &DungeonLevel) -> String 
         _ => "".to_string(),
     };
 
-    format!("{:<12}", text)
+    format!("{:<12.12}", text)
 }
 
 pub fn wrap_text(text: &str, limit: usize) -> Vec<String> {
@@ -2008,10 +2001,21 @@ pub fn draw_map(
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     let offset_x = ((cols as isize - 80) / 2).max(0) as u16;
     let offset_y = ((rows as isize - 24) / 2).max(0) as u16;
+    let prefix_spaces = " ".repeat(offset_x as usize);
 
-    let msg_line = format!("Message: {}\x1b[K", status_msg);
-    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(offset_x, offset_y));
-    print!("{}", msg_line);
+    // Row 0: Status message line (Message: <msg>)
+    // Truncate to at most 70 chars so prefix_spaces + 79 chars never exceeds cols or wraps row 0.
+    let max_msg_len = 70;
+    let clean_msg = status_msg.trim();
+    let display_msg = if clean_msg.chars().count() > max_msg_len {
+        let truncated: String = clean_msg.chars().take(max_msg_len - 3).collect();
+        format!("{}...", truncated)
+    } else {
+        clean_msg.to_string()
+    };
+    let msg_content = format!("Message: {:<70.70}", display_msg);
+    let _ = execute!(io::stdout(), crossterm::cursor::MoveTo(0, offset_y));
+    print!("{}{}\x1b[K", prefix_spaces, msg_content);
 
     let (center_x, center_y) = if mode == ScreenMode::LocateMap {
         let cx = (player.x as isize + player.locate_offset.0)
@@ -2026,123 +2030,128 @@ pub fn draw_map(
         level.get_viewport_bounds(center_x, center_y);
     let view_h = view_bottom.saturating_sub(view_top);
 
-    for screen_y in 0..view_h {
-        let map_y = view_top + screen_y;
+    // Rows 1..=22 (22 viewport rows)
+    for screen_y in 0..22 {
         let stats_part = get_lhs_stat_line(screen_y + 1, player, level);
-        let mut map_part = String::new();
-
-        if mode == ScreenMode::Dungeon
-            || mode == ScreenMode::SelectRestCount
-            || mode == ScreenMode::SelectBashDirection
-            || mode == ScreenMode::SelectTunnelDirection
-            || mode == ScreenMode::LocateMap
-        {
-            for map_x in view_left..view_right {
-                if let Some(tile) = level.get_tile(map_x, map_y) {
-                    if map_x == player.x && map_y == player.y {
-                        map_part.push('@');
-                    } else if tile.visible
-                        && player.flags.blind == 0
-                        && monsters.iter().any(|m| m.x == map_x && m.y == map_y)
-                    {
-                        let monster = monsters
-                            .iter()
-                            .find(|m| m.x == map_x && m.y == map_y)
-                            .unwrap();
-                        if player.flags.image > 0 {
-                            let mut rng = rand::thread_rng();
-                            let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                            map_part.push(
-                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
-                            );
-                        } else {
-                            map_part.push(monster.symbol);
-                        }
-                    } else if (tile.visible || tile.remembered)
-                        && level.items.iter().any(|i| i.x == map_x && i.y == map_y)
-                        && !matches!(
-                            tile.tile_type,
-                            TileType::Wall
-                                | TileType::SecretDoor
-                                | TileType::MagmaVein { .. }
-                                | TileType::QuartzVein { .. }
-                                | TileType::Rubble
-                                | TileType::StairsUp
-                                | TileType::StairsDown
-                        )
-                    {
-                        let floor_item = level
-                            .items
-                            .iter()
-                            .find(|i| i.x == map_x && i.y == map_y)
-                            .unwrap();
-                        if player.flags.image > 0 {
-                            let mut rng = rand::thread_rng();
-                            let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-                            map_part.push(
-                                chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
-                            );
-                        } else {
-                            map_part.push(get_item_symbol(&floor_item.item));
-                        }
-                    } else if tile.visible || tile.remembered {
-                        match tile.tile_type {
-                            TileType::Wall => map_part.push('#'),
-                            TileType::Floor => map_part.push('.'),
-                            TileType::DoorClosed { .. } => map_part.push('+'),
-                            TileType::DoorOpen => map_part.push('\''),
-                            TileType::StairsUp => map_part.push('<'),
-                            TileType::StairsDown => map_part.push('>'),
-                            TileType::ShopDoor(num) => map_part.push((b'0' + num) as char),
-                            TileType::SecretDoor => map_part.push('#'),
-                            TileType::MagmaVein { .. } => map_part.push('%'),
-                            TileType::QuartzVein { .. } => map_part.push('%'),
-                            TileType::Rubble => map_part.push('*'),
-                            TileType::Trap { detected, .. } => {
-                                if detected {
-                                    map_part.push('^');
-                                } else {
-                                    map_part.push('.');
-                                }
+        let map_part = if screen_y < view_h {
+            if mode == ScreenMode::Dungeon
+                || mode == ScreenMode::SelectRestCount
+                || mode == ScreenMode::SelectBashDirection
+                || mode == ScreenMode::SelectTunnelDirection
+                || mode == ScreenMode::LocateMap
+            {
+                let map_y = view_top + screen_y;
+                let mut row_chars = String::with_capacity(66);
+                for map_x in view_left..view_right {
+                    if let Some(tile) = level.get_tile(map_x, map_y) {
+                        if map_x == player.x && map_y == player.y {
+                            row_chars.push('@');
+                        } else if tile.visible
+                            && player.flags.blind == 0
+                            && monsters.iter().any(|m| m.x == map_x && m.y == map_y)
+                        {
+                            let monster = monsters
+                                .iter()
+                                .find(|m| m.x == map_x && m.y == map_y)
+                                .unwrap();
+                            if player.flags.image > 0 {
+                                let mut rng = rand::thread_rng();
+                                let chars = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                                row_chars.push(
+                                    chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                                );
+                            } else {
+                                row_chars.push(monster.symbol);
                             }
-                            TileType::Chest { .. } => map_part.push('&'),
-                            TileType::GlyphOfWarding => map_part.push(';'),
-                            TileType::Empty => map_part.push(' '),
+                        } else if (tile.visible || tile.remembered)
+                            && level.items.iter().any(|i| i.x == map_x && i.y == map_y)
+                            && !matches!(
+                                tile.tile_type,
+                                TileType::Wall
+                                    | TileType::SecretDoor
+                                    | TileType::MagmaVein { .. }
+                                    | TileType::QuartzVein { .. }
+                                    | TileType::Rubble
+                                    | TileType::StairsUp
+                                    | TileType::StairsDown
+                            )
+                        {
+                            let floor_item = level
+                                .items
+                                .iter()
+                                .find(|i| i.x == map_x && i.y == map_y)
+                                .unwrap();
+                            if player.flags.image > 0 {
+                                let mut rng = rand::thread_rng();
+                                let chars = b"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+                                row_chars.push(
+                                    chars[rand::Rng::gen_range(&mut rng, 0..chars.len())] as char,
+                                );
+                            } else {
+                                row_chars.push(get_item_symbol(&floor_item.item));
+                            }
+                        } else if tile.visible || tile.remembered {
+                            match tile.tile_type {
+                                TileType::Wall => row_chars.push('#'),
+                                TileType::Floor => row_chars.push('.'),
+                                TileType::DoorClosed { .. } => row_chars.push('+'),
+                                TileType::DoorOpen => row_chars.push('\''),
+                                TileType::StairsUp => row_chars.push('<'),
+                                TileType::StairsDown => row_chars.push('>'),
+                                TileType::ShopDoor(num) => row_chars.push((b'0' + num) as char),
+                                TileType::SecretDoor => row_chars.push('#'),
+                                TileType::MagmaVein { .. } => row_chars.push('%'),
+                                TileType::QuartzVein { .. } => row_chars.push('%'),
+                                TileType::Rubble => row_chars.push('*'),
+                                TileType::Trap { detected, .. } => {
+                                    if detected {
+                                        row_chars.push('^');
+                                    } else {
+                                        row_chars.push('.');
+                                    }
+                                }
+                                TileType::Chest { .. } => row_chars.push('&'),
+                                TileType::GlyphOfWarding => row_chars.push(';'),
+                                TileType::Empty => row_chars.push(' '),
+                            }
+                        } else {
+                            row_chars.push(' ');
                         }
-                    } else {
-                        map_part.push(' ');
                     }
                 }
-            }
-        } else {
-            map_part = format!(
-                "{:<66}",
-                get_overlay_row_text(
+                format!("{:<66.66}", row_chars)
+            } else {
+                let overlay_row = get_overlay_row_text(
                     screen_y,
                     mode,
                     player,
                     shop,
                     active_haggle,
                     active_inscribe,
-                    level
-                )
-            );
-        }
+                    level,
+                );
+                format!("{:<66.66}", overlay_row)
+            }
+        } else {
+            format!("{:<66.66}", "")
+        };
 
-        let row_line = format!("{} {}\x1b[K", stats_part, map_part);
+        let row_content = format!("{} {}", stats_part, map_part); // 12 + 1 + 66 = 79 chars
         let _ = execute!(
             io::stdout(),
-            crossterm::cursor::MoveTo(offset_x, offset_y + 1 + screen_y as u16)
+            crossterm::cursor::MoveTo(0, offset_y + 1 + screen_y as u16)
         );
-        print!("{}", row_line);
+        print!("{}{}\x1b[K", prefix_spaces, row_content);
     }
 
+    // Row 23: Bottom status line
     let status_bar = get_bottom_status_line(player, level.depth, false);
+    let status_content = format!("{:<79.79}", status_bar);
     let _ = execute!(
         io::stdout(),
-        crossterm::cursor::MoveTo(offset_x, offset_y + 23)
+        crossterm::cursor::MoveTo(0, offset_y + 23)
     );
-    print!("{}\x1b[K", status_bar);
+    print!("{}{}\x1b[K", prefix_spaces, status_content);
 
     io::stdout().flush()?;
     Ok(())
@@ -2321,5 +2330,58 @@ mod tests {
             &level,
         );
         assert_eq!(drop_24, "");
+    }
+
+    #[test]
+    fn test_bottom_status_line_length() {
+        let mut player = Player::new("Tester", Race::Human, Class::Warrior, 10, 10);
+        player.food = 1500;
+        player.flags.blind = 1;
+        player.flags.confused = 1;
+        player.flags.afraid = 1;
+        player.flags.poisoned = 1;
+        player.flags.image = 1;
+        player.flags.paralysis = 1;
+        player.flags.word_of_recall = 1;
+        player.new_spells_to_learn = 2;
+        let status_bar = get_bottom_status_line(&player, 5, false);
+        assert!(
+            status_bar.len() <= 79,
+            "Bottom status line must fit within 79 characters, got: {} ({:?})",
+            status_bar.len(),
+            status_bar
+        );
+    }
+
+    #[test]
+    fn test_lhs_stat_line_length() {
+        let level = crate::dungeon::DungeonLevel::new(66, 22, 1, 50);
+        let classes = [
+            Class::Warrior,
+            Class::Mage,
+            Class::Priest,
+            Class::Rogue,
+            Class::Ranger,
+            Class::Paladin,
+        ];
+        for class in classes {
+            for lvl in [1, 20, 39, 40] {
+                let mut player = Player::new("Tester", Race::Human, class, 10, 10);
+                player.level = lvl;
+                for y in 0..24 {
+                    let stat_line = get_lhs_stat_line(y, &player, &level);
+                    assert_eq!(
+                        stat_line.len(),
+                        12,
+                        "LHS stat line row {} length must be exactly 12 for {:?} lvl {}, got: {} ({:?})",
+                        y,
+                        class,
+                        lvl,
+                        stat_line.len(),
+                        stat_line
+                    );
+                }
+            }
+        }
     }
 }
