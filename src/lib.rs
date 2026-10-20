@@ -1122,6 +1122,20 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     }
 
+    struct TerminalGuard {
+        active: bool,
+    }
+    impl Drop for TerminalGuard {
+        fn drop(&mut self) {
+            if self.active {
+                let _ = disable_raw_mode();
+                let mut stdout = io::stdout();
+                let _ = execute!(stdout, Show, LeaveAlternateScreen);
+            }
+        }
+    }
+    let mut _terminal_guard = TerminalGuard { active: !is_gui };
+
     'outer_loop: loop {
         let mut restart_game = false;
         let (mut player, mut level, mut monsters, mut status_msg, max_depth, mut level_cache) =
@@ -1293,7 +1307,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                         let rolled_max = rng.gen_range(8..=15);
                         let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
                         lvl.generate_simple_floor();
-                        let p = player::run_character_creation(&mut stdout, &mut rng, None)?;
+                        let p = match player::run_character_creation(&mut stdout, &mut rng, None) {
+                            Ok(p) => p,
+                            Err(e) if e.to_string().contains("cancelled") => {
+                                return Ok(());
+                            }
+                            Err(e) => return Err(e),
+                        };
                         let start_pos = lvl.find_random_floor_tile();
                         let mut player = p;
                         player.move_to(start_pos.0, start_pos.1);
@@ -1312,7 +1332,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                 let rolled_max = rng.gen_range(8..=15);
                 let mut lvl = DungeonLevel::new(66, 22, 0, rolled_max);
                 lvl.generate_simple_floor();
-                let p = player::run_character_creation(&mut stdout, &mut rng, None)?;
+                let p = match player::run_character_creation(&mut stdout, &mut rng, None) {
+                    Ok(p) => p,
+                    Err(e) if e.to_string().contains("cancelled") => {
+                        return Ok(());
+                    }
+                    Err(e) => return Err(e),
+                };
                 let start_pos = lvl.find_random_floor_tile();
                 let mut player = p;
                 player.move_to(start_pos.0, start_pos.1);
@@ -1478,7 +1504,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                             resting_turns = None;
                             resting_until_healed = false;
                             status_msg = "Rest interrupted by keypress.".to_string();
-                            let _ = event::read()?;
                             draw_map(
                                 &mut level,
                                 &player,
@@ -5416,6 +5441,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !is_gui {
+        _terminal_guard.active = false;
         execute!(stdout, Show, LeaveAlternateScreen)?;
         disable_raw_mode()?;
     }

@@ -1,6 +1,6 @@
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
 };
@@ -116,19 +116,25 @@ pub fn run_character_creation(
                 "h) Half-Troll",
             ],
         );
-        if let Event::Key(key_event) = event::read()?
-            && let KeyCode::Char(c) = key_event.code
-        {
-            match c {
-                'a' => break Race::Human,
-                'b' => break Race::HalfElf,
-                'c' => break Race::Elf,
-                'd' => break Race::Halfling,
-                'e' => break Race::Gnome,
-                'f' => break Race::Dwarf,
-                'g' => break Race::HalfOrc,
-                'h' => break Race::HalfTroll,
-                _ => {}
+        if let Event::Key(key_event) = event::read()? {
+            if key_event.code == KeyCode::Esc
+                || (key_event.code == KeyCode::Char('c')
+                    && key_event.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                return Err("Character creation cancelled by user".into());
+            }
+            if let KeyCode::Char(c) = key_event.code {
+                match c {
+                    'a' => break Race::Human,
+                    'b' => break Race::HalfElf,
+                    'c' => break Race::Elf,
+                    'd' => break Race::Halfling,
+                    'e' => break Race::Gnome,
+                    'f' => break Race::Dwarf,
+                    'g' => break Race::HalfOrc,
+                    'h' => break Race::HalfTroll,
+                    _ => {}
+                }
             }
         }
     };
@@ -137,13 +143,19 @@ pub fn run_character_creation(
     let gender = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
         print_creation_screen("CHOOSE CHARACTER GENDER", &["m) Male", "f) Female"]);
-        if let Event::Key(key_event) = event::read()?
-            && let KeyCode::Char(c) = key_event.code
-        {
-            match c {
-                'm' | 'M' => break Gender::Male,
-                'f' | 'F' => break Gender::Female,
-                _ => {}
+        if let Event::Key(key_event) = event::read()? {
+            if key_event.code == KeyCode::Esc
+                || (key_event.code == KeyCode::Char('c')
+                    && key_event.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                return Err("Character creation cancelled by user".into());
+            }
+            if let KeyCode::Char(c) = key_event.code {
+                match c {
+                    'm' | 'M' => break Gender::Male,
+                    'f' | 'F' => break Gender::Female,
+                    _ => {}
+                }
             }
         }
     };
@@ -208,11 +220,14 @@ pub fn run_character_creation(
         print_creation_screen("ROLL CHARACTER ATTRIBUTES", &options_refs);
 
         if let Event::Key(key_event) = event::read()? {
-            match key_event.code {
-                KeyCode::Enter | KeyCode::Esc => {
-                    break (post_race, history_text, sc, a, h, w);
-                }
-                _ => {}
+            if key_event.code == KeyCode::Esc
+                || (key_event.code == KeyCode::Char('c')
+                    && key_event.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                return Err("Character creation cancelled by user".into());
+            }
+            if let KeyCode::Enter = key_event.code {
+                break (post_race, history_text, sc, a, h, w);
             }
         }
     };
@@ -245,12 +260,18 @@ pub fn run_character_creation(
     let class = loop {
         execute!(io::stdout(), crossterm::cursor::MoveTo(0, 0))?;
         print_creation_screen("CHOOSE CHARACTER CLASS", &class_opt_refs);
-        if let Event::Key(key_event) = event::read()?
-            && let KeyCode::Char(c) = key_event.code
-        {
-            let idx = (c as u8).saturating_sub(b'a') as usize;
-            if idx < allowed_classes.len() {
-                break allowed_classes[idx].0;
+        if let Event::Key(key_event) = event::read()? {
+            if key_event.code == KeyCode::Esc
+                || (key_event.code == KeyCode::Char('c')
+                    && key_event.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                return Err("Character creation cancelled by user".into());
+            }
+            if let KeyCode::Char(c) = key_event.code {
+                let idx = (c as u8).saturating_sub(b'a') as usize;
+                if idx < allowed_classes.len() {
+                    break allowed_classes[idx].0;
+                }
             }
         }
     };

@@ -96,7 +96,10 @@ impl ShopInfo {
 
     pub fn ensure_stocked(&mut self, rng: &mut impl rand::Rng) {
         let max_cost = self.owner().max_cost;
-        while self.inventory.len() < 20 {
+        for _ in 0..100 {
+            if self.inventory.len() >= 22 {
+                break;
+            }
             if let Some(item) = shop::create_store_item(self.shop_type, max_cost, rng) {
                 shop::store_carry_item(&mut self.inventory, item);
             }
@@ -2410,6 +2413,50 @@ impl DungeonLevel {
                 && let Some(t) = self.get_tile_mut(sx, sy)
             {
                 t.tile_type = TileType::DoorClosed { spikes: 0 };
+                has_open_or_closed = true;
+            }
+            if !has_open_or_closed {
+                let mut fallback_wall = None;
+                'find_door: for y in
+                    (room.y.saturating_sub(1))..=(room.y + room.h).min(self.height - 1)
+                {
+                    for x in (room.x.saturating_sub(1))..=(room.x + room.w).min(self.width - 1) {
+                        let is_perimeter = x == room.x.saturating_sub(1)
+                            || x == room.x + room.w
+                            || y == room.y.saturating_sub(1)
+                            || y == room.y + room.h;
+                        if is_perimeter
+                            && x > 0
+                            && x < self.width - 1
+                            && y > 0
+                            && y < self.height - 1
+                            && let Some(t) = self.get_tile(x, y)
+                            && t.tile_type == TileType::Wall
+                        {
+                            if fallback_wall.is_none() {
+                                fallback_wall = Some((x, y));
+                            }
+                            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                                let nx = (x as isize + dx) as usize;
+                                let ny = (y as isize + dy) as usize;
+                                if let Some(nt) = self.get_tile(nx, ny)
+                                    && nt.tile_type == TileType::Floor
+                                    && let Some(tm) = self.get_tile_mut(x, y)
+                                {
+                                    tm.tile_type = TileType::DoorClosed { spikes: 0 };
+                                    has_open_or_closed = true;
+                                    break 'find_door;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !has_open_or_closed
+                    && let Some((fx, fy)) = fallback_wall
+                    && let Some(tm) = self.get_tile_mut(fx, fy)
+                {
+                    tm.tile_type = TileType::DoorClosed { spikes: 0 };
+                }
             }
         }
 
@@ -2967,7 +3014,10 @@ mod tests {
                             && let Some(tile) = level.get_tile(x, y)
                             && matches!(
                                 tile.tile_type,
-                                TileType::Floor | TileType::DoorOpen | TileType::DoorClosed { .. } | TileType::SecretDoor
+                                TileType::Floor
+                                    | TileType::DoorOpen
+                                    | TileType::DoorClosed { .. }
+                                    | TileType::SecretDoor
                             )
                         {
                             has_accessible_entrance = true;
@@ -3120,6 +3170,18 @@ mod tests {
                 "Top wall at ({}, 4) in dark corridor should NOT be visible beyond light radius",
                 x
             );
+        }
+    }
+
+    #[test]
+    fn test_town_generation_depth_zero() {
+        let mut level = DungeonLevel::new(66, 22, 0, 10);
+        level.generate_simple_floor();
+        assert_eq!(level.shops.len(), 6);
+        assert_eq!(level.width, 66);
+        assert_eq!(level.height, 22);
+        for shop in &level.shops {
+            assert!(!shop.inventory.is_empty());
         }
     }
 }

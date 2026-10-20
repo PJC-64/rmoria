@@ -138,6 +138,7 @@ pub struct Tile {
     pub tile_type: TileType,
     pub visible: bool,
     pub remembered: bool,
+    #[serde(default)]
     pub is_lit: bool,
 }
 
