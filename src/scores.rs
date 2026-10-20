@@ -40,10 +40,14 @@ impl HighScoreEntry {
             crate::player::Gender::Male => 'M',
             crate::player::Gender::Female => 'F',
         };
-        let birth_date = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let birth_date = if player.birth_date != 0 {
+            player.birth_date
+        } else {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        };
 
         Self {
             points,
@@ -213,6 +217,37 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].name, "Beta");
         assert_eq!(loaded[1].name, "Alpha");
+
+        let _ = fs::remove_file(scores_file);
+    }
+
+    #[test]
+    fn test_saved_score_updated_on_death() {
+        let temp_dir = std::env::temp_dir();
+        let scores_file = temp_dir.join("test_scores_saved_death.json");
+        let _ = fs::remove_file(&scores_file);
+
+        let mut p = Player::new("SaveHero", Race::Human, Class::Paladin, 10, 10);
+        p.exp = 2000;
+        p.gold = 500;
+
+        // Save game: score entry recorded as "(saved)"
+        let saved_entry = HighScoreEntry::from_player(&p, 3, "(saved)");
+        let _ = record_high_score(saved_entry, &scores_file).unwrap();
+        let loaded = load_high_scores(&scores_file);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].died_from, "(saved)");
+
+        // Later player dies: same character birth_date, more points, died_from: "Balrog"
+        p.exp = 8000;
+        let death_entry = HighScoreEntry::from_player(&p, 50, "a Balrog");
+        let _ = record_high_score(death_entry, &scores_file).unwrap();
+
+        let loaded2 = load_high_scores(&scores_file);
+        // Must still be 1 entry (not duplicated), and updated to Balrog
+        assert_eq!(loaded2.len(), 1);
+        assert_eq!(loaded2[0].name, "SaveHero");
+        assert_eq!(loaded2[0].died_from, "Balrog");
 
         let _ = fs::remove_file(scores_file);
     }

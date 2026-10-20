@@ -2151,13 +2151,23 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             13 => {
                 // Create Food
-                player.inventory.push(Item::new(
+                let food = Item::new(
                     "Ration of Food",
                     1,
                     20,
                     ItemType::Food { nutrition: 5000 },
-                ));
-                *status_msg = "Manna falls from heaven into your pack!".to_string();
+                );
+                if player.add_item_to_inventory(food.clone()) {
+                    *status_msg = "Manna falls from heaven into your pack!".to_string();
+                } else {
+                    level.items.push(crate::dungeon::FloorItem {
+                        x: player.x,
+                        y: player.y,
+                        item: food,
+                    });
+                    *status_msg =
+                        "Your pack is full; manna falls from heaven to the floor.".to_string();
+                }
             }
             14 => {
                 // Remove Curse
@@ -2403,13 +2413,24 @@ pub fn execute_non_directional_spell<R: rand::Rng>(
             }
             16 => {
                 // Create Food
-                player.inventory.push(Item::new(
+                let food = Item::new(
                     "Ration of Food",
                     1,
                     20,
                     ItemType::Food { nutrition: 5000 },
-                ));
-                *status_msg = "A nutritious ration of food appears in your pack!".to_string();
+                );
+                if player.add_item_to_inventory(food.clone()) {
+                    *status_msg = "A nutritious ration of food appears in your pack!".to_string();
+                } else {
+                    level.items.push(crate::dungeon::FloorItem {
+                        x: player.x,
+                        y: player.y,
+                        item: food,
+                    });
+                    *status_msg =
+                        "Your pack is full; a nutritious ration of food drops to the floor."
+                            .to_string();
+                }
             }
             17 => {
                 // Recharge Item I
@@ -3269,13 +3290,25 @@ pub fn read_scroll<R: rand::Rng>(
                 msgs.push("A divine barrier rises to repel evil creatures!".to_string());
             }
             29 => {
-                player.inventory.push(Item::new(
+                let food = Item::new(
                     "Ration of Food",
                     1,
                     20,
                     ItemType::Food { nutrition: 5000 },
-                ));
-                msgs.push("A nutritious ration of food appears in your pack!".to_string());
+                );
+                if player.add_item_to_inventory(food.clone()) {
+                    msgs.push("A nutritious ration of food appears in your pack!".to_string());
+                } else {
+                    level.items.push(crate::dungeon::FloorItem {
+                        x: player.x,
+                        y: player.y,
+                        item: food,
+                    });
+                    msgs.push(
+                        "Your pack is full; a nutritious ration of food drops to the floor."
+                            .to_string(),
+                    );
+                }
             }
             30 => {
                 let mut count = 0;
@@ -3951,5 +3984,47 @@ mod tests {
             .unwrap();
         assert_eq!(wield.to_hit, 1);
         assert!(msg.contains("glows faintly"));
+    }
+
+    #[test]
+    fn test_create_food_drops_when_inventory_full() {
+        let mut player = Player::new("FoodTester", Race::Human, Class::Priest, 5, 5);
+        player.inventory.clear();
+        for i in 0..22 {
+            player.inventory.push(Item::new(
+                &format!("Dagger {}", i),
+                1,
+                10,
+                ItemType::Weapon {
+                    damage: Dice::new(1, 4),
+                },
+            ));
+        }
+        assert_eq!(player.inventory.len(), 22);
+
+        let mut level = DungeonLevel::new(20, 10, 1, 50);
+        let mut monsters = Vec::new();
+        let mut rng = rand::thread_rng();
+        let mut msg = String::new();
+
+        // Cast Create Food (prayer 13)
+        execute_non_directional_spell(
+            13,
+            true,
+            &mut player,
+            &mut level,
+            &mut monsters,
+            &mut rng,
+            &mut msg,
+        );
+
+        // Inventory still at 22 items
+        assert_eq!(player.inventory.len(), 22);
+        // Food dropped to the floor
+        assert_eq!(level.items.len(), 1);
+        assert_eq!(level.items[0].item.name, "Ration of Food");
+        assert_eq!(level.items[0].x, player.x);
+        assert_eq!(level.items[0].y, player.y);
+        assert!(msg.contains("pack is full"));
     }
 }

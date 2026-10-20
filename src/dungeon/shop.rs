@@ -931,8 +931,17 @@ pub fn handle_shop_buy_input(
     status_msg: &mut String,
     shop_info: Option<&super::ShopInfo>,
 ) {
-    let items = super::get_shop_items(active_shop);
-    let has_s_item = items.len() > 18;
+    let (item_count, has_s_item) = if let Some(info) = shop_info {
+        if !info.inventory.is_empty() {
+            (info.inventory.len(), info.inventory.len() > 18)
+        } else {
+            let items = super::get_shop_items(active_shop);
+            (items.len(), items.len() > 18)
+        }
+    } else {
+        let items = super::get_shop_items(active_shop);
+        (items.len(), items.len() > 18)
+    };
 
     match c {
         'S' => {
@@ -945,13 +954,45 @@ pub fn handle_shop_buy_input(
         }
         letter if letter.is_ascii_lowercase() => {
             let idx = letter as usize - b'a' as usize;
-            if idx < items.len() {
-                let (ref name, price, ref item_type) = items[idx];
-                let owner = &STORE_OWNERS[owner_idx.min(MAX_OWNERS - 1)];
-                let (min_p, max_p) =
-                    calculate_buy_price(price, owner, player.race, player.stats.charisma);
-                if player.gold >= min_p {
-                    let h_item =
+            if idx < item_count {
+                let (h_item, price) = if let Some(info) = shop_info {
+                    if !info.inventory.is_empty() {
+                        let it = info.inventory[idx].clone();
+                        let base_p = if it.cost > 0 {
+                            it.cost
+                        } else {
+                            get_item_base_value(&it)
+                        };
+                        (it, base_p)
+                    } else {
+                        let items = super::get_shop_items(active_shop);
+                        let (ref name, p, ref item_type) = items[idx];
+                        let it = crate::entity::treasure_data::get_canonical_shop_item(
+                            active_shop,
+                            idx,
+                        )
+                        .unwrap_or_else(|| {
+                            Item::new(
+                                name,
+                                1,
+                                match item_type {
+                                    ItemType::Weapon { .. } => 10,
+                                    ItemType::Armor { .. } => 80,
+                                    ItemType::Potion { .. } => 5,
+                                    ItemType::Light { .. } => 15,
+                                    ItemType::Ring { .. } => 2,
+                                    ItemType::Amulet { .. } => 3,
+                                    _ => 2,
+                                },
+                                item_type.clone(),
+                            )
+                        });
+                        (it, p)
+                    }
+                } else {
+                    let items = super::get_shop_items(active_shop);
+                    let (ref name, p, ref item_type) = items[idx];
+                    let it =
                         crate::entity::treasure_data::get_canonical_shop_item(active_shop, idx)
                             .unwrap_or_else(|| {
                                 Item::new(
@@ -969,6 +1010,13 @@ pub fn handle_shop_buy_input(
                                     item_type.clone(),
                                 )
                             });
+                    (it, p)
+                };
+
+                let owner = &STORE_OWNERS[owner_idx.min(MAX_OWNERS - 1)];
+                let (min_p, max_p) =
+                    calculate_buy_price(price, owner, player.race, player.stats.charisma);
+                if player.gold >= min_p {
 
                     let waiver = shop_info.is_some_and(|s| s.no_need_to_bargain(min_p));
                     let (curr_ask, comment, offers) = if waiver {
@@ -981,6 +1029,7 @@ pub fn handle_shop_buy_input(
                         (max_p, format!("Asking price: {} gp", max_p), 0)
                     };
 
+                    let item_name = h_item.display_name();
                     *active_haggle = Some(HaggleState {
                         item: h_item,
                         item_index: idx,
@@ -998,9 +1047,9 @@ pub fn handle_shop_buy_input(
                     *screen_mode = ScreenMode::BarterBuyMenu;
                     if waiver {
                         *status_msg =
-                            format!("Bartering for {} (Agreed price: {} gp).", name, min_p);
+                            format!("Bartering for {} (Agreed price: {} gp).", item_name, min_p);
                     } else {
-                        *status_msg = format!("Bartering for {}.", name);
+                        *status_msg = format!("Bartering for {}.", item_name);
                     }
                 } else {
                     *status_msg = "You don't have enough gold to make a serious offer!".to_string();
@@ -1014,6 +1063,7 @@ pub fn handle_shop_buy_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Dice;
     use crate::player::{Class, Race};
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
@@ -1488,5 +1538,82 @@ mod tests {
         );
         assert_eq!(screen_mode, ScreenMode::ShopSellMenu);
         assert!(active_haggle.is_none());
+    }
+
+    #[test]
+    fn test_dynamic_shop_inventory_selection_and_depletion() {
+        let mut player = Player::new("Buyer", Race::Human, Class::Warrior, 10, 10);
+        player.gold = 5000;
+        let mut screen_mode = ScreenMode::Shop;
+        let mut active_haggle = None;
+        let mut status_msg = String::new();
+
+        let mut rng = rand::thread_rng();
+        let mut shop_info = super::super::ShopInfo::new(
+            10,
+            10,
+            super::super::ShopType::Weaponsmith,
+            &mut rng,
+        );
+        shop_info.inventory.clear();
+        shop_info.inventory.push(Item::new(
+            "Unique Claymore",
+            1,
+            100,
+            ItemType::Weapon {
+                damage: Dice::new(2, 8),
+            },
+        ));
+        shop_info.inventory.push(Item::new(
+            "Unique Broadsword",
+            1,
+            80,
+            ItemType::Weapon {
+                damage: Dice::new(2, 5),
+            },
+        ));
+
+        assert_eq!(shop_info.inventory.len(), 2);
+
+        // Buy item 'a' (Unique Claymore)
+        handle_shop_buy_input(
+            'a',
+            super::super::ShopType::Weaponsmith,
+            shop_info.owner_index,
+            &player,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut status_msg,
+            Some(&shop_info),
+        );
+
+        assert_eq!(screen_mode, ScreenMode::BarterBuyMenu);
+        assert!(active_haggle.is_some());
+        let haggle = active_haggle.as_ref().unwrap();
+        assert_eq!(haggle.item.name, "Unique Claymore");
+        assert_eq!(haggle.item_index, 0);
+
+        // Complete purchase by accepting price (blank Enter)
+        let enter_key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        handle_haggle_input(
+            enter_key,
+            &mut screen_mode,
+            &mut active_haggle,
+            &mut player,
+            &mut status_msg,
+            1,
+            Some(&mut shop_info),
+        );
+
+        assert_eq!(screen_mode, ScreenMode::Shop);
+        assert!(active_haggle.is_none());
+        // Verify Unique Claymore was depleted from store inventory
+        assert_eq!(shop_info.inventory.len(), 1);
+        assert_eq!(shop_info.inventory[0].name, "Unique Broadsword");
+        // Verify player received the bought item
+        assert!(player.inventory.iter().any(|i| i.name == "Unique Claymore"));
     }
 }

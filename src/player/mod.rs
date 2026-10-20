@@ -721,6 +721,8 @@ pub struct Player {
     pub died_from: String,
     #[serde(default)]
     pub locate_offset: (isize, isize),
+    #[serde(default)]
+    pub birth_date: u64,
 }
 
 fn default_auto_pickup() -> bool {
@@ -1312,6 +1314,10 @@ impl Player {
             high_score_page: 0,
             died_from: String::new(),
             locate_offset: (0, 0),
+            birth_date: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
         };
 
         player.flavors.identify("Potion of Cure Light Wounds");

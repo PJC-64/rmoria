@@ -154,7 +154,7 @@ use input::{Action, Direction, InputMapper, KeybindingMode};
 use player::{Class, InscribeState, Item, ItemType, Player, Race};
 use rand::Rng;
 use save::GameState;
-use scores::{DEFAULT_SCORES_FILE, HighScoreEntry, record_high_score};
+use scores::{HighScoreEntry, record_high_score};
 use std::fs;
 use std::io::{self};
 
@@ -496,7 +496,10 @@ fn process_end_of_turn(
             target
         };
 
-        level_cache.insert(level.depth, (level.clone(), monsters.clone()));
+        if level.depth == 0 {
+            level_cache.insert(0, (level.clone(), monsters.clone()));
+        }
+        level_cache.retain(|&k, _| k == 0);
         if let Some((cached_level, cached_monsters)) = level_cache.remove(&new_depth) {
             *level = cached_level;
             *monsters = cached_monsters;
@@ -993,8 +996,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
 
         let save_path_clone = save_path.clone();
         std::thread::spawn(move || {
-            #[allow(deprecated)]
-            let server = std::net::TcpListener::bind("127.0.0.1:8080").unwrap();
+            let server = match std::net::TcpListener::bind("127.0.0.1:8080") {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Failed to bind WebSocket server on 127.0.0.1:8080: {}", e);
+                    return;
+                }
+            };
             println!("Rmoria WebSocket Server running at ws://127.0.0.1:8080");
 
             for stream in server.incoming() {
@@ -1758,6 +1766,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             active_inscribe.as_ref(),
                                         )?;
 
+                                        level_cache.retain(|&k, _| k == 0);
                                         let state = GameState::new(
                                             player.clone(),
                                             level.clone(),
@@ -1765,25 +1774,28 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             max_depth,
                                             level_cache.clone(),
                                         );
-                                        if let Err(e) = state.save_to_file(&save_path) {
-                                            status_msg = format!("Save failed: {}", e);
-                                            draw_map(
-                                                &mut level,
-                                                &player,
-                                                &monsters,
-                                                &status_msg,
-                                                screen_mode,
-                                                active_shop,
-                                                active_haggle.as_ref(),
-                                                active_inscribe.as_ref(),
-                                            )?;
-                                            std::thread::sleep(std::time::Duration::from_secs(2));
-                                        } else {
-                                            std::thread::sleep(std::time::Duration::from_millis(
-                                                800,
-                                            ));
+                                        match state.save_to_file(&save_path) {
+                                            Ok(()) => {
+                                                std::thread::sleep(std::time::Duration::from_millis(
+                                                    800,
+                                                ));
+                                                break 'game_loop;
+                                            }
+                                            Err(e) => {
+                                                status_msg = format!("Save failed: {}. Game NOT exited.", e);
+                                                draw_map(
+                                                    &mut level,
+                                                    &player,
+                                                    &monsters,
+                                                    &status_msg,
+                                                    screen_mode,
+                                                    active_shop,
+                                                    active_haggle.as_ref(),
+                                                    active_inscribe.as_ref(),
+                                                )?;
+                                                std::thread::sleep(std::time::Duration::from_secs(2));
+                                            }
                                         }
-                                        break 'game_loop;
                                     }
                                     KeyCode::Char('a') if player.is_wizard => {
                                         player.flags.poisoned = 0;
@@ -2565,10 +2577,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 && level.depth > 0
                                             {
                                                 let new_depth = level.depth - 1;
-                                                level_cache.insert(
-                                                    level.depth,
-                                                    (level.clone(), monsters.clone()),
-                                                );
+                                                if level.depth == 0 {
+                                                    level_cache.insert(
+                                                        0,
+                                                        (level.clone(), monsters.clone()),
+                                                    );
+                                                }
+                                                level_cache.retain(|&k, _| k == 0);
                                                 if let Some((cached_level, cached_monsters)) =
                                                     level_cache.remove(&new_depth)
                                                 {
@@ -2614,10 +2629,13 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 && level.depth < max_depth
                                             {
                                                 let new_depth = level.depth + 1;
-                                                level_cache.insert(
-                                                    level.depth,
-                                                    (level.clone(), monsters.clone()),
-                                                );
+                                                if level.depth == 0 {
+                                                    level_cache.insert(
+                                                        0,
+                                                        (level.clone(), monsters.clone()),
+                                                    );
+                                                }
+                                                level_cache.retain(|&k, _| k == 0);
                                                 if let Some((cached_level, cached_monsters)) =
                                                     level_cache.remove(&new_depth)
                                                 {
@@ -3079,63 +3097,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Tombstone;
                                         }
                                     }
-                                    Action::SaveAndExit => {
-                                        if player.is_wizard {
-                                            status_msg = "TEST MODE ACTIVE: Character cannot be saved. Quitting...".to_string();
-                                            draw_map(
-                                                &mut level,
-                                                &player,
-                                                &monsters,
-                                                &status_msg,
-                                                screen_mode,
-                                                active_shop,
-                                                active_haggle.as_ref(),
-                                                active_inscribe.as_ref(),
-                                            )?;
-                                            std::thread::sleep(std::time::Duration::from_millis(
-                                                800,
-                                            ));
-                                            break 'game_loop;
-                                        }
-                                        status_msg = "Saving game and quitting...".to_string();
-                                        draw_map(
-                                            &mut level,
-                                            &player,
-                                            &monsters,
-                                            &status_msg,
-                                            screen_mode,
-                                            active_shop,
-                                            active_haggle.as_ref(),
-                                            active_inscribe.as_ref(),
-                                        )?;
-
-                                        let state = GameState::new(
-                                            player.clone(),
-                                            level.clone(),
-                                            monsters.clone(),
-                                            max_depth,
-                                            level_cache.clone(),
-                                        );
-                                        if let Err(e) = state.save_to_file(&save_path) {
-                                            status_msg = format!("Save failed: {}", e);
-                                            draw_map(
-                                                &mut level,
-                                                &player,
-                                                &monsters,
-                                                &status_msg,
-                                                screen_mode,
-                                                active_shop,
-                                                active_haggle.as_ref(),
-                                                active_inscribe.as_ref(),
-                                            )?;
-                                            std::thread::sleep(std::time::Duration::from_secs(2));
-                                        } else {
-                                            std::thread::sleep(std::time::Duration::from_millis(
-                                                800,
-                                            ));
-                                        }
-                                        break 'game_loop;
-                                    }
                                     Action::Run(dir) => {
                                         execute_player_run(
                                             dir,
@@ -3219,8 +3180,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             level.depth,
                                             &player.died_from,
                                         );
-                                        let _ =
-                                            record_high_score(entry.clone(), DEFAULT_SCORES_FILE);
                                         let _ = record_high_score(entry, get_scores_path());
                                         screen_mode = ScreenMode::HighScores;
                                     } else if screen_mode == ScreenMode::RoyalCoronation {
@@ -3266,8 +3225,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             level.depth,
                                             &player.died_from,
                                         );
-                                        let _ =
-                                            record_high_score(entry.clone(), DEFAULT_SCORES_FILE);
                                         let _ = record_high_score(entry, get_scores_path());
                                         screen_mode = ScreenMode::HighScores;
                                     } else if screen_mode == ScreenMode::LocateMap {
@@ -3609,10 +3566,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 level.depth,
                                                 &player.died_from,
                                             );
-                                            let _ = record_high_score(
-                                                entry.clone(),
-                                                DEFAULT_SCORES_FILE,
-                                            );
                                             let _ = record_high_score(entry, get_scores_path());
                                             status_msg =
                                                 "Character dump written to rmoria_char.txt."
@@ -3624,10 +3577,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 level.depth,
                                                 &player.died_from,
                                             );
-                                            let _ = record_high_score(
-                                                entry.clone(),
-                                                DEFAULT_SCORES_FILE,
-                                            );
                                             let _ = record_high_score(entry, get_scores_path());
                                             restart_game = true;
                                             break 'game_loop;
@@ -3636,10 +3585,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 &player,
                                                 level.depth,
                                                 &player.died_from,
-                                            );
-                                            let _ = record_high_score(
-                                                entry.clone(),
-                                                DEFAULT_SCORES_FILE,
                                             );
                                             let _ = record_high_score(entry, get_scores_path());
                                             screen_mode = ScreenMode::HighScores;

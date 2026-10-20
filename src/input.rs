@@ -82,7 +82,6 @@ pub enum Action {
     GoUpStairs,         // Go up stairs (<)
     GoDownStairs,       // Go down stairs (>)
     Quit,               // Retire / Quit character (Q)
-    SaveAndExit,        // Save game and exit (Ctrl-X)
     Help,               // Display help screen (?)
     RefillLight,        // Refill lamp/lantern (F)
     ToggleSearch,       // Toggle search mode (# or S)

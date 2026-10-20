@@ -681,6 +681,16 @@ fn get_reduced_map_row_text(row: usize, level: &DungeonLevel, player: &Player) -
     line
 }
 
+fn menu_footer_rows(item_count: usize) -> (Option<usize>, usize) {
+    if item_count >= 22 {
+        (None, 23)
+    } else if item_count == 21 {
+        (Some(22), 23)
+    } else {
+        (Some(item_count + 2), item_count + 3)
+    }
+}
+
 fn get_overlay_row_text(
     row: usize,
     mode: ScreenMode,
@@ -695,10 +705,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- INSCRIBE ITEM ---".to_string();
             }
-            if row == player.inventory.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.inventory.len());
+            if Some(row) == div_row {
                 return "---------------------".to_string();
             }
-            if row == player.inventory.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to inscribe, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
@@ -748,10 +759,11 @@ fn get_overlay_row_text(
                     w_quot, w_rem, cap_quot, cap_rem
                 );
             }
-            if row == player.inventory.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.inventory.len());
+            if Some(row) == div_row {
                 return "----------------------".to_string();
             }
-            if row == player.inventory.len() + 3 {
+            if row == prompt_row {
                 return "Press ESC or 'i' to return to dungeon.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
@@ -811,10 +823,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- EQUIPMENT LIST ---".to_string();
             }
-            if row == player.equipment.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.equipment.len());
+            if Some(row) == div_row {
                 return "----------------------".to_string();
             }
-            if row == player.equipment.len() + 3 {
+            if row == prompt_row {
                 return "Press ESC or 'I' to return to dungeon.".to_string();
             }
             if row > 0 && row <= player.equipment.len() {
@@ -854,10 +867,11 @@ fn get_overlay_row_text(
                 })
                 .collect();
 
-            if row == equippable.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(equippable.len());
+            if Some(row) == div_row {
                 return "------------------------------".to_string();
             }
-            if row == equippable.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to equip, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= equippable.len() {
@@ -903,10 +917,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- TAKE OFF SELECTION ---".to_string();
             }
-            if row == player.equipment.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.equipment.len());
+            if Some(row) == div_row {
                 return "--------------------------".to_string();
             }
-            if row == player.equipment.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to take off, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.equipment.len() {
@@ -930,10 +945,11 @@ fn get_overlay_row_text(
                 .filter(|(_, item)| matches!(item.item_type, ItemType::Potion { .. }))
                 .collect();
 
-            if row == potions.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(potions.len());
+            if Some(row) == div_row {
                 return "------------------------------".to_string();
             }
-            if row == potions.len() + 3 {
+            if row == prompt_row {
                 return "Select potion letter to drink, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= potions.len() {
@@ -974,10 +990,11 @@ fn get_overlay_row_text(
                 .filter(|(_, item)| matches!(item.item_type, ItemType::Food { .. }))
                 .collect();
 
-            if row == foods.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(foods.len());
+            if Some(row) == div_row {
                 return "------------------------------".to_string();
             }
-            if row == foods.len() + 3 {
+            if row == prompt_row {
                 return "Select food letter to eat, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= foods.len() {
@@ -1014,10 +1031,11 @@ fn get_overlay_row_text(
                 })
                 .collect();
 
-            if row == scrolls.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(scrolls.len());
+            if Some(row) == div_row {
                 return "-----------------------------".to_string();
             }
-            if row == scrolls.len() + 3 {
+            if row == prompt_row {
                 return "Select scroll letter to read, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= scrolls.len() {
@@ -1367,10 +1385,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- DROP ITEM ---".to_string();
             }
-            if row == player.inventory.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.inventory.len());
+            if Some(row) == div_row {
                 return "-----------------".to_string();
             }
-            if row == player.inventory.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to drop, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
@@ -1392,10 +1411,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- IDENTIFY ITEM SELECTION ---".to_string();
             }
-            if row == player.inventory.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.inventory.len());
+            if Some(row) == div_row {
                 return "-------------------------------".to_string();
             }
-            if row == player.inventory.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to identify, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
@@ -1417,10 +1437,11 @@ fn get_overlay_row_text(
             if row == 0 {
                 return "--- FIRE / THROW ITEM SELECTION ---".to_string();
             }
-            if row == player.inventory.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(player.inventory.len());
+            if Some(row) == div_row {
                 return "-----------------------------------".to_string();
             }
-            if row == player.inventory.len() + 3 {
+            if row == prompt_row {
                 return "Select item letter to throw/fire, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= player.inventory.len() {
@@ -1488,10 +1509,11 @@ fn get_overlay_row_text(
                 .filter(|(_, item)| matches!(item.item_type, ItemType::Wand { .. }))
                 .collect();
 
-            if row == wands.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(wands.len());
+            if Some(row) == div_row {
                 return "--------------------------".to_string();
             }
-            if row == wands.len() + 3 {
+            if row == prompt_row {
                 return "Select wand letter to aim, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= wands.len() {
@@ -1542,10 +1564,11 @@ fn get_overlay_row_text(
                 .filter(|(_, item)| matches!(item.item_type, ItemType::Staff { .. }))
                 .collect();
 
-            if row == staves.len() + 2 {
+            let (div_row, prompt_row) = menu_footer_rows(staves.len());
+            if Some(row) == div_row {
                 return "---------------------------".to_string();
             }
-            if row == staves.len() + 3 {
+            if row == prompt_row {
                 return "Select staff letter to use, or press ESC to cancel.".to_string();
             }
             if row > 0 && row <= staves.len() {
@@ -1566,13 +1589,40 @@ fn get_overlay_row_text(
             "".to_string()
         }
         ScreenMode::Shop => {
+            let shop_info = level.shops.iter().find(|s| s.shop_type == shop);
             let owner_idx = if let Some(haggle) = active_haggle {
                 haggle.owner_index.min(crate::dungeon::MAX_OWNERS - 1)
+            } else if let Some(info) = shop_info {
+                info.owner_index.min(crate::dungeon::MAX_OWNERS - 1)
             } else {
                 (shop as usize).min(crate::dungeon::MAX_OWNERS - 1)
             };
             let owner = &crate::dungeon::STORE_OWNERS[owner_idx];
-            let items = get_shop_items(shop);
+            let items: Vec<(String, u32)> = if let Some(info) = shop_info
+                && !info.inventory.is_empty()
+            {
+                info.inventory
+                    .iter()
+                    .map(|item| {
+                        let name = if item.count > 1 {
+                            format!("{} (x{})", item.display_name(), item.count)
+                        } else {
+                            item.display_name()
+                        };
+                        let base_price = if item.cost > 0 {
+                            item.cost
+                        } else {
+                            crate::dungeon::get_item_base_value(item)
+                        };
+                        (name, base_price)
+                    })
+                    .collect()
+            } else {
+                get_shop_items(shop)
+                    .into_iter()
+                    .map(|(name, base_p, _)| (name, base_p))
+                    .collect()
+            };
             let has_s_item = items.len() > 18;
             let last_letter = (b'a' + items.len().saturating_sub(1) as u8) as char;
             let prompt = if has_s_item {
@@ -1597,7 +1647,7 @@ fn get_overlay_row_text(
                 }
                 if row >= 1 && row < items.len() + 1 && row < 23 {
                     let idx = row - 1;
-                    let (name, base_price, _) = &items[idx];
+                    let (name, base_price) = &items[idx];
                     let (_, ask_price) = crate::dungeon::calculate_buy_price(
                         *base_price,
                         owner,
@@ -1626,7 +1676,7 @@ fn get_overlay_row_text(
                 }
                 if row >= 3 && row < items.len() + 3 && row < 23 {
                     let idx = row - 3;
-                    let (name, base_price, _) = &items[idx];
+                    let (name, base_price) = &items[idx];
                     let (_, ask_price) = crate::dungeon::calculate_buy_price(
                         *base_price,
                         owner,
@@ -1803,7 +1853,12 @@ fn get_overlay_row_text(
             "".to_string()
         }
         ScreenMode::HighScores => {
-            let scores = crate::scores::load_high_scores(crate::scores::DEFAULT_SCORES_FILE);
+            let scores_path = crate::get_scores_path();
+            let scores = if scores_path.exists() {
+                crate::scores::load_high_scores(&scores_path)
+            } else {
+                crate::scores::load_high_scores(crate::scores::DEFAULT_SCORES_FILE)
+            };
             if row == 0 {
                 return "Rank  Points Name              Sex Race       Class  Lvl Killed By"
                     .to_string();
@@ -2096,6 +2151,7 @@ pub fn draw_map(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Dice;
     use crate::player::{Class, Gender, Player, Race};
 
     #[test]
@@ -2204,5 +2260,66 @@ mod tests {
         let level = crate::dungeon::DungeonLevel::new(66, 22, 1, 50);
         let row_text = get_reduced_map_row_text(5, &level, &player);
         assert_eq!(row_text.len(), 66);
+    }
+
+    #[test]
+    fn test_inventory_menus_do_not_overflow_24_rows() {
+        let mut player = Player::new("PackMule", Race::Dwarf, Class::Warrior, 5, 5);
+        player.inventory.clear();
+        for i in 0..22 {
+            player.inventory.push(Item::new(
+                &format!("Item {}", i),
+                1,
+                10,
+                ItemType::Weapon {
+                    damage: Dice::new(1, 4),
+                },
+            ));
+        }
+        let level = crate::dungeon::DungeonLevel::new(66, 22, 1, 50);
+
+        // Test InventoryList
+        let row_23 = get_overlay_row_text(
+            23,
+            ScreenMode::InventoryList,
+            &player,
+            crate::dungeon::ShopType::General,
+            None,
+            None,
+            &level,
+        );
+        assert!(row_23.contains("Press ESC or 'i'"));
+        let row_24 = get_overlay_row_text(
+            24,
+            ScreenMode::InventoryList,
+            &player,
+            crate::dungeon::ShopType::General,
+            None,
+            None,
+            &level,
+        );
+        assert_eq!(row_24, "");
+
+        // Test DropMenu
+        let drop_23 = get_overlay_row_text(
+            23,
+            ScreenMode::DropMenu,
+            &player,
+            crate::dungeon::ShopType::General,
+            None,
+            None,
+            &level,
+        );
+        assert!(drop_23.contains("Select item letter to drop"));
+        let drop_24 = get_overlay_row_text(
+            24,
+            ScreenMode::DropMenu,
+            &player,
+            crate::dungeon::ShopType::General,
+            None,
+            None,
+            &level,
+        );
+        assert_eq!(drop_24, "");
     }
 }
