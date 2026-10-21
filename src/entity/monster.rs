@@ -421,13 +421,21 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 1 => {
                     // Normal attack: AC reduces damage
                     let absorbed = (player_ac * raw_damage) / 200;
-                    let effective = (raw_damage - absorbed).max(1);
-                    player.take_damage(effective);
-                    status_msg.push_str(&format!(" ({} dmg)", effective));
+                    let effective = if raw_damage > 0 {
+                        (raw_damage - absorbed).max(1)
+                    } else {
+                        0
+                    };
+                    if effective > 0 {
+                        player.take_damage(effective);
+                        status_msg.push_str(&format!(" ({} dmg)", effective));
+                    }
                 }
                 2 => {
                     // Lose Strength
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.sustain_str {
                         status_msg.push_str(" You feel weaker for a moment, but it passes.");
                     } else if rng.gen_bool(0.5) {
@@ -437,7 +445,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 3 => {
                     // Confusion attack
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if rng.gen_bool(0.5) {
                         if player.flags.confused < 1 {
                             player.flags.confused += rng.gen_range(1..=(def.level.max(1) as i16));
@@ -448,7 +458,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 4 => {
                     // Fear attack
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.saving_throw(rng) {
                         status_msg.push_str(" You resist the effects!");
                     } else if player.flags.afraid < 1 {
@@ -481,11 +493,15 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 9 => {
                     // Corrosion attack
                     status_msg.push_str(" A stinging red gas swirls about you.");
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                 }
                 10 => {
                     // Blindness attack
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.blind < 1 {
                         player.flags.blind += 10 + rng.gen_range(1..=(def.level.max(1) as i16));
                         status_msg.push_str(" Your eyes begin to sting.");
@@ -495,7 +511,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 11 => {
                     // Paralysis attack
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.free_action {
                         status_msg.push_str(" You are unaffected.");
                     } else if player.saving_throw(rng) {
@@ -534,13 +552,17 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 14 => {
                     // Poison
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     status_msg.push_str(" You feel very sick.");
                     player.flags.poisoned += 5 + rng.gen_range(1..=(def.level.max(1) as i16));
                 }
                 15 => {
                     // Lose dexterity
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.sustain_dex {
                         status_msg.push_str(" You feel clumsy for a moment, but it passes.");
                     } else {
@@ -550,7 +572,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 16 => {
                     // Lose constitution
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.sustain_con {
                         status_msg.push_str(" Your body resists the effects of the disease.");
                     } else {
@@ -561,7 +585,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 17 => {
                     // Lose intelligence
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.sustain_int {
                         status_msg.push_str(
                             " You have trouble thinking clearly, but your mind quickly clears.",
@@ -574,7 +600,9 @@ pub fn execute_monster_melee_attacks<R: rand::Rng>(
                 }
                 18 => {
                     // Lose wisdom
-                    player.take_damage(raw_damage);
+                    if raw_damage > 0 {
+                        player.take_damage(raw_damage);
+                    }
                     if player.flags.sustain_wis {
                         status_msg.push_str(" Your wisdom is sustained.");
                     } else {
@@ -1324,5 +1352,50 @@ mod tests {
         assert_eq!(slow_monster.movement_rate(0, 1, false), 0);
         assert_eq!(slow_monster.movement_rate(0, 2, false), 0);
         assert_eq!(slow_monster.movement_rate(0, 3, false), 1);
+    }
+
+    #[test]
+    fn test_flavour_attacks_with_zero_dice_deal_zero_damage() {
+        let mut rng = rand::thread_rng();
+        let mut player = Player::new("Peasant", Race::Human, Class::Warrior, 50, 10);
+        player.hp = 10;
+        player.max_hp = 10;
+
+        // Blubbering Idiot (creature index 1) has attack 79 (drools on you: 0d0 dmg)
+        let idiot = Monster::from_creature_id(1, 1, 1, false, &mut rng);
+        let mut status = String::new();
+        for _ in 0..20 {
+            execute_monster_melee_attacks(&idiot, &mut player, &mut status, &mut rng);
+        }
+        assert_eq!(player.hp, 10, "Blubbering Idiot drool attack must deal 0 damage");
+
+        // Pitiful-Looking Beggar (creature index 2) has attack 72 (begs you for money: 0d0 dmg)
+        let beggar = Monster::from_creature_id(2, 1, 1, false, &mut rng);
+        let mut status = String::new();
+        for _ in 0..20 {
+            execute_monster_melee_attacks(&beggar, &mut player, &mut status, &mut rng);
+        }
+        assert_eq!(player.hp, 10, "Beggar begging attack must deal 0 damage");
+    }
+
+    #[test]
+    fn test_townsperson_canonical_sleep_counters_when_spawned_sleeping() {
+        let mut rng = rand::thread_rng();
+
+        // Mercenary (c_idx 6) sleep counter is 250
+        let merc = Monster::from_creature_id(6, 1, 1, true, &mut rng);
+        assert!(merc.asleep >= 500, "Mercenary should spawn asleep with sleep >= 500");
+
+        // Veteran (c_idx 7) sleep counter is 250
+        let vet = Monster::from_creature_id(7, 1, 1, true, &mut rng);
+        assert!(vet.asleep >= 500, "Veteran should spawn asleep with sleep >= 500");
+
+        // Rogue (c_idx 4) sleep counter is 99
+        let rogue = Monster::from_creature_id(4, 1, 1, true, &mut rng);
+        assert!(rogue.asleep >= 198, "Rogue should spawn asleep with sleep >= 198");
+
+        // Idiot (c_idx 1) sleep counter is 0 -> should spawn awake
+        let idiot = Monster::from_creature_id(1, 1, 1, true, &mut rng);
+        assert_eq!(idiot.asleep, 0, "Idiot has 0 sleep counter and should spawn awake");
     }
 }

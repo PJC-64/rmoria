@@ -2761,7 +2761,7 @@ impl DungeonLevel {
             for _ in 0..count {
                 let (tx, ty) = self.find_random_floor_tile();
                 let c_idx = rng.gen_range(0..8);
-                mons.push(Monster::from_creature_id(c_idx, tx, ty, false, &mut rng));
+                mons.push(Monster::from_creature_id(c_idx, tx, ty, true, &mut rng));
             }
             return mons;
         }

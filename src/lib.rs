@@ -635,8 +635,13 @@ fn process_end_of_turn(
                 break;
             }
 
-            // 4. Melee attack if adjacent and hasn't cast spell
-            if !did_attack && dx <= 1 && dy <= 1 {
+            // 4. Melee attack if adjacent, awake, not stunned, and hasn't cast spell
+            if !did_attack
+                && dx <= 1
+                && dy <= 1
+                && monsters[m_idx].asleep == 0
+                && monsters[m_idx].stunned == 0
+            {
                 crate::entity::monster::execute_monster_melee_attacks(
                     &monsters[m_idx],
                     player,
