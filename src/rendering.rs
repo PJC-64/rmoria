@@ -1222,7 +1222,7 @@ fn get_overlay_row_text(
                 return "--- CASTING TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c) or ESC to cancel:".to_string();
+                return "Choose target direction using movement keys (or ESC to cancel):".to_string();
             }
             "".to_string()
         }
@@ -1231,7 +1231,7 @@ fn get_overlay_row_text(
                 return "--- TRAP DISARMING ---".to_string();
             }
             if row == 2 {
-                return "Choose direction of the trap to disarm (q/w/e/a/d/z/x/c):".to_string();
+                return "Choose direction of the trap to disarm (or ESC to cancel):".to_string();
             }
             "".to_string()
         }
@@ -1457,34 +1457,87 @@ fn get_overlay_row_text(
                 return "--- THROW / FIRE TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):"
+                return "Choose target direction using movement keys (or ESC to cancel):"
                     .to_string();
             }
             "".to_string()
         }
         ScreenMode::HelpMenu => {
-            let help_lines = &[
+            let (m1, m2, m3, cmd_title, cmd_lines): (&str, &str, &str, &str, &[&str]) =
+                match player.keybinding_mode {
+                    crate::input::KeybindingMode::Original => (
+                        "  7 8 9     (North-West / North / North-East)",
+                        "  4 5 6     (West / REST / East)",
+                        "  1 2 3     (South-West / South / South-East) [Arrows/Vi keys also work]",
+                        "Command Keys (Original UMoria Profile):",
+                        &[
+                            "  i/e : Inventory/Equipment h : Help menu           b : Browse book",
+                            "  w/t : Wear/Take off       r : Read scroll         m : Cast Mage spell",
+                            "  d   : Drop item           u : Use staff           p : Recite prayer",
+                            "  E   : Eat food            a : Aim wand            G : Gain spells",
+                            "  F   : Refill light        t   : Throw/Fire        D : Disarm trap",
+                            "  R   : Rest a while        f   : Bash door/foe     o/c : Open/Close door",
+                            "  #   : Toggle auto-search  T   : Tunnel rock       j : Jam door",
+                            "  s   : Search 1 turn       l   : Look              { : Inscribe item",
+                            "  x   : Swap weapon         /   : Identify symbol   C : Character Sheet",
+                            "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
+                            "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
+                        ],
+                    ),
+                    crate::input::KeybindingMode::Roguelike => (
+                        "  y k u     (North-West / North / North-East)",
+                        "  h . l     (West / REST / East)",
+                        "  b j n     (South-West / South / South-East) [Keypad/Arrows also work]",
+                        "Command Keys (Roguelike Profile):",
+                        &[
+                            "  i/I : Inventory/Equipment q : Quaff potion        b : Browse book",
+                            "  w/t : Wear/Take off       r : Read scroll         m : Cast Mage spell",
+                            "  d   : Drop item           u : Use staff           p : Recite prayer",
+                            "  E   : Eat food            a : Aim wand            G : Gain spells",
+                            "  F   : Refill light        t   : Throw/Fire        D : Disarm trap",
+                            "  R   : Rest a while        f   : Bash door/foe     o/c : Open/Close door",
+                            "  #   : Toggle auto-search  T   : Tunnel rock       j : Jam door",
+                            "  s   : Search 1 turn       x   : Look              { : Inscribe item",
+                            "  X   : Swap weapon         /   : Identify symbol   C : Character Sheet",
+                            "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
+                            "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
+                        ],
+                    ),
+                    crate::input::KeybindingMode::ModernWasd => (
+                        "  q w e     (North-West / North / North-East)",
+                        "  a s d     (West / REST / East)",
+                        "  z x c     (South-West / South / South-East) [Keypad/Arrows also work]",
+                        "Command Keys (Modern WASD Profile):",
+                        &[
+                            "  i/I : Inventory/Equipment h : Quaff potion        b : Browse book",
+                            "  W/t : Wear/Take off       r : Read scroll         m : Cast Mage spell",
+                            "  D   : Drop item           u : Use staff           p : Recite prayer",
+                            "  E   : Eat food            y : Aim wand            G : Gain spells",
+                            "  F   : Refill light        f/v : Fire/Throw item   n : Disarm trap",
+                            "  R   : Rest a while        B   : Bash door/foe     o/C : Open/Close door",
+                            "  #   : Toggle auto-search  T/g : Tunnel rock       j : Jam door",
+                            "  k   : Search 1 turn       l   : Look              { : Inscribe item",
+                            "  X   : Swap weapon         /   : Identify symbol   H : Character Sheet",
+                            "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
+                            "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
+                        ],
+                    ),
+                };
+
+            let mut help_lines: Vec<&str> = vec![
                 "--- MORIA COMMANDS & KEY BINDINGS ---",
                 "",
-                "Movement / Rest:          q w e     (North-West / North / North-East)",
-                "                          a s d     (West / REST / East)",
-                "                          z x c     (South-West / South / South-East)",
+                "Movement / Rest:",
+                m1,
+                m2,
+                m3,
                 "",
-                "Command Keys (Standard Profile):",
-                "  i/I : Inventory/Equipment h : Quaff potion        b : Browse book",
-                "  W/t : Wear/Take off       r : Read scroll         m : Cast Mage spell",
-                "  D   : Drop item           u : Use staff           p : Recite prayer",
-                "  E   : Eat food            y : Aim wand            G : Gain spells",
-                "  F   : Refill light        f/v : Fire/Throw item   n : Disarm trap",
-                "  R   : Rest a while        B   : Bash door/foe     o/C : Open/Close door",
-                "  #   : Toggle auto-search  T/g : Tunnel rock       j : Jam door",
-                "  k   : Search 1 turn       l   : Look              { : Inscribe item",
-                "  X   : Swap weapon         /   : Identify symbol   H : Character Sheet",
-                "  < / > : Up/Down stairs    =   : Options Menu      V : Hall of Fame",
-                "  Ctrl-P : Message History  Q   : Save and Quit     ? : Help Menu",
-                "",
-                "Press ESC or any key to return to the game.",
+                cmd_title,
             ];
+            help_lines.extend_from_slice(cmd_lines);
+            help_lines.push("");
+            help_lines.push("Press ESC or any key to return to the game.");
+
             if row < help_lines.len() {
                 help_lines[row].to_string()
             } else {
@@ -1531,7 +1584,7 @@ fn get_overlay_row_text(
                 return "--- AIM WAND TARGETING ---".to_string();
             }
             if row == 2 {
-                return "Choose target direction using movement keys (q/w/e/a/d/z/x/c):"
+                return "Choose target direction using movement keys (or ESC to cancel):"
                     .to_string();
             }
             "".to_string()
@@ -1541,7 +1594,7 @@ fn get_overlay_row_text(
                 return "--- JAM DOOR ---".to_string();
             }
             if row == 2 {
-                return "Choose direction to jam using movement keys (q/w/e/a/d/z/x/c):"
+                return "Choose direction to jam using movement keys (or ESC to cancel):"
                     .to_string();
             }
             "".to_string()

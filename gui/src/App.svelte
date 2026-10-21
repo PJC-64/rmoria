@@ -269,39 +269,39 @@
         }
       } else {
         if (key === '7' || code === 'Numpad7' || key === 'Home') {
-          sendKey('q');
+          sendKey('7');
           return;
         }
         if (key === '8' || code === 'Numpad8' || key === 'ArrowUp') {
-          sendKey('w');
+          sendKey('8');
           return;
         }
         if (key === '9' || code === 'Numpad9' || key === 'PageUp') {
-          sendKey('e');
+          sendKey('9');
           return;
         }
         if (key === '4' || code === 'Numpad4' || key === 'ArrowLeft') {
-          sendKey('a');
+          sendKey('4');
           return;
         }
         if (key === '5' || code === 'Numpad5' || key === 'Clear') {
-          sendKey('s');
+          sendKey('5');
           return;
         }
         if (key === '6' || code === 'Numpad6' || key === 'ArrowRight') {
-          sendKey('d');
+          sendKey('6');
           return;
         }
         if (key === '1' || code === 'Numpad1' || key === 'End') {
-          sendKey('z');
+          sendKey('1');
           return;
         }
         if (key === '2' || code === 'Numpad2' || key === 'ArrowDown') {
-          sendKey('x');
+          sendKey('2');
           return;
         }
         if (key === '3' || code === 'Numpad3' || key === 'PageDown') {
-          sendKey('c');
+          sendKey('3');
           return;
         }
       }
@@ -309,19 +309,19 @@
 
     // 2. Standalone diagonal navigation keys (laptop layouts)
     if (key === 'Home') {
-      sendKey('q');
+      sendKey('7');
       return;
     }
     if (key === 'PageUp') {
-      sendKey('e');
+      sendKey('9');
       return;
     }
     if (key === 'End') {
-      sendKey('z');
+      sendKey('1');
       return;
     }
     if (key === 'PageDown') {
-      sendKey('c');
+      sendKey('3');
       return;
     }
 
@@ -331,16 +331,16 @@
     } else {
       switch (key) {
         case 'ArrowUp':
-          sendKey('w');
+          sendKey('8');
           break;
         case 'ArrowDown':
-          sendKey('x');
+          sendKey('2');
           break;
         case 'ArrowLeft':
-          sendKey('a');
+          sendKey('4');
           break;
         case 'ArrowRight':
-          sendKey('d');
+          sendKey('6');
           break;
         case 'Escape':
           sendKey('\x1b');
@@ -647,15 +647,15 @@
           <h3 class="card-title">ACTIONS</h3>
           <div class="control-pad">
             <div class="control-pad-grid">
-              <button class="ctrl-btn" on:click={() => sendKey('q')}>NW</button>
-              <button class="ctrl-btn" on:click={() => sendKey('w')}>N</button>
-              <button class="ctrl-btn" on:click={() => sendKey('e')}>NE</button>
-              <button class="ctrl-btn" on:click={() => sendKey('a')}>W</button>
+              <button class="ctrl-btn" on:click={() => sendKey('7')}>NW</button>
+              <button class="ctrl-btn" on:click={() => sendKey('8')}>N</button>
+              <button class="ctrl-btn" on:click={() => sendKey('9')}>NE</button>
+              <button class="ctrl-btn" on:click={() => sendKey('4')}>W</button>
               <button class="ctrl-btn ctrl-rest" on:click={() => sendKey('R')}>Rest</button>
-              <button class="ctrl-btn" on:click={() => sendKey('d')}>E</button>
-              <button class="ctrl-btn" on:click={() => sendKey('z')}>SW</button>
-              <button class="ctrl-btn" on:click={() => sendKey('x')}>S</button>
-              <button class="ctrl-btn" on:click={() => sendKey('c')}>SE</button>
+              <button class="ctrl-btn" on:click={() => sendKey('6')}>E</button>
+              <button class="ctrl-btn" on:click={() => sendKey('1')}>SW</button>
+              <button class="ctrl-btn" on:click={() => sendKey('2')}>S</button>
+              <button class="ctrl-btn" on:click={() => sendKey('3')}>SE</button>
             </div>
           </div>
 

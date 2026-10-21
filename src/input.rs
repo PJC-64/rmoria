@@ -170,6 +170,85 @@ impl InputMapper {
         map_direction_key(key, self.mode)
     }
 
+    /// Maps a crossterm KeyCode when expecting a direction input.
+    pub fn map_direction_code(&self, code: crossterm::event::KeyCode) -> Option<Direction> {
+        map_direction_code(code, self.mode)
+    }
+
+    /// Maps a crossterm KeyCode and modifiers to an Action.
+    pub fn map_event(
+        &self,
+        code: crossterm::event::KeyCode,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> Action {
+        match code {
+            crossterm::event::KeyCode::Char(c) => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) && c.is_ascii_lowercase() {
+                    self.map_key(c.to_ascii_uppercase())
+                } else {
+                    self.map_key(c)
+                }
+            }
+            crossterm::event::KeyCode::Up => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::North)
+                } else {
+                    Action::Move(Direction::North)
+                }
+            }
+            crossterm::event::KeyCode::Down => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::South)
+                } else {
+                    Action::Move(Direction::South)
+                }
+            }
+            crossterm::event::KeyCode::Left => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::West)
+                } else {
+                    Action::Move(Direction::West)
+                }
+            }
+            crossterm::event::KeyCode::Right => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::East)
+                } else {
+                    Action::Move(Direction::East)
+                }
+            }
+            crossterm::event::KeyCode::Home => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::NorthWest)
+                } else {
+                    Action::Move(Direction::NorthWest)
+                }
+            }
+            crossterm::event::KeyCode::PageUp => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::NorthEast)
+                } else {
+                    Action::Move(Direction::NorthEast)
+                }
+            }
+            crossterm::event::KeyCode::End => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::SouthWest)
+                } else {
+                    Action::Move(Direction::SouthWest)
+                }
+            }
+            crossterm::event::KeyCode::PageDown => {
+                if modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    Action::Run(Direction::SouthEast)
+                } else {
+                    Action::Move(Direction::SouthEast)
+                }
+            }
+            _ => Action::Unknown(' '),
+        }
+    }
+
     fn map_original(&self, key: char) -> Action {
         match key {
             // Numeric Keypad / Number Movement (canonical Original)
@@ -414,8 +493,7 @@ pub fn map_direction_key(key: char, mode: KeybindingMode) -> Option<Direction> {
     }
 
     match mode {
-        KeybindingMode::Original => None,
-        KeybindingMode::Roguelike => match key {
+        KeybindingMode::Original | KeybindingMode::Roguelike => match key {
             'h' | 'H' => Some(Direction::West),
             'j' | 'J' => Some(Direction::South),
             'k' | 'K' => Some(Direction::North),
@@ -439,6 +517,24 @@ pub fn map_direction_key(key: char, mode: KeybindingMode) -> Option<Direction> {
             'c' | 'C' => Some(Direction::SouthEast),
             _ => None,
         },
+    }
+}
+
+pub fn map_direction_code(
+    code: crossterm::event::KeyCode,
+    mode: KeybindingMode,
+) -> Option<Direction> {
+    match code {
+        crossterm::event::KeyCode::Char(c) => map_direction_key(c, mode),
+        crossterm::event::KeyCode::Up => Some(Direction::North),
+        crossterm::event::KeyCode::Down => Some(Direction::South),
+        crossterm::event::KeyCode::Left => Some(Direction::West),
+        crossterm::event::KeyCode::Right => Some(Direction::East),
+        crossterm::event::KeyCode::Home => Some(Direction::NorthWest),
+        crossterm::event::KeyCode::PageUp => Some(Direction::NorthEast),
+        crossterm::event::KeyCode::End => Some(Direction::SouthWest),
+        crossterm::event::KeyCode::PageDown => Some(Direction::SouthEast),
+        _ => None,
     }
 }
 
@@ -468,14 +564,98 @@ mod tests {
     #[test]
     fn test_original_keys_profile() {
         let orig_mapper = InputMapper::new(KeybindingMode::Original);
+        // All 9 keypad keys for movement & rest
         assert_eq!(orig_mapper.map_key('1'), Action::Move(Direction::SouthWest));
+        assert_eq!(orig_mapper.map_key('2'), Action::Move(Direction::South));
+        assert_eq!(orig_mapper.map_key('3'), Action::Move(Direction::SouthEast));
+        assert_eq!(orig_mapper.map_key('4'), Action::Move(Direction::West));
+        assert_eq!(orig_mapper.map_key('5'), Action::Rest);
+        assert_eq!(orig_mapper.map_key('6'), Action::Move(Direction::East));
+        assert_eq!(orig_mapper.map_key('7'), Action::Move(Direction::NorthWest));
         assert_eq!(orig_mapper.map_key('8'), Action::Move(Direction::North));
+        assert_eq!(orig_mapper.map_key('9'), Action::Move(Direction::NorthEast));
+
+        // Running commands
         assert_eq!(orig_mapper.map_key('B'), Action::Run(Direction::SouthWest));
         assert_eq!(orig_mapper.map_key('K'), Action::Run(Direction::North));
+        assert_eq!(orig_mapper.map_key('H'), Action::Run(Direction::West));
+
+        // Commands
         assert_eq!(orig_mapper.map_key('M'), Action::ReducedMap);
         assert_eq!(orig_mapper.map_key('L'), Action::LocateMap);
         assert_eq!(orig_mapper.map_key('V'), Action::HighScores);
         assert_eq!(orig_mapper.map_key('/'), Action::IdentifySymbol);
+    }
+
+    #[test]
+    fn test_event_and_direction_code_mapping() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        let orig_mapper = InputMapper::new(KeybindingMode::Original);
+
+        // Arrow keys in map_event
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::Up, KeyModifiers::empty()),
+            Action::Move(Direction::North)
+        );
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::Up, KeyModifiers::SHIFT),
+            Action::Run(Direction::North)
+        );
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::Left, KeyModifiers::empty()),
+            Action::Move(Direction::West)
+        );
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::Right, KeyModifiers::SHIFT),
+            Action::Run(Direction::East)
+        );
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::Home, KeyModifiers::empty()),
+            Action::Move(Direction::NorthWest)
+        );
+        assert_eq!(
+            orig_mapper.map_event(KeyCode::PageDown, KeyModifiers::empty()),
+            Action::Move(Direction::SouthEast)
+        );
+
+        // Direction code mapping in Original mode: keypad, arrows, and vi keys
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Char('8')),
+            Some(Direction::North)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Char('k')),
+            Some(Direction::North)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Char('h')),
+            Some(Direction::West)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Up),
+            Some(Direction::North)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Down),
+            Some(Direction::South)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Left),
+            Some(Direction::West)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Right),
+            Some(Direction::East)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::Home),
+            Some(Direction::NorthWest)
+        );
+        assert_eq!(
+            orig_mapper.map_direction_code(KeyCode::End),
+            Some(Direction::SouthWest)
+        );
     }
 
     #[test]

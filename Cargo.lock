@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "rmoria"
-version = "1.3.2"
+version = "1.4.0"
 dependencies = [
  "crossterm",
  "rand",

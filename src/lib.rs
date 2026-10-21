@@ -2136,9 +2136,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                 )?;
                                 continue 'game_loop;
                             }
-                            if let KeyCode::Char(c) = key_event.code {
-                                let action = mapper.map_key(c);
-                                match action {
+                            let action = mapper.map_event(key_event.code, key_event.modifiers);
+                            match action {
                                     Action::Move(mut direction)
                                     | Action::MoveWithoutPickup(mut direction) => {
                                         if player.flags.confused > 0
@@ -3150,7 +3149,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     _ => {}
                                 }
-                            }
                         } else if screen_mode == ScreenMode::BarterBuyMenu
                             || screen_mode == ScreenMode::BarterSellMenu
                         {
@@ -3207,16 +3205,12 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         active_haggle = None;
                                     }
                                 }
-                                KeyCode::PageDown => {
-                                    if screen_mode == ScreenMode::HighScores {
-                                        player.high_score_page += 1;
-                                    }
+                                KeyCode::PageDown if screen_mode == ScreenMode::HighScores => {
+                                    player.high_score_page += 1;
                                 }
-                                KeyCode::PageUp => {
-                                    if screen_mode == ScreenMode::HighScores {
-                                        player.high_score_page =
-                                            player.high_score_page.saturating_sub(1);
-                                    }
+                                KeyCode::PageUp if screen_mode == ScreenMode::HighScores => {
+                                    player.high_score_page =
+                                        player.high_score_page.saturating_sub(1);
                                 }
                                 KeyCode::Enter => {
                                     if screen_mode == ScreenMode::HighScores {
@@ -3254,7 +3248,11 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         status_msg = "Returned to dungeon.".to_string();
                                     }
                                 }
-                                KeyCode::Char(c) => {
+                                code => {
+                                    let c = match code {
+                                        KeyCode::Char(ch) => ch,
+                                        _ => '\0',
+                                    };
                                     if (screen_mode == ScreenMode::InventoryList && c == 'i')
                                         || (screen_mode == ScreenMode::EquipmentList && c == 'I')
                                         || screen_mode == ScreenMode::HelpMenu
@@ -3266,15 +3264,7 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         screen_mode = ScreenMode::Dungeon;
                                         status_msg = "Returned to dungeon.".to_string();
                                     } else if screen_mode == ScreenMode::LocateMap {
-                                        let dir_opt = mapper.map_direction_key(c).or_else(|| {
-                                            match mapper.map_key(c) {
-                                                Action::Move(d)
-                                                | Action::Run(d)
-                                                | Action::MoveWithoutPickup(d) => Some(d),
-                                                _ => None,
-                                            }
-                                        });
-                                        if let Some(dir) = dir_opt {
+                                        if let Some(dir) = mapper.map_direction_code(code) {
                                             let (dx, dy) = match dir {
                                                 Direction::NorthWest => (-20, -10),
                                                 Direction::North => (0, -10),
@@ -3365,19 +3355,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                     } else if screen_mode == ScreenMode::CharacterStatsMenu {
                                         // Exit sheet via ESC
                                     } else if screen_mode == ScreenMode::SelectDisarmDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -3602,19 +3581,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::HighScores;
                                         }
                                     } else if screen_mode == ScreenMode::SelectOpenDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -3659,19 +3627,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectLookDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             if dx != 0 || dy != 0 {
                                                 let mut sx = player.x as isize;
                                                 let mut sy = player.y as isize;
@@ -3723,19 +3680,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectCloseDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -3753,19 +3699,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectJamDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -3801,19 +3736,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectBashDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -4049,19 +3973,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectTunnelDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             let sx = (player.x as isize + dx) as usize;
                                             let sy = (player.y as isize + dy) as usize;
 
@@ -4261,26 +4174,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectThrowDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let mut dx = match direction {
-                                                Direction::NorthWest
-                                                | Direction::West
-                                                | Direction::SouthWest => -1,
-                                                Direction::NorthEast
-                                                | Direction::East
-                                                | Direction::SouthEast => 1,
-                                                _ => 0,
-                                            };
-                                            let mut dy = match direction {
-                                                Direction::NorthWest
-                                                | Direction::North
-                                                | Direction::NorthEast => -1,
-                                                Direction::SouthWest
-                                                | Direction::South
-                                                | Direction::SouthEast => 1,
-                                                _ => 0,
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (mut dx, mut dy) = direction.to_dx_dy();
 
                                             if dx == 0 && dy == 0 {
                                                 status_msg =
@@ -4598,19 +4493,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectWandDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
 
                                             let mut charges_left = 0;
                                             let mut s_idx = 0;
@@ -4912,19 +4796,8 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             }
                                         }
                                     } else if screen_mode == ScreenMode::SelectSpellDirection {
-                                        let action = mapper.map_key(c);
-                                        if let Action::Move(direction) = action {
-                                            let (dx, dy) = match direction {
-                                                Direction::NorthWest => (-1, -1),
-                                                Direction::North => (0, -1),
-                                                Direction::NorthEast => (1, -1),
-                                                Direction::West => (-1, 0),
-                                                Direction::Rest => (0, 0),
-                                                Direction::East => (1, 0),
-                                                Direction::SouthWest => (-1, 1),
-                                                Direction::South => (0, 1),
-                                                Direction::SouthEast => (1, 1),
-                                            };
+                                        if let Some(direction) = mapper.map_direction_code(code) {
+                                            let (dx, dy) = direction.to_dx_dy();
                                             if (dx != 0 || dy != 0)
                                                 && let Some(def) = crate::magic::get_spell_def(
                                                     player.class,
@@ -5212,7 +5085,6 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                     }
                                 }
-                                _ => {}
                             }
                         }
 
