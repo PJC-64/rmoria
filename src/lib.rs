@@ -99,6 +99,17 @@ pub fn get_scores_path() -> std::path::PathBuf {
     path
 }
 
+/// Converts an alphabetic menu choice ('a'..='z') to an index (0..=25).
+/// Returns None for any non-lowercase ASCII character, preventing underflow.
+#[inline]
+pub fn menu_char_to_index(c: char) -> Option<usize> {
+    if c.is_ascii_lowercase() {
+        Some((c as u8 - b'a') as usize)
+    } else {
+        None
+    }
+}
+
 mod event {
     #[allow(unused_imports)]
     pub use crossterm::event::{Event, KeyCode, KeyModifiers};
@@ -3495,46 +3506,48 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             player_acted = true;
                                         }
                                     } else if screen_mode == ScreenMode::EatMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        let food_indices: Vec<usize> = player
-                                            .inventory
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, item)| {
-                                                matches!(item.item_type, ItemType::Food { .. })
-                                            })
-                                            .map(|(i, _)| i)
-                                            .collect();
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let food_indices: Vec<usize> = player
+                                                .inventory
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, item)| {
+                                                    matches!(item.item_type, ItemType::Food { .. })
+                                                })
+                                                .map(|(i, _)| i)
+                                                .collect();
 
-                                        if idx < food_indices.len() {
-                                            let inv_idx = food_indices[idx];
-                                            let nutrition = if let ItemType::Food { nutrition } =
-                                                player.inventory[inv_idx].item_type
-                                            {
-                                                nutrition
-                                            } else {
-                                                0
-                                            };
+                                            if idx < food_indices.len() {
+                                                let inv_idx = food_indices[idx];
+                                                let nutrition = if let ItemType::Food { nutrition } =
+                                                    player.inventory[inv_idx].item_type
+                                                {
+                                                    nutrition
+                                                } else {
+                                                    0
+                                                };
 
-                                            let current_food = player.food.max(0);
-                                            player.food = (current_food + nutrition).min(15000);
-                                            let name = player.inventory[inv_idx].name.clone();
+                                                let current_food = player.food.max(0);
+                                                player.food = (current_food + nutrition).min(15000);
+                                                let name = player.inventory[inv_idx].name.clone();
 
-                                            player.inventory[inv_idx].count -= 1;
-                                            if player.inventory[inv_idx].count == 0 {
-                                                player.inventory.remove(inv_idx);
+                                                player.inventory[inv_idx].count -= 1;
+                                                if player.inventory[inv_idx].count == 0 {
+                                                    player.inventory.remove(inv_idx);
+                                                }
+
+                                                status_msg = format!(
+                                                    "You ate {}! Restored {} nutrition.",
+                                                    name, nutrition
+                                                );
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
                                             }
-
-                                            status_msg = format!(
-                                                "You ate {}! Restored {} nutrition.",
-                                                name, nutrition
-                                            );
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
                                         }
                                     } else if screen_mode == ScreenMode::InscribeMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.inventory.len() {
+                                        if let Some(idx) = menu_char_to_index(c)
+                                            && idx < player.inventory.len()
+                                        {
                                             active_inscribe = Some(InscribeState {
                                                 item_index: idx,
                                                 is_equipment: false,
@@ -4115,63 +4128,66 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::DropMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.inventory.len() {
-                                            let mut dropped = player.inventory[idx].clone();
-                                            dropped.count = 1;
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            if idx < player.inventory.len() {
+                                                let mut dropped = player.inventory[idx].clone();
+                                                dropped.count = 1;
 
-                                            let name = player.inventory[idx].name.clone();
-                                            player.inventory[idx].count -= 1;
-                                            if player.inventory[idx].count == 0 {
-                                                player.inventory.remove(idx);
-                                            }
-
-                                            level.items.push(FloorItem {
-                                                x: player.x,
-                                                y: player.y,
-                                                item: dropped,
-                                            });
-                                            status_msg = format!("You dropped a {}.", name);
-                                            player_acted = true;
-                                        }
-                                        screen_mode = ScreenMode::Dungeon;
-                                    } else if screen_mode == ScreenMode::IdentifyMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.inventory.len() {
-                                            let target_name = player.inventory[idx].name.clone();
-                                            player.identify_item_kind(&target_name);
-
-                                            if let Some(scroll_pos) = player
-                                                .inventory
-                                                .iter()
-                                                .position(|i| i.name.contains("Identify"))
-                                            {
-                                                player.inventory[scroll_pos].count -= 1;
-                                                if player.inventory[scroll_pos].count == 0 {
-                                                    player.inventory.remove(scroll_pos);
+                                                let name = player.inventory[idx].name.clone();
+                                                player.inventory[idx].count -= 1;
+                                                if player.inventory[idx].count == 0 {
+                                                    player.inventory.remove(idx);
                                                 }
-                                            }
-                                            player.identify_item_kind("Scroll of Identify");
 
-                                            status_msg =
-                                                format!("You identified the {}!", target_name);
-                                            player_acted = true;
-                                        } else {
-                                            status_msg = "Invalid item choice.".to_string();
-                                        }
-                                        screen_mode = ScreenMode::Dungeon;
-                                    } else if screen_mode == ScreenMode::SelectThrowItem {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.inventory.len() {
-                                            selected_throw_inv_idx = idx;
-                                            screen_mode = ScreenMode::SelectThrowDirection;
-                                            status_msg = format!(
-                                                "Throw {} in which direction? (q/w/e/a/d/z/x/c, ESC to cancel):",
-                                                player.inventory[idx].name
-                                            );
-                                        } else {
-                                            status_msg = "Invalid item choice.".to_string();
+                                                level.items.push(FloorItem {
+                                                    x: player.x,
+                                                    y: player.y,
+                                                    item: dropped,
+                                                });
+                                                status_msg = format!("You dropped a {}.", name);
+                                                player_acted = true;
+                                            }
                                             screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    } else if screen_mode == ScreenMode::IdentifyMenu {
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            if idx < player.inventory.len() {
+                                                let target_name = player.inventory[idx].name.clone();
+                                                player.identify_item_kind(&target_name);
+
+                                                if let Some(scroll_pos) = player
+                                                    .inventory
+                                                    .iter()
+                                                    .position(|i| i.name.contains("Identify"))
+                                                {
+                                                    player.inventory[scroll_pos].count -= 1;
+                                                    if player.inventory[scroll_pos].count == 0 {
+                                                        player.inventory.remove(scroll_pos);
+                                                    }
+                                                }
+                                                player.identify_item_kind("Scroll of Identify");
+
+                                                status_msg =
+                                                    format!("You identified the {}!", target_name);
+                                                player_acted = true;
+                                            } else {
+                                                status_msg = "Invalid item choice.".to_string();
+                                            }
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    } else if screen_mode == ScreenMode::SelectThrowItem {
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            if idx < player.inventory.len() {
+                                                selected_throw_inv_idx = idx;
+                                                screen_mode = ScreenMode::SelectThrowDirection;
+                                                status_msg = format!(
+                                                    "Throw {} in which direction? (movement keys, ESC to cancel):",
+                                                    player.inventory[idx].name
+                                                );
+                                            } else {
+                                                status_msg = "Invalid item choice.".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            }
                                         }
                                     } else if screen_mode == ScreenMode::SelectThrowDirection {
                                         if let Some(direction) = mapper.map_direction_code(code) {
@@ -4466,332 +4482,342 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                         screen_mode = ScreenMode::Dungeon;
                                     } else if screen_mode == ScreenMode::AimWandMenu {
-                                        let wands: Vec<(usize, &Item)> = player
-                                            .inventory
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, item)| {
-                                                matches!(item.item_type, ItemType::Wand { .. })
-                                            })
-                                            .collect();
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < wands.len() {
-                                            let (inv_idx, item) = wands[idx];
-                                            if let ItemType::Wand { charges, .. } = item.item_type {
-                                                if charges > 0 {
-                                                    selected_wand_inv_idx = inv_idx;
-                                                    screen_mode = ScreenMode::SelectWandDirection;
-                                                    status_msg =
-                                                        "Aim wand: choose direction...".to_string();
-                                                } else {
-                                                    status_msg = "That wand has no charges left!"
-                                                        .to_string();
-                                                    screen_mode = ScreenMode::Dungeon;
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let wands: Vec<(usize, &Item)> = player
+                                                .inventory
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, item)| {
+                                                    matches!(item.item_type, ItemType::Wand { .. })
+                                                })
+                                                .collect();
+                                            if idx < wands.len() {
+                                                let (inv_idx, item) = wands[idx];
+                                                if let ItemType::Wand { charges, .. } = item.item_type {
+                                                    if charges > 0 {
+                                                        selected_wand_inv_idx = inv_idx;
+                                                        screen_mode = ScreenMode::SelectWandDirection;
+                                                        status_msg =
+                                                            "Aim wand: choose direction...".to_string();
+                                                    } else {
+                                                        status_msg = "That wand has no charges left!"
+                                                            .to_string();
+                                                        screen_mode = ScreenMode::Dungeon;
+                                                    }
                                                 }
+                                            } else {
+                                                screen_mode = ScreenMode::Dungeon;
                                             }
-                                        } else {
-                                            screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::SelectWandDirection {
                                         if let Some(direction) = mapper.map_direction_code(code) {
                                             let (dx, dy) = direction.to_dx_dy();
-
-                                            let mut charges_left = 0;
-                                            let mut s_idx = 0;
-                                            if let ItemType::Wand {
-                                                ref mut charges,
-                                                spell_index,
-                                            } = player.inventory[selected_wand_inv_idx].item_type
-                                                && *charges > 0
-                                            {
-                                                *charges -= 1;
-                                                charges_left = *charges;
-                                                s_idx = spell_index;
-                                            }
-
-                                            let mut cx = player.x as isize + dx;
-                                            let mut cy = player.y as isize + dy;
-                                            status_msg =
-                                                "Your wand beam fades into the dark!".to_string();
-
-                                            while let Some(tile) =
-                                                level.get_tile(cx as usize, cy as usize)
-                                            {
-                                                if tile.tile_type == TileType::Wall
-                                                    || tile.tile_type == TileType::SecretDoor
-                                                    || matches!(
-                                                        tile.tile_type,
-                                                        TileType::MagmaVein { .. }
-                                                            | TileType::QuartzVein { .. }
-                                                            | TileType::Rubble
-                                                    )
+                                            if dx == 0 && dy == 0 {
+                                                status_msg =
+                                                    "You cannot aim at yourself.".to_string();
+                                                screen_mode = ScreenMode::Dungeon;
+                                            } else {
+                                                let mut charges_left = 0;
+                                                let mut s_idx = 0;
+                                                if let ItemType::Wand {
+                                                    ref mut charges,
+                                                    spell_index,
+                                                } = player.inventory[selected_wand_inv_idx].item_type
+                                                    && *charges > 0
                                                 {
-                                                    status_msg = "Your wand blast strikes a wall and dissipates!".to_string();
-                                                    break;
+                                                    *charges -= 1;
+                                                    charges_left = *charges;
+                                                    s_idx = spell_index;
                                                 }
-                                                if let Some(m_idx) = monsters.iter().position(|m| {
-                                                    m.x == cx as usize && m.y == cy as usize
-                                                }) {
-                                                    let dmg = if s_idx == 0 {
-                                                        rng.gen_range(2..=8)
-                                                    } else {
-                                                        rng.gen_range(4..=24)
-                                                    };
-                                                    let m_name = monsters[m_idx].name.clone();
-                                                    let exp = monsters[m_idx].experience_reward;
-                                                    let m_lvl = monsters[m_idx].level;
-                                                    let is_win = monsters[m_idx].is_win_creature()
-                                                        || m_name == "The Balrog";
-                                                    status_msg = format!(
-                                                        "Wand beam hits {} for {} damage!",
-                                                        m_name, dmg
-                                                    );
-                                                    monsters[m_idx].was_attacked = true;
-                                                    if monsters[m_idx].take_damage(dmg) {
-                                                        status_msg.push_str(" You killed it!");
-                                                        let old_exp = player.exp;
-                                                        let old_lvl = player.level;
-                                                        let leveled_up =
-                                                            player.gain_kill_experience(exp, m_lvl);
-                                                        let gained =
-                                                            player.exp.saturating_sub(old_exp);
-                                                        if leveled_up || player.level > old_lvl {
-                                                            status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
-                                                        } else if gained > 0 {
-                                                            status_msg.push_str(&format!(
-                                                                " Gained {} EXP.",
-                                                                gained
-                                                            ));
-                                                        }
-                                                        if level.depth == 0 {
-                                                            player.killed_town_npcs += 1;
-                                                        }
-                                                        if is_win {
-                                                            player.balrog_killed = true;
-                                                            player.total_winner = true;
-                                                        }
-                                                        monsters.remove(m_idx);
-                                                    }
-                                                    break;
-                                                }
-                                                cx += dx;
-                                                cy += dy;
-                                            }
 
-                                            status_msg.push_str(&format!(
-                                                " ({} charges remaining)",
-                                                charges_left
-                                            ));
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
+                                                let mut cx = player.x as isize + dx;
+                                                let mut cy = player.y as isize + dy;
+                                                status_msg =
+                                                    "Your wand beam fades into the dark!".to_string();
+
+                                                while let Some(tile) =
+                                                    level.get_tile(cx as usize, cy as usize)
+                                                {
+                                                    if tile.tile_type == TileType::Wall
+                                                        || tile.tile_type == TileType::SecretDoor
+                                                        || matches!(
+                                                            tile.tile_type,
+                                                            TileType::MagmaVein { .. }
+                                                                | TileType::QuartzVein { .. }
+                                                                | TileType::Rubble
+                                                        )
+                                                    {
+                                                        status_msg = "Your wand blast strikes a wall and dissipates!".to_string();
+                                                        break;
+                                                    }
+                                                    if let Some(m_idx) = monsters.iter().position(|m| {
+                                                        m.x == cx as usize && m.y == cy as usize
+                                                    }) {
+                                                        let dmg = if s_idx == 0 {
+                                                            rng.gen_range(2..=8)
+                                                        } else {
+                                                            rng.gen_range(4..=24)
+                                                        };
+                                                        let m_name = monsters[m_idx].name.clone();
+                                                        let exp = monsters[m_idx].experience_reward;
+                                                        let m_lvl = monsters[m_idx].level;
+                                                        let is_win = monsters[m_idx].is_win_creature()
+                                                            || m_name == "The Balrog";
+                                                        status_msg = format!(
+                                                            "Wand beam hits {} for {} damage!",
+                                                            m_name, dmg
+                                                        );
+                                                        monsters[m_idx].was_attacked = true;
+                                                        if monsters[m_idx].take_damage(dmg) {
+                                                            status_msg.push_str(" You killed it!");
+                                                            let old_exp = player.exp;
+                                                            let old_lvl = player.level;
+                                                            let leveled_up =
+                                                                player.gain_kill_experience(exp, m_lvl);
+                                                            let gained =
+                                                                player.exp.saturating_sub(old_exp);
+                                                            if leveled_up || player.level > old_lvl {
+                                                                status_msg.push_str(&format!(" Congratulations! You reached level {}.", player.level));
+                                                            } else if gained > 0 {
+                                                                status_msg.push_str(&format!(
+                                                                    " Gained {} EXP.",
+                                                                    gained
+                                                                ));
+                                                            }
+                                                            if level.depth == 0 {
+                                                                player.killed_town_npcs += 1;
+                                                            }
+                                                            if is_win {
+                                                                player.balrog_killed = true;
+                                                                player.total_winner = true;
+                                                            }
+                                                            monsters.remove(m_idx);
+                                                        }
+                                                        break;
+                                                    }
+                                                    cx += dx;
+                                                    cy += dy;
+                                                }
+
+                                                status_msg.push_str(&format!(
+                                                    " ({} charges remaining)",
+                                                    charges_left
+                                                ));
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
+                                            }
                                         }
                                     } else if screen_mode == ScreenMode::UseStaffMenu {
-                                        let staves: Vec<(usize, &Item)> = player
-                                            .inventory
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, item)| {
-                                                matches!(item.item_type, ItemType::Staff { .. })
-                                            })
-                                            .collect();
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < staves.len() {
-                                            let (inv_idx, _item) = staves[idx];
-                                            let mut charges_left = 0;
-                                            let mut p_idx = 0;
-                                            let mut used_charge = false;
-                                            if let ItemType::Staff {
-                                                ref mut charges,
-                                                prayer_index,
-                                            } = player.inventory[inv_idx].item_type
-                                                && *charges > 0
-                                            {
-                                                *charges -= 1;
-                                                charges_left = *charges;
-                                                p_idx = prayer_index;
-                                                used_charge = true;
-                                            }
-
-                                            if used_charge {
-                                                if p_idx == 1 {
-                                                    let heal = rng.gen_range(2..=16);
-                                                    player.hp =
-                                                        (player.hp + heal).min(player.max_hp);
-                                                    status_msg = format!(
-                                                        "You use the staff. Restored {} HP. ({} charges remaining)",
-                                                        heal, charges_left
-                                                    );
-                                                } else {
-                                                    status_msg = format!(
-                                                        "You use the staff, but nothing happens. ({} charges remaining)",
-                                                        charges_left
-                                                    );
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let staves: Vec<(usize, &Item)> = player
+                                                .inventory
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, item)| {
+                                                    matches!(item.item_type, ItemType::Staff { .. })
+                                                })
+                                                .collect();
+                                            if idx < staves.len() {
+                                                let (inv_idx, _item) = staves[idx];
+                                                let mut charges_left = 0;
+                                                let mut p_idx = 0;
+                                                let mut used_charge = false;
+                                                if let ItemType::Staff {
+                                                    ref mut charges,
+                                                    prayer_index,
+                                                } = player.inventory[inv_idx].item_type
+                                                    && *charges > 0
+                                                {
+                                                    *charges -= 1;
+                                                    charges_left = *charges;
+                                                    p_idx = prayer_index;
+                                                    used_charge = true;
                                                 }
-                                                player_acted = true;
-                                            } else {
-                                                status_msg =
-                                                    "That staff has no charges left!".to_string();
-                                            }
-                                        }
-                                        screen_mode = ScreenMode::Dungeon;
-                                    } else if screen_mode == ScreenMode::StudyMenu {
-                                        let idx = (c as u8).saturating_sub(b'a') as usize;
-                                        let learnable = player.learnable_spells();
-                                        if idx < learnable.len() {
-                                            let spell_idx = learnable[idx];
-                                            player.learn_spell(spell_idx);
-                                            if let Some(def) = crate::magic::get_spell_def(
-                                                player.class,
-                                                spell_idx,
-                                                player.is_priest_caster(),
-                                            ) {
-                                                status_msg = format!(
-                                                    "You have learned the spell of {}.",
-                                                    def.name
-                                                );
-                                            }
-                                            if player.new_spells_to_learn == 0
-                                                || player.learnable_spells().is_empty()
-                                            {
-                                                screen_mode = ScreenMode::Dungeon;
-                                            }
-                                            player_acted = true;
-                                        }
-                                    } else if screen_mode == ScreenMode::CastSpellMenu {
-                                        let idx = (c as u8).saturating_sub(b'a') as usize;
-                                        let known = player.known_spells(false);
-                                        if idx < known.len() {
-                                            let spell_idx = known[idx];
-                                            if let Some(def) = crate::magic::get_spell_def(
-                                                player.class,
-                                                spell_idx,
-                                                false,
-                                            ) {
-                                                let fail_chance =
-                                                    crate::magic::spell_chance_of_success(
-                                                        player.level,
-                                                        player.class,
-                                                        player.stats.intelligence,
-                                                        player.mana,
-                                                        def,
-                                                    );
-                                                let failed = rng.gen_range(1..=100) <= fail_chance;
-                                                if failed {
-                                                    status_msg = "You failed to get the spell off!"
-                                                        .to_string();
-                                                    crate::magic::apply_spell_mana_and_fatigue(
-                                                        &mut player,
-                                                        def.mana_required,
-                                                        false,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
-                                                    screen_mode = ScreenMode::Dungeon;
+
+                                                if used_charge {
+                                                    if p_idx == 1 {
+                                                        let heal = rng.gen_range(2..=16);
+                                                        player.hp =
+                                                            (player.hp + heal).min(player.max_hp);
+                                                        status_msg = format!(
+                                                            "You use the staff. Restored {} HP. ({} charges remaining)",
+                                                            heal, charges_left
+                                                        );
+                                                    } else {
+                                                        status_msg = format!(
+                                                            "You use the staff, but nothing happens. ({} charges remaining)",
+                                                            charges_left
+                                                        );
+                                                    }
                                                     player_acted = true;
-                                                } else if crate::magic::is_directional_spell(
-                                                    spell_idx, false,
+                                                } else {
+                                                    status_msg =
+                                                        "That staff has no charges left!".to_string();
+                                                }
+                                            }
+                                            screen_mode = ScreenMode::Dungeon;
+                                        }
+                                    } else if screen_mode == ScreenMode::StudyMenu {
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let learnable = player.learnable_spells();
+                                            if idx < learnable.len() {
+                                                let spell_idx = learnable[idx];
+                                                player.learn_spell(spell_idx);
+                                                if let Some(def) = crate::magic::get_spell_def(
+                                                    player.class,
+                                                    spell_idx,
+                                                    player.is_priest_caster(),
                                                 ) {
-                                                    selected_spell_idx = spell_idx;
-                                                    selected_spell_is_prayer = false;
-                                                    screen_mode = ScreenMode::SelectSpellDirection;
                                                     status_msg = format!(
-                                                        "Aim {}: choose direction (ESC to cancel)...",
+                                                        "You have learned the spell of {}.",
                                                         def.name
                                                     );
-                                                } else {
-                                                    crate::magic::execute_non_directional_spell(
-                                                        spell_idx,
-                                                        false,
-                                                        &mut player,
-                                                        &mut level,
-                                                        &mut monsters,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
-                                                    if (player.spells_worked & (1 << spell_idx))
-                                                        == 0
-                                                    {
-                                                        player.add_experience(def.exp_gain * 4);
-                                                        player.spells_worked |= 1 << spell_idx;
-                                                    }
-                                                    crate::magic::apply_spell_mana_and_fatigue(
-                                                        &mut player,
-                                                        def.mana_required,
-                                                        false,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
+                                                }
+                                                if player.new_spells_to_learn == 0
+                                                    || player.learnable_spells().is_empty()
+                                                {
                                                     screen_mode = ScreenMode::Dungeon;
-                                                    player_acted = true;
+                                                }
+                                                player_acted = true;
+                                            }
+                                        }
+                                    } else if screen_mode == ScreenMode::CastSpellMenu {
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let known = player.known_spells(false);
+                                            if idx < known.len() {
+                                                let spell_idx = known[idx];
+                                                if let Some(def) = crate::magic::get_spell_def(
+                                                    player.class,
+                                                    spell_idx,
+                                                    false,
+                                                ) {
+                                                    let fail_chance =
+                                                        crate::magic::spell_chance_of_success(
+                                                            player.level,
+                                                            player.class,
+                                                            player.stats.intelligence,
+                                                            player.mana,
+                                                            def,
+                                                        );
+                                                    let failed = rng.gen_range(1..=100) <= fail_chance;
+                                                    if failed {
+                                                        status_msg = "You failed to get the spell off!"
+                                                            .to_string();
+                                                        crate::magic::apply_spell_mana_and_fatigue(
+                                                            &mut player,
+                                                            def.mana_required,
+                                                            false,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        screen_mode = ScreenMode::Dungeon;
+                                                        player_acted = true;
+                                                    } else if crate::magic::is_directional_spell(
+                                                        spell_idx, false,
+                                                    ) {
+                                                        selected_spell_idx = spell_idx;
+                                                        selected_spell_is_prayer = false;
+                                                        screen_mode = ScreenMode::SelectSpellDirection;
+                                                        status_msg = format!(
+                                                            "Aim {}: choose direction (ESC to cancel)...",
+                                                            def.name
+                                                        );
+                                                    } else {
+                                                        crate::magic::execute_non_directional_spell(
+                                                            spell_idx,
+                                                            false,
+                                                            &mut player,
+                                                            &mut level,
+                                                            &mut monsters,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        if (player.spells_worked & (1 << spell_idx))
+                                                            == 0
+                                                        {
+                                                            player.add_experience(def.exp_gain * 4);
+                                                            player.spells_worked |= 1 << spell_idx;
+                                                        }
+                                                        crate::magic::apply_spell_mana_and_fatigue(
+                                                            &mut player,
+                                                            def.mana_required,
+                                                            false,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        screen_mode = ScreenMode::Dungeon;
+                                                        player_acted = true;
+                                                    }
                                                 }
                                             }
                                         }
                                     } else if screen_mode == ScreenMode::PrayMenu {
-                                        let idx = (c as u8).saturating_sub(b'a') as usize;
-                                        let known = player.known_spells(true);
-                                        if idx < known.len() {
-                                            let spell_idx = known[idx];
-                                            if let Some(def) = crate::magic::get_spell_def(
-                                                player.class,
-                                                spell_idx,
-                                                true,
-                                            ) {
-                                                let fail_chance =
-                                                    crate::magic::spell_chance_of_success(
-                                                        player.level,
-                                                        player.class,
-                                                        player.stats.wisdom,
-                                                        player.mana,
-                                                        def,
-                                                    );
-                                                let failed = rng.gen_range(1..=100) <= fail_chance;
-                                                if failed {
-                                                    status_msg =
-                                                        "You lost your concentration!".to_string();
-                                                    crate::magic::apply_spell_mana_and_fatigue(
-                                                        &mut player,
-                                                        def.mana_required,
-                                                        true,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
-                                                    screen_mode = ScreenMode::Dungeon;
-                                                    player_acted = true;
-                                                } else if crate::magic::is_directional_spell(
-                                                    spell_idx, true,
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let known = player.known_spells(true);
+                                            if idx < known.len() {
+                                                let spell_idx = known[idx];
+                                                if let Some(def) = crate::magic::get_spell_def(
+                                                    player.class,
+                                                    spell_idx,
+                                                    true,
                                                 ) {
-                                                    selected_spell_idx = spell_idx;
-                                                    selected_spell_is_prayer = true;
-                                                    screen_mode = ScreenMode::SelectSpellDirection;
-                                                    status_msg = format!(
-                                                        "Aim {}: choose direction (ESC to cancel)...",
-                                                        def.name
-                                                    );
-                                                } else {
-                                                    crate::magic::execute_non_directional_spell(
-                                                        spell_idx,
-                                                        true,
-                                                        &mut player,
-                                                        &mut level,
-                                                        &mut monsters,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
-                                                    if (player.spells_worked & (1 << spell_idx))
-                                                        == 0
-                                                    {
-                                                        player.add_experience(def.exp_gain * 4);
-                                                        player.spells_worked |= 1 << spell_idx;
+                                                    let fail_chance =
+                                                        crate::magic::spell_chance_of_success(
+                                                            player.level,
+                                                            player.class,
+                                                            player.stats.wisdom,
+                                                            player.mana,
+                                                            def,
+                                                        );
+                                                    let failed = rng.gen_range(1..=100) <= fail_chance;
+                                                    if failed {
+                                                        status_msg =
+                                                            "You lost your concentration!".to_string();
+                                                        crate::magic::apply_spell_mana_and_fatigue(
+                                                            &mut player,
+                                                            def.mana_required,
+                                                            true,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        screen_mode = ScreenMode::Dungeon;
+                                                        player_acted = true;
+                                                    } else if crate::magic::is_directional_spell(
+                                                        spell_idx, true,
+                                                    ) {
+                                                        selected_spell_idx = spell_idx;
+                                                        selected_spell_is_prayer = true;
+                                                        screen_mode = ScreenMode::SelectSpellDirection;
+                                                        status_msg = format!(
+                                                            "Aim {}: choose direction (ESC to cancel)...",
+                                                            def.name
+                                                        );
+                                                    } else {
+                                                        crate::magic::execute_non_directional_spell(
+                                                            spell_idx,
+                                                            true,
+                                                            &mut player,
+                                                            &mut level,
+                                                            &mut monsters,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        if (player.spells_worked & (1 << spell_idx))
+                                                            == 0
+                                                        {
+                                                            player.add_experience(def.exp_gain * 4);
+                                                            player.spells_worked |= 1 << spell_idx;
+                                                        }
+                                                        crate::magic::apply_spell_mana_and_fatigue(
+                                                            &mut player,
+                                                            def.mana_required,
+                                                            true,
+                                                            &mut rng,
+                                                            &mut status_msg,
+                                                        );
+                                                        screen_mode = ScreenMode::Dungeon;
+                                                        player_acted = true;
                                                     }
-                                                    crate::magic::apply_spell_mana_and_fatigue(
-                                                        &mut player,
-                                                        def.mana_required,
-                                                        true,
-                                                        &mut rng,
-                                                        &mut status_msg,
-                                                    );
-                                                    screen_mode = ScreenMode::Dungeon;
-                                                    player_acted = true;
                                                 }
                                             }
                                         }
@@ -4851,8 +4877,9 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             shop_info,
                                         );
                                     } else if screen_mode == ScreenMode::ShopSellMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.inventory.len() {
+                                        if let Some(idx) = menu_char_to_index(c)
+                                            && idx < player.inventory.len()
+                                        {
                                             let item = &player.inventory[idx];
                                             let base_val = dungeon::get_item_base_value(item);
                                             let shop_info = level
@@ -4894,109 +4921,111 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                                 format!("Bartering to sell {}.", item.name);
                                         }
                                     } else if screen_mode == ScreenMode::WearMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        let equippable_indices: Vec<usize> = player
-                                            .inventory
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, item)| {
-                                                matches!(
-                                                    item.item_type,
-                                                    ItemType::Weapon { .. }
-                                                        | ItemType::Bow { .. }
-                                                        | ItemType::Armor { .. }
-                                                        | ItemType::Light { .. }
-                                                        | ItemType::Ring { .. }
-                                                        | ItemType::Amulet { .. }
-                                                )
-                                            })
-                                            .map(|(i, _)| i)
-                                            .collect();
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let equippable_indices: Vec<usize> = player
+                                                .inventory
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, item)| {
+                                                    matches!(
+                                                        item.item_type,
+                                                        ItemType::Weapon { .. }
+                                                            | ItemType::Bow { .. }
+                                                            | ItemType::Armor { .. }
+                                                            | ItemType::Light { .. }
+                                                            | ItemType::Ring { .. }
+                                                            | ItemType::Amulet { .. }
+                                                    )
+                                                })
+                                                .map(|(i, _)| i)
+                                                .collect();
 
-                                        if idx < equippable_indices.len() {
-                                            let inv_idx = equippable_indices[idx];
-                                            let item = &player.inventory[inv_idx];
+                                            if idx < equippable_indices.len() {
+                                                let inv_idx = equippable_indices[idx];
+                                                let item = &player.inventory[inv_idx];
 
-                                            let target_slot = match &item.item_type {
-                                                ItemType::Ring { .. } => {
-                                                    let right_idx =
-                                                        player.equipment.iter().position(|eq| {
-                                                            eq.get_equipment_slot()
-                                                                == "On right hand"
-                                                        });
-                                                    let left_idx =
-                                                        player.equipment.iter().position(|eq| {
-                                                            eq.get_equipment_slot()
-                                                                == "On left hand"
-                                                        });
-                                                    if right_idx.is_none() {
-                                                        "On right hand".to_string()
-                                                    } else if left_idx.is_none() {
-                                                        "On left hand".to_string()
-                                                    } else {
-                                                        let right_cursed = right_idx
-                                                            .map(|i| {
-                                                                player.equipment[i].is_cursed()
-                                                            })
-                                                            .unwrap_or(false);
-                                                        let left_cursed = left_idx
-                                                            .map(|i| {
-                                                                player.equipment[i].is_cursed()
-                                                            })
-                                                            .unwrap_or(false);
-                                                        if right_cursed && !left_cursed {
+                                                let target_slot = match &item.item_type {
+                                                    ItemType::Ring { .. } => {
+                                                        let right_idx =
+                                                            player.equipment.iter().position(|eq| {
+                                                                eq.get_equipment_slot()
+                                                                    == "On right hand"
+                                                            });
+                                                        let left_idx =
+                                                            player.equipment.iter().position(|eq| {
+                                                                eq.get_equipment_slot()
+                                                                    == "On left hand"
+                                                            });
+                                                        if right_idx.is_none() {
+                                                            "On right hand".to_string()
+                                                        } else if left_idx.is_none() {
                                                             "On left hand".to_string()
                                                         } else {
-                                                            "On right hand".to_string()
+                                                            let right_cursed = right_idx
+                                                                .map(|i| {
+                                                                    player.equipment[i].is_cursed()
+                                                                })
+                                                                .unwrap_or(false);
+                                                            let left_cursed = left_idx
+                                                                .map(|i| {
+                                                                    player.equipment[i].is_cursed()
+                                                                })
+                                                                .unwrap_or(false);
+                                                            if right_cursed && !left_cursed {
+                                                                "On left hand".to_string()
+                                                            } else {
+                                                                "On right hand".to_string()
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                ItemType::Amulet { .. } => {
-                                                    "Around neck".to_string()
-                                                }
-                                                _ => item.get_equipment_slot().to_string(),
-                                            };
+                                                    ItemType::Amulet { .. } => {
+                                                        "Around neck".to_string()
+                                                    }
+                                                    _ => item.get_equipment_slot().to_string(),
+                                                };
 
-                                            let already_equipped =
-                                                player.equipment.iter().position(|eq| {
-                                                    eq.get_equipment_slot() == target_slot
-                                                });
+                                                let already_equipped =
+                                                    player.equipment.iter().position(|eq| {
+                                                        eq.get_equipment_slot() == target_slot
+                                                    });
 
-                                            if let Some(eq_idx) = already_equipped
-                                                && player.equipment[eq_idx].is_cursed()
-                                            {
-                                                status_msg = format!(
-                                                    "The {} you are wearing appears to be cursed.",
-                                                    player.equipment[eq_idx].display_name()
-                                                );
+                                                if let Some(eq_idx) = already_equipped
+                                                    && player.equipment[eq_idx].is_cursed()
+                                                {
+                                                    status_msg = format!(
+                                                        "The {} you are wearing appears to be cursed.",
+                                                        player.equipment[eq_idx].display_name()
+                                                    );
+                                                    screen_mode = ScreenMode::Dungeon;
+                                                    continue 'game_loop;
+                                                }
+
+                                                let mut item = player.inventory.remove(inv_idx);
+                                                item.equipped_slot = Some(target_slot.clone());
+
+                                                if let Some(eq_idx) = already_equipped {
+                                                    let mut old = player.equipment.remove(eq_idx);
+                                                    old.equipped_slot = None;
+                                                    status_msg = format!(
+                                                        "You take off {} and equip {}.",
+                                                        old.name, item.name
+                                                    );
+                                                    player.inventory.push(old);
+                                                } else {
+                                                    status_msg =
+                                                        format!("You wear/wield {}.", item.name);
+                                                }
+
+                                                player.equipment.push(item);
+                                                player.update_equipment_bonuses();
                                                 screen_mode = ScreenMode::Dungeon;
-                                                continue 'game_loop;
+                                                player_acted = true;
                                             }
-
-                                            let mut item = player.inventory.remove(inv_idx);
-                                            item.equipped_slot = Some(target_slot.clone());
-
-                                            if let Some(eq_idx) = already_equipped {
-                                                let mut old = player.equipment.remove(eq_idx);
-                                                old.equipped_slot = None;
-                                                status_msg = format!(
-                                                    "You take off {} and equip {}.",
-                                                    old.name, item.name
-                                                );
-                                                player.inventory.push(old);
-                                            } else {
-                                                status_msg =
-                                                    format!("You wear/wield {}.", item.name);
-                                            }
-
-                                            player.equipment.push(item);
-                                            player.update_equipment_bonuses();
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
                                         }
                                     } else if screen_mode == ScreenMode::TakeOffMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        if idx < player.equipment.len() {
+                                        if let Some(idx) = menu_char_to_index(c)
+                                            && idx < player.equipment.len()
+                                        {
                                             if player.equipment[idx].is_cursed() {
                                                 status_msg =
                                                     "Hmmm, it seems to be cursed.".to_string();
@@ -5013,38 +5042,40 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
                                             screen_mode = ScreenMode::Dungeon;
                                         }
                                     } else if screen_mode == ScreenMode::QuaffMenu {
-                                        let idx = c as usize - 'a' as usize;
-                                        let potion_indices: Vec<usize> = player
-                                            .inventory
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, item)| {
-                                                matches!(item.item_type, ItemType::Potion { .. })
-                                            })
-                                            .map(|(i, _)| i)
-                                            .collect();
+                                        if let Some(idx) = menu_char_to_index(c) {
+                                            let potion_indices: Vec<usize> = player
+                                                .inventory
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, item)| {
+                                                    matches!(item.item_type, ItemType::Potion { .. })
+                                                })
+                                                .map(|(i, _)| i)
+                                                .collect();
 
-                                        if idx < potion_indices.len() {
-                                            let inv_idx = potion_indices[idx];
-                                            let potion_item = player.inventory[inv_idx].clone();
-                                            player.inventory[inv_idx].count -= 1;
-                                            if player.inventory[inv_idx].count == 0 {
-                                                player.inventory.remove(inv_idx);
+                                            if idx < potion_indices.len() {
+                                                let inv_idx = potion_indices[idx];
+                                                let potion_item = player.inventory[inv_idx].clone();
+                                                player.inventory[inv_idx].count -= 1;
+                                                if player.inventory[inv_idx].count == 0 {
+                                                    player.inventory.remove(inv_idx);
+                                                }
+                                                player.identify_item_kind(&potion_item.name);
+                                                crate::magic::quaff_potion(
+                                                    &potion_item,
+                                                    &mut player,
+                                                    &mut level,
+                                                    &mut monsters,
+                                                    &mut rng,
+                                                    &mut status_msg,
+                                                );
+                                                screen_mode = ScreenMode::Dungeon;
+                                                player_acted = true;
                                             }
-                                            player.identify_item_kind(&potion_item.name);
-                                            crate::magic::quaff_potion(
-                                                &potion_item,
-                                                &mut player,
-                                                &mut level,
-                                                &mut monsters,
-                                                &mut rng,
-                                                &mut status_msg,
-                                            );
-                                            screen_mode = ScreenMode::Dungeon;
-                                            player_acted = true;
                                         }
-                                    } else if screen_mode == ScreenMode::ReadMenu {
-                                        let idx = c as usize - 'a' as usize;
+                                    } else if screen_mode == ScreenMode::ReadMenu
+                                        && let Some(idx) = menu_char_to_index(c)
+                                    {
                                         let scroll_indices: Vec<usize> = player
                                             .inventory
                                             .iter()
@@ -5276,4 +5307,50 @@ pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_menu_char_to_index_valid_and_underflow_prevention() {
+        // Valid lowercase letters
+        assert_eq!(menu_char_to_index('a'), Some(0));
+        assert_eq!(menu_char_to_index('b'), Some(1));
+        assert_eq!(menu_char_to_index('z'), Some(25));
+
+        // Uppercase letters must return None (not underflow or overlap)
+        assert_eq!(menu_char_to_index('A'), None);
+        assert_eq!(menu_char_to_index('Z'), None);
+
+        // Digits and symbols with ASCII < 97 must return None without underflowing
+        assert_eq!(menu_char_to_index('\0'), None);
+        assert_eq!(menu_char_to_index('0'), None);
+        assert_eq!(menu_char_to_index('1'), None);
+        assert_eq!(menu_char_to_index('9'), None);
+        assert_eq!(menu_char_to_index(' '), None);
+        assert_eq!(menu_char_to_index('\x1b'), None);
+        assert_eq!(menu_char_to_index('!'), None);
+
+        // Non-character key codes mapped to '\0' must not produce valid menu indexes
+        let arrow_up_char = match crossterm::event::KeyCode::Up {
+            crossterm::event::KeyCode::Char(c) => c,
+            _ => '\0',
+        };
+        assert_eq!(menu_char_to_index(arrow_up_char), None);
+    }
+
+    #[test]
+    fn test_wand_aiming_zero_direction_is_safe() {
+        // Center / rest key ('5' or '.') returns Direction::Rest
+        let mapper = crate::input::InputMapper::new(crate::input::KeybindingMode::Original);
+        let dir = mapper.map_direction_code(crossterm::event::KeyCode::Char('5'));
+        assert_eq!(dir, Some(crate::input::Direction::Rest));
+
+        let (dx, dy) = dir.unwrap().to_dx_dy();
+        assert_eq!((dx, dy), (0, 0));
+        // Verify that (0, 0) is flagged as self-aiming and cannot enter raycast loop
+        assert!(dx == 0 && dy == 0);
+    }
 }
